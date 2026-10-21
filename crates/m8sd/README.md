@@ -583,3 +583,64 @@ cloud/spend/admission/Ready guarantees remain unchanged. Tests use harmless
 sleep children; the natural-exit case uses the already-reviewed controlled
 sleep-group fixture because this sandbox may deny signals to an already-empty
 group. No process/security primitive is weakened to obtain a green test.
+
+## Runnable harmless LOCAL lifecycle demo
+
+The explicit example composes synthetic accounting, durable one-use intent, one
+fixed `/bin/sleep 15` child, timed stop/paired cancellation and retained journal
+cleanup. It is NOT the live product/mesh/model demo, Admin approval, provider
+balance, real pricing, credential workflow or paid integration. Feature defaults
+remain OFF; no daemon/main/config route changed.
+
+From the integrated checkout (with the actual Local crate), choose a **NEW,
+nonexistent** path under an already-existing canonical trusted parent:
+
+```sh
+cargo run --locked -p m8sd --features local-development \
+  --example local-lifecycle-demo -- \
+  --synthetic-accounting --state-dir /private/tmp/m8s-local-demo-cancel-NEW \
+  --synthetic-cap-micro-usd 10000 --scenario cancel
+```
+
+Use a DIFFERENT new path and `--scenario deadline` for the original three-second
+serving deadline plus two-second cleanup grace. No runtime renewal is offered.
+The cap must be explicitly supplied, positive, integer and <=1,000,000 simulated
+micro-USD; there is no default approval. Synthetic nonzero compute/storage,
+transfer and contingency require a full held reservation before any child. A
+too-small cap refuses before Local submission, preserving the fixture state.
+The 28-day interval, baseline, NoneConfirmed external-liability field, rates and
+all owner/approval/provenance labels are fictional SYNTHETIC-NOT-ADMIN-APPROVAL
+inputs, NOT claims of real provider reconciliation or a real calendar period.
+
+The example alone seeds a clearly marked Launching node and matching attempt in
+the SAME fresh private SQLite DB. This fixture SQL is NOT a public production
+launch-authority API or replacement operation manager. Only public reservation,
+prepare/claim, timed Local and cleanup APIs drive subsequent lifecycle effects.
+No arbitrary command/argv/URL/cloud/config/secret input is supported.
+
+State directory0700 and exclusive no-follow0600 demo lock are held throughout
+Store/effects/cleanup. Store/Local retain their reviewed private UID/ACL/journal
+policies. Trusted ancestors are required; symlinked/noncanonical parents, existing
+paths/final symlinks, duplicate/unknown flags and missing explicit accounting
+refuse. No --force/reset/recovery/rerun/settle/zero-bill or directory erasure exists.
+Keep the resulting DB/journal for inspection; do not delete ledger rows to rerun.
+A new path is a NEW SYNTHETIC fixture, never a live-account budget reset.
+
+Output is bounded NDJSON with fixed phase names, no raw argv/env/journals. Exit0
+means LOCAL journal cleanup observed LocalOnlyAbsent and read-only checks retained
+unknown billing, the full Uncertain hold, consumed dispatch/invocation history and
+cleanup-required intent. The synthetic node remains Launching, NOT reconciled
+fleet/Ready/model/admission status. No spent=0, refund or absence-proof claim is
+emitted. Errors exit nonzero, preserve state, request stop and attempt exact-owned
+cleanup without repeating create. A failed/incomplete cleanup is uncertainty,
+not safe deletion or permission to retry.
+
+Caller polling has bounded attempts/elapsed checks, NOT a hard latency bound
+around filesystem/kernel calls or stdout. The independent worker progresses
+only under its existing parent-alive/OS scheduling assumptions. Early stop is
+latched until actual Local handle publication; parent exit/SIGKILL/abort/host
+loss, stalled spawn/signal/wait, suspended scheduling and escaping executables
+remain uncontained. On uncertain error/exit, the fixed harmless sleep may remain;
+no child-survival/complete-teardown guarantee is made. Drop is stop-only. No
+signals/watchdog architecture, automatic Store cleanup/billing settlement,
+provider/TLS/MP-001/Keychain/model/network workload or spending is added.

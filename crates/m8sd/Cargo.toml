@@ -24,3 +24,9 @@ m8s-bootstrap = { path = "../m8s-bootstrap" }
 zeroize.workspace = true
 
 libc = "0.2"
+
+[[example]]
+name = "local-lifecycle-demo"
+path = "examples/local_lifecycle_demo.rs"
+required-features = ["local-development"]
+test = true
