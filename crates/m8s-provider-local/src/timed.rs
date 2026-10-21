@@ -333,18 +333,51 @@ mod tests {
             Self(path)
         }
         fn open(&self) -> Local {
-            Local::open_development(
+            self.open_fixture(|| {}).0
+        }
+        fn open_fixture(&self, contended: impl FnMut()) -> (Local, usize) {
+            let (result, retries) = crate::tests::open_fixture_result(
                 &self.0,
-                "owner".into(),
-                DevelopmentCommand::new("/bin/sleep".into(), vec!["60".into()]).unwrap(),
-            )
-            .unwrap()
+                "owner",
+                || DevelopmentCommand::new("/bin/sleep".into(), vec!["60".into()]).unwrap(),
+                contended,
+            );
+            (result.unwrap(), retries)
         }
     }
     impl Drop for Directory {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+    #[test]
+    fn directory_fixture_waits_for_inherited_lock() {
+        let dir = Directory::new();
+        let local = dir.open();
+        crate::tests::with_inherited_fixture_lock(&dir.0, local, |contended| {
+            let (reopened, retries) = dir.open_fixture(contended);
+            assert!(retries >= 1);
+            drop(reopened);
+        });
+    }
+    #[test]
+    fn directory_fixture_does_not_retry_storage_errors() {
+        let dir = Directory::new();
+        // Synthetic unlocked journal avoids any earlier inheritable lock.
+        for (name, bytes) in [
+            ("lock", &b""[..]),
+            ("state.json", &b"malformed synthetic state"[..]),
+        ] {
+            fs::write(dir.0.join(name), bytes).unwrap();
+            fs::set_permissions(dir.0.join(name), fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let mut retries = 0;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            dir.open_fixture(|| retries += 1);
+        }));
+        assert_eq!(retries, 0);
+        let panic = result.expect_err("Storage must fail the timed fixture");
+        assert!(panic.downcast_ref::<String>().unwrap().contains("Storage"));
     }
     fn intent(local: &mut Local) -> Instance {
         let id = format!("local-{}-1", local.state.namespace);

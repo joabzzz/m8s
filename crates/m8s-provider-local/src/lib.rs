@@ -510,25 +510,42 @@ mod tests {
         fn open(&self, args: &[&str]) -> Local {
             self.open_fixture(args, || {}).0
         }
-        // Only this test fixture may wait for transient inherited-fd contention.
-        // Production remains nonblocking; all non-lock errors fail immediately.
-        fn open_fixture(&self, args: &[&str], mut contended: impl FnMut()) -> (Local, usize) {
-            let deadline = Instant::now() + Duration::from_secs(2);
-            let mut retries = 0;
-            loop {
-                match Local::open_development(&self.0, "owner-a".into(), command(args)) {
-                    Ok(local) => return (local, retries),
-                    Err(Error::Unavailable) => {
-                        assert!(
-                            Instant::now() < deadline,
-                            "fixture lock still unavailable after {retries} retries"
-                        );
-                        retries += 1;
-                        contended();
-                        std::thread::sleep(Duration::from_millis(1));
-                    }
-                    Err(error) => panic!("unexpected fixture open error: {error:?}"),
+        fn open_fixture(&self, args: &[&str], contended: impl FnMut()) -> (Local, usize) {
+            let (result, retries) =
+                open_fixture_result(&self.0, "owner-a", || command(args), contended);
+            (
+                result.unwrap_or_else(|error| panic!("unexpected fixture open error: {error:?}")),
+                retries,
+            )
+        }
+    }
+    // Test fixtures alone may wait for transient inherited-fd contention.
+    // Production remains nonblocking. Preserve every other result, including
+    // owner mismatch and malformed storage, without invoking the callback.
+    pub(crate) fn open_fixture_result(
+        path: &Path,
+        owner: &str,
+        mut command: impl FnMut() -> DevelopmentCommand,
+        mut contended: impl FnMut(),
+    ) -> (Result<Local>, usize) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut retries = 0;
+        loop {
+            assert!(
+                retries == 0 || Instant::now() < deadline,
+                "fixture lock still Unavailable after {retries} retries"
+            );
+            match Local::open_development(path, owner.into(), command()) {
+                Err(Error::Unavailable) => {
+                    assert!(
+                        Instant::now() < deadline,
+                        "fixture lock still Unavailable after {retries} retries"
+                    );
+                    retries += 1;
+                    contended();
+                    std::thread::sleep(Duration::from_millis(1));
                 }
+                result => return (result, retries),
             }
         }
     }
@@ -634,7 +651,7 @@ mod tests {
         assert_eq!(reopened.state.records.len(), 1);
         drop(reopened);
         assert!(matches!(
-            Local::open_development(&directory.0, "owner-b".into(), command(&[])),
+            open_fixture_result(&directory.0, "owner-b", || command(&[]), || {}).0,
             Err(Error::Invalid)
         ));
         let bytes = fs::read(directory.0.join("state.json")).unwrap();
@@ -999,6 +1016,32 @@ mod tests {
     }
     #[test]
     fn cloexec_lock_is_inherited_until_exec_and_fixture_waits_only_for_contention() {
+        let directory = Directory::new();
+        let local = directory.open(&["-c", "exit 0"]);
+        with_inherited_fixture_lock(&directory.0, local, |contended| {
+            let (reopened, retries) = directory.open_fixture(&["-c", "exit 0"], contended);
+            assert!(retries >= 1);
+            drop(reopened);
+        });
+    }
+    #[test]
+    fn foreign_owner_fixture_waits_for_inherited_lock_then_remains_invalid() {
+        let directory = Directory::new();
+        let local = directory.open(&["-c", "exit 0"]);
+        with_inherited_fixture_lock(&directory.0, local, |contended| {
+            let (result, retries) =
+                open_fixture_result(&directory.0, "owner-b", || command(&[]), contended);
+            assert!(retries >= 1);
+            assert!(matches!(result, Err(Error::Invalid)));
+        });
+    }
+    // Reuse exactly the same owned-child, bounded, async-signal-safe probe in
+    // both fixture modules; this proves a mechanism, not any past failure's cause.
+    pub(crate) fn with_inherited_fixture_lock(
+        path: &Path,
+        local: Local,
+        check: impl FnOnce(&mut dyn FnMut()),
+    ) {
         use std::io::{Read, Write};
         use std::os::{
             fd::{AsRawFd, FromRawFd},
@@ -1029,8 +1072,6 @@ mod tests {
                 let _ = self.0.wait();
             }
         }
-        let directory = Directory::new();
-        let local = directory.open(&["-c", "exit 0"]);
         let (mut ready, child_ready) = pipe();
         let (child_release, release) = pipe();
         let spawning = std::thread::spawn(move || {
@@ -1081,16 +1122,15 @@ mod tests {
         ready.read_exact(&mut byte).unwrap(); // child has inherited the locked fd
         drop(local); // no live Local owner remains in the parent
         assert!(matches!(
-            Local::open_development(&directory.0, "owner-a".into(), command(&[])),
+            Local::open_development(path, "owner-a".into(), command(&[])),
             Err(Error::Unavailable)
         ));
         let mut release = Some(release);
-        let (reopened, retries) = directory.open_fixture(&["-c", "exit 0"], || {
+        check(&mut || {
             if let Some(mut release) = release.take() {
                 release.write_all(&[1]).unwrap(); // allow exec, NOT process exit
             }
         });
-        assert!(retries >= 1);
         let mut child = spawning.join().unwrap();
         assert!(
             child.0.try_wait().unwrap().is_none(),
@@ -1098,7 +1138,25 @@ mod tests {
         );
         // Successfully reopened before child exit proves FD_CLOEXEC worked; it
         // does not prevent the demonstrated pre-exec inheritance interval.
-        drop(reopened);
+    }
+    #[test]
+    fn fixture_result_preserves_malformed_storage_without_retry() {
+        let directory = Directory::new();
+        // No Local has held this synthetic lock: parallel forks cannot inherit
+        // an earlier fixture lock and obscure the malformed-state result.
+        write_private(&directory.0.join("lock"), b"");
+        write_private(
+            &directory.0.join("state.json"),
+            b"malformed synthetic state",
+        );
+        let (result, retries) = open_fixture_result(
+            &directory.0,
+            "owner-b",
+            || command(&[]),
+            || panic!("Storage must never enter contention retry"),
+        );
+        assert_eq!(retries, 0);
+        assert!(matches!(result, Err(Error::Storage)));
     }
     #[test]
     fn fixture_does_not_retry_or_swallow_storage_errors() {
