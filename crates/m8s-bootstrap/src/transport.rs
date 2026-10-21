@@ -97,6 +97,7 @@ pub async fn accept_boot(incoming: Incoming, owner: EndpointId) -> Result<BootCo
         return Err(Error::Refused);
     }
     let session = IrohSession {
+        delivery_binding: None,
         owner,
         peer: EndpointId(*connection.remote_id().as_bytes()),
         source_ip: origin,
@@ -140,11 +141,18 @@ impl BootConnection {
         {
             return Err(Error::Refused);
         }
+        self.session.delivery_binding = Some(DeliveryBinding {
+            token: std::sync::Arc::new(()),
+            request_hash: request.fingerprint(),
+        });
         Ok(request)
     }
     /// Delivers only on the original authenticated stream, never a caller-selected peer.
     pub async fn deliver(mut self, pending: PendingDelivery, now: i64) -> Result<()> {
-        if !self.received
+        if !delivery_matches(
+            self.session.delivery_binding.as_ref(),
+            pending.delivery_token.as_ref(),
+        ) || !self.received
             || self.connection.close_reason().is_some()
             || pending.claims.owner != self.session.owner
             || pending.claims.node != self.session.peer
@@ -560,5 +568,35 @@ mod tests {
             .unwrap();
         assert!(writer.join().unwrap());
         assert!(policy.authorize(owner, owner, 1).is_err());
+    }
+}
+
+fn delivery_matches(binding: Option<&DeliveryBinding>, token: Option<&std::sync::Arc<()>>) -> bool {
+    match (binding, token) {
+        (Some(binding), Some(token)) => std::sync::Arc::ptr_eq(&binding.token, token),
+        _ => false,
+    }
+}
+#[cfg(test)]
+mod delivery_tests {
+    use super::*;
+    #[test]
+    fn same_peer_swapped_or_failed_receive_is_not_delivery_eligible() {
+        // Pure capability-policy fixtures; no fabricated iroh Connection.
+        let a = DeliveryBinding {
+            token: std::sync::Arc::new(()),
+            request_hash: [1; 32],
+        };
+        let b = DeliveryBinding {
+            token: std::sync::Arc::new(()),
+            request_hash: [1; 32],
+        };
+        assert!(delivery_matches(Some(&a), Some(&a.token)));
+        assert!(!delivery_matches(Some(&b), Some(&a.token)));
+        // Attempted receive can be latched terminal while no successful request
+        // capability exists (malformed frame, cancellation, or transport failure).
+        assert!(!delivery_matches(None, Some(&a.token)));
+        assert!(!delivery_matches(Some(&a), None));
+        assert!(!delivery_matches(None, None));
     }
 }

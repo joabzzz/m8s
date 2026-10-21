@@ -1867,7 +1867,9 @@ name = "m8sd"
 version = "0.1.0"
 dependencies = [
  "fs2",
+ "libc",
  "m8s-api",
+ "m8s-bootstrap",
  "m8s-core",
  "m8s-provider",
  "rusqlite",
@@ -1875,6 +1877,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.21",
+ "zeroize",
 ]
 
 [[package]]

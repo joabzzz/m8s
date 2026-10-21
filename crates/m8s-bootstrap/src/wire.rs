@@ -244,6 +244,7 @@ mod tests {
     #[test]
     fn bundle_roundtrip_limits_and_fields() {
         let pending = PendingDelivery {
+            delivery_token: None,
             claims: CertificateClaims {
                 owner: EndpointId([1; 32]),
                 node: EndpointId([2; 32]),

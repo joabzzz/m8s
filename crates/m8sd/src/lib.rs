@@ -11,10 +11,14 @@ pub enum Error {
     Database(#[from] rusqlite::Error),
     #[error("provider outcome uncertain: {0}")]
     Provider(#[from] m8s_provider::Error),
-    #[error("invalid tier or replica count (maximum 16)")]
+    #[error("invalid state request or bootstrap binding")]
     Invalid,
     #[error("database belongs to another owner")]
     OwnerMismatch,
+    #[error("private state path unavailable or unsafe")]
+    PrivateState,
+    #[error("secure bootstrap unavailable")]
+    BootstrapUnavailable,
     #[error("invalid persisted phase")]
     Corrupt,
 }
@@ -32,7 +36,13 @@ impl Store {
         if owner.is_empty() {
             return Err(Error::Invalid);
         }
-        let conn = Connection::open(path)?;
+        let private = private::prepare(path.as_ref())?;
+        let path = &private.path;
+        let mut conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::default() | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )?;
+        private.recheck()?;
         conn.busy_timeout(std::time::Duration::from_secs(2))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
         CREATE TABLE IF NOT EXISTS pool(owner TEXT NOT NULL);
@@ -41,21 +51,30 @@ impl Store {
         CREATE TABLE IF NOT EXISTS launch_attempt(uid TEXT PRIMARY KEY, tier TEXT NOT NULL, at INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS launch_window ON launch_attempt(tier,at);
         CREATE TABLE IF NOT EXISTS event(seq INTEGER PRIMARY KEY, at INTEGER NOT NULL, message TEXT NOT NULL);")?;
-        let existing: Option<String> = conn
+        private.recheck()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let count: i64 = tx.query_row("SELECT count(*) FROM pool", [], |r| r.get(0))?;
+        if count > 1 {
+            return Err(Error::Corrupt);
+        }
+        let existing: Option<String> = tx
             .query_row("SELECT owner FROM pool LIMIT 1", [], |r| r.get(0))
             .optional()?;
         match existing {
             Some(o) if o != owner => return Err(Error::OwnerMismatch),
             None => {
-                conn.execute("INSERT INTO pool VALUES (?)", [owner])?;
+                tx.execute("INSERT INTO pool VALUES (?)", [owner])?;
             }
             _ => {}
         }
+        tx.commit()?;
+        nonce::initialize(&conn)?;
         Ok(Self {
             conn,
             owner: owner.into(),
         })
     }
+
     pub fn owner(&self) -> &str {
         &self.owner
     }
@@ -69,11 +88,25 @@ impl Store {
         {
             return Err(Error::Invalid);
         }
-        self.conn.execute("INSERT INTO tier VALUES (?,?) ON CONFLICT(name) DO UPDATE SET desired=excluded.desired",params![tier,desired])?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.conn,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
+        tx.execute("INSERT INTO tier VALUES (?,?) ON CONFLICT(name) DO UPDATE SET desired=excluded.desired",params![tier,desired])?;
+        if desired == 0 {
+            nonce::cancel_tier(&tx, &self.owner, tier)?;
+        }
+        tx.commit()?;
         Ok(())
     }
     pub fn down(&self) -> Result<()> {
-        self.conn.execute("UPDATE tier SET desired=0", [])?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.conn,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
+        tx.execute("UPDATE tier SET desired=0", [])?;
+        nonce::cancel_all(&tx, &self.owner)?;
+        tx.commit()?;
         Ok(())
     }
     fn event(&self, now: Timestamp, message: &str) -> Result<()> {
@@ -129,13 +162,21 @@ impl Store {
             .ok_or(Error::Corrupt)?;
         transition(current.phase, phase, LifecycleEvidence::default())
             .map_err(|_| Error::Corrupt)?;
-        self.conn.execute(
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.conn,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
+        if phase == Phase::Destroying {
+            nonce::cancel_uid(&tx, &self.owner, uid)?;
+        }
+        tx.execute(
             "UPDATE gpu_node SET phase=? WHERE uid=?",
             params![
                 serde_json::to_string(&phase).map_err(|_| Error::Corrupt)?,
                 uid
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
     /// Transaction commits a launch reservation before any provider side effect.
@@ -143,6 +184,14 @@ impl Store {
         let tx = self
             .conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let desired: Option<u32> = tx
+            .query_row("SELECT desired FROM tier WHERE name=?", [tier], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if desired.unwrap_or(0) == 0 {
+            return Ok(None);
+        }
         let future: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM launch_attempt WHERE tier=? AND at>?)",
             params![tier, now],
@@ -237,18 +286,35 @@ impl Store {
                     if !may_delete(gone, evidence) {
                         return Err(Error::Corrupt);
                     }
-                    self.conn
-                        .execute("DELETE FROM gpu_node WHERE uid=?", [&n.uid])?;
+                    let tx = self
+                        .conn
+                        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                    nonce::cancel_uid(&tx, &self.owner, &n.uid)?;
+                    tx.execute("DELETE FROM gpu_node WHERE uid=?", [&n.uid])?;
+                    tx.commit()?;
                     self.event(now, "provider confirmed absence; finalizer released")?;
                 }
                 Ok(Observation::Present(i)) => {
                     if i.owner != self.owner || i.id != *id {
+                        // Refuse provider mutation, but invalidate our local grant
+                        // and retain certificate cleanup intent on observed mismatch.
+                        let tx = self
+                            .conn
+                            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                        nonce::cancel_uid(&tx, &self.owner, &n.uid)?;
+                        tx.commit()?;
                         self.event(now, "provider ownership mismatch; refusing mutation")?;
                         *retained.entry(n.tier.clone()).or_default() += 1;
                         continue;
                     }
                     let count = retained.entry(n.tier.clone()).or_default();
-                    if n.uid.starts_with("orphan:")
+                    let deleting: bool = self.conn.query_row(
+                        "SELECT deleting FROM gpu_node WHERE uid=?",
+                        [&n.uid],
+                        |r| r.get(0),
+                    )?;
+                    if deleting
+                        || n.uid.starts_with("orphan:")
                         || matches!(n.phase, Phase::Destroying | Phase::Draining)
                         || matches!(i.state, InstanceState::Stopped | InstanceState::Exited)
                         || *count >= desired
@@ -314,3 +380,5 @@ impl Store {
 }
 
 pub mod nonce;
+
+mod private;

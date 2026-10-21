@@ -11,6 +11,7 @@ fn binding() -> LaunchBinding {
 }
 fn session(alpn: &[u8], peer: u8) -> IrohSession {
     IrohSession {
+        delivery_binding: None,
         owner: binding().owner,
         peer: EndpointId([peer; 32]),
         source_ip: binding().provider_ip,
@@ -489,4 +490,102 @@ mod actual_crypto {
             Err(Error::Refused)
         ));
     }
+}
+
+#[test]
+fn injected_authoritative_consumer_rechecks_after_signature_and_never_unburns() {
+    use std::cell::Cell;
+    struct Authority {
+        ledger: Ledger,
+        certifications: Cell<usize>,
+    }
+    impl NonceConsumer for Authority {
+        fn consume(&self, r: &ValidatedRedemption) -> Result<()> {
+            self.ledger.consume(r)
+        }
+        fn certified(&self, _: &ValidatedRedemption, _: &NodeCertificate) -> Result<()> {
+            self.certifications.set(self.certifications.get() + 1);
+            Err(Error::Refused) // e.g. durable down intent committed during signer callback
+        }
+    }
+    let store = Authority {
+        ledger: ledger(),
+        certifications: Cell::new(0),
+    };
+    let result = redeem_with(
+        &store,
+        &session(BOOT_ALPN, 2),
+        request(),
+        &binding(),
+        101,
+        2000,
+        Zeroizing::new(vec![9]),
+        &mut authority(),
+        &authority(),
+    );
+    assert!(matches!(result, Err(Error::Refused)));
+    assert_eq!(store.certifications.get(), 1);
+    assert!(
+        redeem(
+            &store.ledger,
+            &session(BOOT_ALPN, 2),
+            request(),
+            102,
+            &mut authority(),
+            &authority()
+        )
+        .is_err()
+    );
+    let store = Authority {
+        ledger: ledger(),
+        certifications: Cell::new(0),
+    };
+    let mut verifier = authority();
+    verifier.fail_verify = true;
+    assert!(matches!(
+        redeem_with(
+            &store,
+            &session(BOOT_ALPN, 2),
+            request(),
+            &binding(),
+            101,
+            2000,
+            Zeroizing::new(vec![9]),
+            &mut authority(),
+            &verifier
+        ),
+        Err(Error::Certificate)
+    ));
+    assert_eq!(store.certifications.get(), 0);
+    assert!(
+        redeem(
+            &store.ledger,
+            &session(BOOT_ALPN, 2),
+            request(),
+            102,
+            &mut authority(),
+            &authority()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn successful_request_capability_rejects_changed_request_before_burn() {
+    let l = ledger();
+    let mut session = session(BOOT_ALPN, 2);
+    session.delivery_binding = Some(DeliveryBinding {
+        token: std::sync::Arc::new(()),
+        request_hash: request().fingerprint(),
+    });
+    let mut a = authority();
+    let v = authority();
+    let mut changed = request();
+    changed.self_destruct_present = false;
+    assert!(redeem(&l, &session, changed, 101, &mut a, &v).is_err());
+    let mut changed = request();
+    changed.container_id.push('x');
+    assert!(redeem(&l, &session, changed, 101, &mut a, &v).is_err());
+    assert_eq!(a.calls, 0);
+    assert!(redeem(&l, &session, request(), 101, &mut a, &v).is_ok());
 }

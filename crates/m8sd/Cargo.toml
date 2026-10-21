@@ -14,3 +14,8 @@ rusqlite.workspace = true
 thiserror.workspace = true
 fs2.workspace = true
 sha2.workspace = true
+
+m8s-bootstrap = { path = "../m8s-bootstrap" }
+zeroize.workspace = true
+
+libc = "0.2"

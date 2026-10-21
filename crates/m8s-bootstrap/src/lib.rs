@@ -63,10 +63,18 @@ impl LaunchBinding {
     }
 }
 
-/// Transport-owned evidence, never accepted from a wire message. No public constructor.
-/// Source IP must be direct, validated remote IP, NOT a relay or agent-reported IP.
-/// A relayed connection without separately verified origin evidence must be refused.
+// An in-process unforgeable identity, held alive by the original connection and
+// pending delivery. Never serialized or reconstructed from caller-supplied IDs.
+struct DeliveryBinding {
+    token: std::sync::Arc<()>,
+    request_hash: [u8; 32],
+}
+/// Transport-owned full-handshake evidence, never accepted from a wire field.
+/// Source IP must be the verified direct path, never a relay or claimed address.
+/// No public constructor; request-bound delivery eligibility is minted only
+/// after the complete original stream is successfully received and decoded.
 pub struct IrohSession {
+    delivery_binding: Option<DeliveryBinding>,
     owner: EndpointId,
     peer: EndpointId,
     source_ip: IpAddr,
@@ -87,6 +95,22 @@ pub struct Redemption {
     pub image_sha256: [u8; 32],
     /// Agent assertion only; not cryptographic proof of provider key possession.
     pub self_destruct_present: bool,
+}
+
+impl Redemption {
+    fn fingerprint(&self) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"m8s-successful-boot-request-v1");
+        h.update(self.nonce.hash());
+        for field in [&self.instance_id, &self.container_id] {
+            h.update((field.len() as u64).to_be_bytes());
+            h.update(field.as_bytes());
+        }
+        h.update(self.node.0);
+        h.update(self.image_sha256);
+        h.update([u8::from(self.self_destruct_present)]);
+        h.finalize().into()
+    }
 }
 
 /// Exact public claims which the signer/verifier adapter binds. `owner` is the
@@ -156,6 +180,7 @@ pub struct BundleSettings {
 /// Consumed-nonce output. Join material stays private and zeroized; the optional
 /// real transport adapter delivers it only on its original encrypted stream.
 pub struct PendingDelivery {
+    delivery_token: Option<std::sync::Arc<()>>,
     certificate: NodeCertificate,
     join_token: Zeroizing<Vec<u8>>,
     claims: CertificateClaims,
@@ -176,7 +201,12 @@ impl PendingDelivery {
     #[cfg(not(feature = "iroh-transport"))]
     pub fn deliver(self, _session: &IrohSession) -> Result<()> {
         // Explicitly retain ownership of sensitive fields until zeroizing drop.
-        let _ = (&self.certificate, &self.join_token, &self.acl);
+        let _ = (
+            &self.certificate,
+            &self.join_token,
+            &self.acl,
+            &self.delivery_token,
+        );
         Err(Error::Unavailable)
     }
 }
@@ -222,58 +252,44 @@ impl Ledger {
         signer: &mut impl NodeSigner,
         verifier: &impl CertificateVerifier,
     ) -> Result<PendingDelivery> {
-        expected.validate()?;
-        if session.alpn != BOOT_ALPN
-            || session.owner != expected.owner
-            || session.peer != request.node
-            || session.source_ip != expected.provider_ip
-            || request.instance_id != expected.instance_id
-            || request.container_id != expected.container_id
-            || request.image_sha256 != expected.image_sha256
-            || !request.self_destruct_present
-            || now < 0
-            || cert_expires_at <= now
-            || join_token.is_empty()
-        {
-            return Err(Error::Refused);
-        }
+        redeem_with(
+            self,
+            session,
+            request,
+            expected,
+            now,
+            cert_expires_at,
+            join_token,
+            signer,
+            verifier,
+        )
+    }
+}
+impl NonceConsumer for Ledger {
+    fn consume(&self, request: &ValidatedRedemption) -> Result<()> {
+        let expected = request.binding();
+        let claims = request.claims();
         let changed = self.0.execute(
             "UPDATE bootstrap_nonce SET redeemed=?,endpoint=? WHERE hash=?
             AND owner=? AND instance=? AND container=? AND ip=? AND digest=?
             AND redeemed IS NULL AND issued<=? AND issued>?",
             params![
-                now,
-                request.node.0.as_slice(),
-                request.nonce.hash().as_slice(),
+                claims.issued_at,
+                claims.node.0.as_slice(),
+                request.nonce_hash().as_slice(),
                 expected.owner.0.as_slice(),
                 expected.instance_id,
                 expected.container_id,
                 expected.provider_ip.to_string(),
                 expected.image_sha256.as_slice(),
-                now,
-                now.saturating_sub(NONCE_TTL_SECONDS)
+                claims.issued_at,
+                claims.issued_at.saturating_sub(NONCE_TTL_SECONDS)
             ],
         )?;
         if changed != 1 {
             return Err(Error::Refused);
         }
-        let claims = CertificateClaims {
-            owner: expected.owner,
-            node: request.node,
-            issued_at: now,
-            expires_at: cert_expires_at,
-        };
-        let certificate = signer.sign(&claims).map_err(|_| Error::Certificate)?;
-        verifier
-            .verify(&certificate, &claims)
-            .map_err(|_| Error::Certificate)?;
-        Ok(PendingDelivery {
-            certificate,
-            join_token,
-            claims,
-            acl: ControlAcl::owner_only(expected.owner),
-            settings: None,
-        })
+        Ok(())
     }
 }
 
@@ -332,3 +348,6 @@ mod wire;
 
 #[cfg(feature = "iroh-transport")]
 pub use transport::{AuthenticatedControlSession, ControlPolicy, VerifiedHeartbeat};
+
+mod redemption;
+pub use redemption::{NonceConsumer, ValidatedRedemption, redeem_with};

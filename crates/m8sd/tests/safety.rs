@@ -12,7 +12,8 @@ fn path() -> PathBuf {
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::create_dir(&p).unwrap();
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(&p).unwrap();
     p.join("state.db")
 }
 #[test]
@@ -153,51 +154,6 @@ fn mock_provider_state_itself_survives_restart() {
     let mut p = Mock::persistent(path).unwrap();
     assert!(matches!(p.describe(&id).unwrap(), Observation::Present(_)));
 }
-#[test]
-fn nonce_binding_ttl_single_use_and_restart() {
-    use m8sd::nonce::Binding;
-    let path = path();
-    let mut p = Mock::default();
-    let mut s = Store::open(&path, "owner").unwrap();
-    s.scale("tier", 1).unwrap();
-    s.reconcile(&mut p, 0).unwrap();
-    let id = s.nodes().unwrap()[0].instance_id.clone().unwrap();
-    let nonce = [42u8; 32];
-    let digest = format!("sha256:{}", "a".repeat(64));
-    let binding = |ip| Binding {
-        instance_id: &id,
-        source_ip: ip,
-        node_endpoint: "verified-endpoint",
-        image_digest: &digest,
-        self_destruct_present: true,
-    };
-    s.issue_nonce(&nonce, &id, "203.0.113.1", &digest, 0)
-        .unwrap();
-    drop(s);
-    let s = Store::open(&path, "owner").unwrap();
-    assert!(!s.redeem_nonce(&nonce, binding("203.0.113.2"), 1).unwrap());
-    assert!(
-        !s.redeem_nonce(
-            &nonce,
-            Binding {
-                self_destruct_present: false,
-                ..binding("203.0.113.1")
-            },
-            1
-        )
-        .unwrap()
-    );
-    assert!(!s.redeem_nonce(&nonce, binding("203.0.113.1"), -1).unwrap());
-    assert!(s.redeem_nonce(&nonce, binding("203.0.113.1"), 899).unwrap());
-    assert!(!s.redeem_nonce(&nonce, binding("203.0.113.1"), 899).unwrap());
-    let expired = [43u8; 32];
-    s.issue_nonce(&expired, &id, "203.0.113.1", &digest, 0)
-        .unwrap();
-    assert!(
-        !s.redeem_nonce(&expired, binding("203.0.113.1"), 900)
-            .unwrap()
-    );
-}
 
 #[test]
 fn clock_rollback_does_not_open_new_launch_slots() {
@@ -212,80 +168,6 @@ fn clock_rollback_does_not_open_new_launch_slots() {
     assert_eq!(s.launch_count("tier", 0).unwrap(), 1);
     s.reconcile(&mut p, 10000).unwrap();
     assert_eq!(s.nodes().unwrap().len(), 1);
-}
-#[test]
-fn nonce_mismatches_and_concurrent_replay_are_refused() {
-    use m8sd::nonce::Binding;
-    let path = path();
-    let mut p = Mock::default();
-    let mut s = Store::open(&path, "owner").unwrap();
-    s.scale("tier", 1).unwrap();
-    s.reconcile(&mut p, 0).unwrap();
-    let id = s.nodes().unwrap()[0].instance_id.clone().unwrap();
-    let digest = format!("sha256:{}", "b".repeat(64));
-    let nonce = [44u8; 32];
-    s.issue_nonce(&nonce, &id, "203.0.113.1", &digest, 0)
-        .unwrap();
-    let binding = || Binding {
-        instance_id: &id,
-        source_ip: "203.0.113.1",
-        node_endpoint: "verified-endpoint",
-        image_digest: &digest,
-        self_destruct_present: true,
-    };
-    assert!(
-        !s.redeem_nonce(
-            &nonce,
-            Binding {
-                instance_id: "wrong",
-                ..binding()
-            },
-            1
-        )
-        .unwrap()
-    );
-    assert!(
-        !s.redeem_nonce(
-            &nonce,
-            Binding {
-                image_digest: "wrong",
-                ..binding()
-            },
-            1
-        )
-        .unwrap()
-    );
-    assert!(!s.redeem_nonce(&[45u8; 32], binding(), 1).unwrap());
-    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
-    let threads: Vec<_> = (0..2)
-        .map(|_| {
-            let path = path.clone();
-            let id = id.clone();
-            let digest = digest.clone();
-            let barrier = barrier.clone();
-            std::thread::spawn(move || {
-                let s = Store::open(path, "owner").unwrap();
-                barrier.wait();
-                s.redeem_nonce(
-                    &nonce,
-                    Binding {
-                        instance_id: &id,
-                        source_ip: "203.0.113.1",
-                        node_endpoint: "verified-endpoint",
-                        image_digest: &digest,
-                        self_destruct_present: true,
-                    },
-                    1,
-                )
-                .unwrap()
-            })
-        })
-        .collect();
-    let successes = threads
-        .into_iter()
-        .map(|t| usize::from(t.join().unwrap()))
-        .sum::<usize>();
-    assert_eq!(successes, 1);
 }
 
 #[test]
@@ -312,4 +194,33 @@ fn starting_instances_retain_desired_capacity_but_down_still_destroys() {
     assert_eq!(p.destroy_calls.len(), 1);
     s.reconcile(&mut p, 3).unwrap();
     assert!(s.nodes().unwrap().is_empty());
+}
+
+#[test]
+fn legacy_unverified_nonce_api_is_explicitly_unavailable() {
+    let s = Store::open(path(), "owner").unwrap();
+    assert!(matches!(
+        s.issue_nonce(
+            &[42; 32],
+            "unverified",
+            "203.0.113.1",
+            "sha256:synthetic",
+            0
+        ),
+        Err(m8sd::Error::BootstrapUnavailable)
+    ));
+    assert!(matches!(
+        s.redeem_nonce(
+            &[42; 32],
+            m8sd::nonce::Binding {
+                instance_id: "unverified",
+                source_ip: "203.0.113.1",
+                node_endpoint: "claimed",
+                image_digest: "claimed",
+                self_destruct_present: true
+            },
+            0
+        ),
+        Err(m8sd::Error::BootstrapUnavailable)
+    ));
 }
