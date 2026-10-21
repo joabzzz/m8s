@@ -7,7 +7,16 @@ read-only. SecretValue has no Debug/Display/Clone/Serialize and zeroizes on drop
 Expiry uses caller-injected seconds; at exact expiry, get/list hide an entry.
 Delete can still remove expired entries. List returns metadata only.
 
-## File backend
+## EXPERIMENTAL file backend — Needs Admin
+
+**This is not the accepted ADR-0012 TOML fallback.** The format/path contract
+requires an Admin decision before any default or CLI selects it. Concrete card:
+**Secret fallback format: retain TOML contract or accept bounded binary?**
+(card 01a15cbc-5bc1-7026-8894-8792bd61053d, Needs Admin on the m8s board).
+The recommendation is to accept the bounded binary format with an ADR amendment;
+retaining TOML with equivalent safe parsing is the alternative. No approval is
+implied by integration of this explicitly experimental library.
+
 
 FileStore::open takes an explicit absolute path on Unix. Supply an existing,
 owned, exactly 0700 parent outside all Git worktrees. No directory creation,
@@ -35,7 +44,7 @@ file; there is intentionally no automatic orphan sweep. A failure after rename
 rollback. Advisory locking requires cooperating writers. Malicious same-UID
 code/root is not defended against.
 
-**Format decision for integration review:** this uses a bounded, versioned binary
+**Format decision pending Admin:** this uses a bounded, versioned binary
 envelope, not TOML/.env. There was no existing file format to migrate. Choose an
 honest filename such as secrets.bin, not the ADR's proposed secrets.toml. There
 is no migration/parser fallback. Limits: 1 MiB total, 1024 records, 64 KiB/value,

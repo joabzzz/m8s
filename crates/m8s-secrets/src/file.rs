@@ -14,6 +14,9 @@ use std::{
 };
 use zeroize::Zeroizing;
 
+/// EXPERIMENTAL binary-format store, not the accepted ADR-0012 TOML fallback.
+/// No default path/backend or CLI selects it. Needs Admin format decision:
+/// board card 01a15cbc-5bc1-7026-8894-8792bd61053d.
 pub struct FileStore {
     dir: File,
     path: PathBuf,

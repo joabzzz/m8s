@@ -1,4 +1,6 @@
 //! Synchronous secret stores. Backends are selected explicitly; never fall back implicitly.
+//! FileStore is an EXPERIMENTAL binary-format library pending Admin review;
+//! it does not complete the accepted ADR-0012 secrets.toml fallback contract.
 mod codec;
 mod keychain;
 #[cfg(all(target_os = "macos", feature = "os-keyring", not(test)))]

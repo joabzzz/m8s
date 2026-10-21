@@ -68,11 +68,13 @@ response states `mode: mock-only` and the bootstrap limitation.
   destroy; only confirmed absence ends retries. No effect executor is shipped.
 - Secret values have no Debug/Display/Serialize and are zeroized on drop.
   Explicitly selected stores include injected read-only environment, hardened
-  Unix file persistence and injected keyring. No ambient discovery or silent
+  **experimental binary-format** Unix file persistence and injected keyring. No ambient discovery or silent
   fallback occurs. The opt-in macOS OS adapter is compile-checked only; tests
   use synthetic files and fake keyring drivers, never the real OS keychain.
   See crates/m8s-secrets/README.md for strict file/ACL/format and coordination
-  requirements. No secret-retrieval CLI or default backend is wired.
+  requirements. The binary FileStore does **not** complete ADR-0012's accepted
+  TOML fallback: Needs Admin card 01a15cbc-5bc1-7026-8894-8792bd61053d asks whether
+  to retain TOML or accept binary. No secret-retrieval CLI or default backend is wired.
 
 ## Fixture-only provider mapping
 
