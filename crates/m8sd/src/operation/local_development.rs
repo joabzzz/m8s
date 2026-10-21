@@ -168,6 +168,17 @@ pub enum LocalDevelopmentOutcome {
     Ambiguous,
     NotInvoked,
 }
+/// Ordinary LOCAL diagnostic only, never a settlement/absence-proof capability.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalCleanupStatus {
+    NoLocalSubmission,
+    NotRequested,
+    Pending {
+        direct_child: m8s_provider_local::LocalTerminationState,
+    },
+    LocalOnlyAbsent,
+    Uncertain,
+}
 /// One allocation, at most one timed Local submission; no Provider/callback API.
 /// The caller pairs durable Store::cancel_create with stop_handle.request_stop.
 /// DB-only down/cancel is cleanup intent, NOT automatic wakeup/containment.
@@ -181,9 +192,12 @@ pub struct LocalDevelopmentExecutor {
     owner: String,
     token: Arc<DriverOrigin>,
     local: Option<Local>,
-    launch: Option<LocalLaunch>,
+    launch: Option<Arc<LocalLaunch>>,
     stop: LocalDevelopmentStop,
     submitted: bool,
+    executed_intent: Option<CreateIntent>,
+    executed_instance: Option<m8s_core::Instance>,
+    cleanup_requested: bool,
     #[cfg(test)]
     hooks: Hooks,
 }
@@ -204,6 +218,9 @@ impl LocalDevelopmentExecutor {
                 actual: OnceLock::new(),
             })),
             submitted: false,
+            executed_intent: None,
+            executed_instance: None,
+            cleanup_requested: false,
             #[cfg(test)]
             hooks: Hooks::default(),
         })
@@ -216,10 +233,79 @@ impl LocalDevelopmentExecutor {
     }
     /// Retained local launch observation only; never provider absence/billing.
     pub fn launch(&self) -> Option<&LocalLaunch> {
-        self.launch.as_ref()
+        self.launch.as_deref()
     }
     pub fn submission_started(&self) -> bool {
         self.submitted
+    }
+    /// Stop-only first, then irreversible intent. No SQL, journal I/O or wait.
+    /// Does not cancel Store state or promise immediate stop before publication.
+    pub fn request_local_cleanup(&mut self) {
+        self.stop.request_stop();
+        self.cleanup_requested = true;
+    }
+    fn cleanup_target(&self) -> Result<&m8s_core::Instance> {
+        let intent = self.executed_intent.as_ref().ok_or(Error::Invalid)?;
+        let snapshot = self.executed_instance.as_ref().ok_or(Error::Invalid)?;
+        let actual = self.launch.as_ref().ok_or(Error::Invalid)?.instance();
+        if intent.owner != self.owner
+            || self.identity.fingerprint(intent)? != intent.launch_fingerprint
+            || snapshot != actual
+            || actual.owner != self.owner
+            || actual.node_uid != intent.node_uid
+            || actual.tier != self.identity.tier
+            || label(&actual.id).is_err()
+        {
+            return Err(Error::Invalid);
+        }
+        Ok(actual)
+    }
+    /// At most ONE concrete Local destroy and ONE fresh describe, no internal
+    /// loops/retries/sleeps. Journal/FS I/O may block with NO latency guarantee;
+    /// the independent timed worker never waits for this coordinator/Store.
+    /// No Store/IDs supplied, no accounting mutation, PID scan or restart adopt.
+    pub fn poll_local_cleanup(&mut self) -> LocalCleanupStatus {
+        if !self.submitted {
+            return LocalCleanupStatus::NoLocalSubmission;
+        }
+        if self.local.is_none()
+            || self.launch.is_none()
+            || self.executed_intent.is_none()
+            || self.executed_instance.is_none()
+        {
+            return LocalCleanupStatus::Uncertain;
+        }
+        if !self.cleanup_requested {
+            return LocalCleanupStatus::NotRequested;
+        }
+        self.stop.request_stop(); // before any journal work, including retries
+        let expected = match self.cleanup_target() {
+            Ok(target) => target.clone(),
+            Err(_) => return LocalCleanupStatus::Uncertain,
+        };
+        #[cfg(test)]
+        {
+            if pause(&self.hooks.before_cleanup_io).is_err() || self.hooks.cleanup_destroy_error {
+                return LocalCleanupStatus::Uncertain;
+            }
+        }
+        let Some(local) = self.local.as_mut() else {
+            return LocalCleanupStatus::Uncertain;
+        };
+        // Concrete fixed backend only, never a generic Provider input. A destroy
+        // acknowledgment alone is NOT absence. Even a previous terminal poll
+        // must revalidate the actual journal/anchor via these calls, not cache.
+        if m8s_provider::Provider::destroy(local, &expected.id).is_err() {
+            return LocalCleanupStatus::Uncertain;
+        }
+        match m8s_provider::Provider::describe(local, &expected.id) {
+            Ok(observation) => cleanup_observation(
+                &expected,
+                self.launch.as_ref().expect("validated retained launch"),
+                observation,
+            ),
+            Err(_) => LocalCleanupStatus::Uncertain,
+        }
     }
     fn available(&self, store: &Store, intent: &CreateIntent) -> Result<()> {
         if self.submitted
@@ -304,6 +390,7 @@ impl LocalDevelopmentExecutor {
             absolute(claim.serving_deadline)?,
             absolute(claim.cleanup_deadline)?,
         )?;
+        self.executed_intent = Some(claim.intent.clone()); // immutable audit binding BEFORE submission
         self.submitted = true; // irrevocable before exactly one Local submission
         let result = self
             .local
@@ -334,7 +421,8 @@ impl LocalDevelopmentExecutor {
         };
         let actual_stop = launch.stop_handle();
         let instance = launch.instance().clone();
-        self.launch = Some(launch); // retain ownership even if attach refuses
+        self.executed_instance = Some(instance.clone());
+        self.launch = Some(Arc::new(launch)); // retain ownership even if attach refuses
         #[cfg(test)]
         pause(&self.hooks.before_attach)?;
         if self.stop.attach(actual_stop).is_err() {
@@ -399,6 +487,38 @@ impl Drop for LocalDevelopmentExecutor {
         self.stop.request_stop();
     }
 }
+fn cleanup_observation(
+    expected: &m8s_core::Instance,
+    launch: &LocalLaunch,
+    observation: m8s_core::Observation,
+) -> LocalCleanupStatus {
+    let direct_child = launch.termination_state();
+    if direct_child == m8s_provider_local::LocalTerminationState::Uncertain {
+        return LocalCleanupStatus::Uncertain;
+    }
+    match observation {
+        m8s_core::Observation::Absent
+            if direct_child == m8s_provider_local::LocalTerminationState::DirectChildReaped =>
+        {
+            LocalCleanupStatus::LocalOnlyAbsent
+        }
+        m8s_core::Observation::Present(actual)
+            if actual.id == expected.id
+                && actual.owner == expected.owner
+                && actual.node_uid == expected.node_uid
+                && actual.tier == expected.tier
+                && matches!(
+                    actual.state,
+                    m8s_core::InstanceState::Starting
+                        | m8s_core::InstanceState::Running
+                        | m8s_core::InstanceState::Stopped
+                ) =>
+        {
+            LocalCleanupStatus::Pending { direct_child }
+        }
+        _ => LocalCleanupStatus::Uncertain,
+    }
+}
 fn absolute(seconds: i64) -> Result<SystemTime> {
     UNIX_EPOCH
         .checked_add(Duration::from_secs(
@@ -439,6 +559,8 @@ struct Hooks {
     after_launch: Option<Pause>,
     before_attach: Option<Pause>,
     lose_response: bool,
+    before_cleanup_io: Option<Pause>,
+    cleanup_destroy_error: bool,
 }
 #[cfg(test)]
 mod tests;

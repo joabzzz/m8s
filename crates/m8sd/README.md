@@ -525,3 +525,61 @@ watcher, cancellation observer, restart PID adoption, absence/refund automation,
 main/reconcile integration or production security qualification is introduced.
 Tests use private synthetic accounting/paths and harmless `/bin/sleep` children,
 not real provider billing or remote admission.
+
+### Explicit retained-owned local journal cleanup (diagnostics only)
+
+`request_local_cleanup(&mut self)` first requests the existing race-correct stop
+latch, then records irreversible local cleanup intent; no Store, SQL, journal
+I/O, wait or caller IDs. The early-handle-publication gap above is unchanged.
+`poll_local_cleanup(&mut self) -> LocalCleanupStatus` operates ONLY on the actual
+retained Local coordinator and LocalLaunch ID. Before submission the executor
+retains its exact consumed CreateIntent; after success it pins the returned
+immutable instance snapshot. Owner, UID, tier, canonical plan fingerprint and
+that actual snapshot must match before any mutation. No caller binding, latest
+Store row, list result, PID scan, restart adoption or decoy target is accepted.
+The launch is privately Arc-retained; public `launch()` still returns only a
+borrow. Test-only observers can watch worker progress without sharing a mutable
+coordinator or cloning any create authority.
+
+A poll performs at most ONE concrete Local destroy and ONE fresh describe, with
+no internal retry loop/sleep. It may block on filesystem/journal work: **number
+of calls is bounded, I/O latency is not**. Stop is requested before journal work;
+the independent timed worker does not wait for this coordinator or SQLite.
+Failures preserve ownership/liability and return Uncertain; there is no repair,
+anchor reset, adoption or automatic Store/accounting change.
+
+Diagnostic distinctions:
+- `NoLocalSubmission`: THIS executor has never called the Local launch API. It
+  says nothing about old/unrelated journal resources or Store effects. A newly
+  opened executor does not adopt unresolved old records; such records still
+  block new UIDs in the concrete journal. A failed submitted attempt with no
+  retained launch/coordinator returns Uncertain, never NoLocalSubmission.
+- `NotRequested`: no local journal finalization requested, even if an independent
+  deadline, natural exit, stop-only handle or dropped launch stopped/reaped the
+  child. Direct reap alone is not journal absence.
+- `Pending { direct_child }`: successful destroy acknowledgment followed by a
+  fresh exact Present observation; typed direct-child state is separate evidence,
+  not a durable absence claim. Process uncertainty/errors remain Uncertain.
+- `LocalOnlyAbsent`: successful exact retained destroy AND fresh describe Absent
+  under Local's existing validated private journal rules, with retained direct
+  child reaped. Repeated polls revalidate destroy/describe/anchor every time;
+  terminal success is never cached across anchor replacement or storage errors.
+- `Uncertain`: missing retained ownership, identity conflict, failed submission,
+  process/journal error or invalid observation. It is not permission to retry a
+  create, infer zero cost, reset the namespace or guess absence.
+
+Valid local finalization leaves a permanent old-UID journal tombstone. Dropping
+and reopening the same valid journal may allow a NEW UID at the journal layer,
+but the executor remains one-shot and Store uncertainty/history/caps are NEVER
+reset. NoLocalSubmission/LocalOnlyAbsent are ordinary diagnostic enum variants,
+not verified provider absence or SettlementEvidence; there is no conversion,
+automatic cleanup of Store rows, billing settlement or refund. Local-only
+no-volume metadata is not a cloud volume-absence assertion. Corrupt/missing Store
+accounting cannot block retained stop/cleanup because cleanup takes no Store and
+performs no SQL. Drop alone requests stop, never durable journal finalization;
+restart without retained ownership remains deliberately unrecoverable here.
+All default-OFF, parent-alive, publication-gap, DB-cancel-intent-only, no main or
+cloud/spend/admission/Ready guarantees remain unchanged. Tests use harmless
+sleep children; the natural-exit case uses the already-reviewed controlled
+sleep-group fixture because this sandbox may deny signals to an already-empty
+group. No process/security primitive is weakened to obtain a green test.

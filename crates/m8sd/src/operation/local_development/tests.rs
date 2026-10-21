@@ -880,3 +880,479 @@ fn duplicate_private_attach_stops_both_real_handles_and_keeps_both_launches_owne
         BudgetState::Uncertain
     );
 }
+
+fn finish_local_cleanup(e: &mut LocalDevelopmentExecutor) {
+    let end = Instant::now() + Duration::from_secs(5);
+    loop {
+        // Test driver only: production poll never loops/sleeps internally.
+        match e.poll_local_cleanup() {
+            LocalCleanupStatus::LocalOnlyAbsent => return,
+            LocalCleanupStatus::Pending { .. } | LocalCleanupStatus::Uncertain => {
+                assert!(Instant::now() < end, "owned cleanup did not finalize")
+            }
+            other => panic!("unexpected requested cleanup diagnostic:{other:?}"),
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+fn cleanup_fixture_command(command: DevelopmentCommand) -> Fixture {
+    let d = Directory::new();
+    let db = d.0.join("state.db");
+    let s = Store::open(&db, "owner").unwrap();
+    let p = LocalDevelopmentPlan::new(command, d.journal(), "namespace", "target", "tier").unwrap();
+    let e = LocalDevelopmentExecutor::open(p, "owner").unwrap();
+    let now = utc_seconds().unwrap();
+    seed(&s, "a", now, 20, &policy(now));
+    Fixture {
+        _dir: d,
+        db,
+        s,
+        e,
+        now,
+    }
+}
+#[test]
+fn cleanup_no_submission_not_requested_and_stop_only_reap_remain_distinct_no_io_request() {
+    let mut f = Fixture::new(20);
+    assert_eq!(
+        f.e.poll_local_cleanup(),
+        LocalCleanupStatus::NoLocalSubmission
+    );
+    let c = f.claim();
+    assert!(matches!(
+        f.e.execute(&f.s, c).unwrap(),
+        LocalDevelopmentOutcome::Bound(_)
+    ));
+    let journal = f.e.identity.journal.join("state.json");
+    let original = fs::read(&journal).unwrap();
+    assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::NotRequested);
+    f.e.stop_handle().request_stop();
+    wait_reaped(&f.e);
+    assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::NotRequested);
+    assert_eq!(fs::read(&journal).unwrap(), original);
+    f.e.request_local_cleanup();
+    assert!(f.e.stop.requested());
+    assert!(f.e.cleanup_requested);
+    assert_eq!(fs::read(&journal).unwrap(), original); // request has no journal mutation
+    finish_local_cleanup(&mut f.e);
+    let mut never = Fixture::new(20);
+    never.e.request_local_cleanup();
+    assert_eq!(
+        never.e.poll_local_cleanup(),
+        LocalCleanupStatus::NoLocalSubmission
+    );
+    assert!(never.e.claim(&never.s, "op-a", never.now).is_err());
+}
+#[test]
+fn cleanup_success_fresh_tombstone_leaves_exact_store_budget_operation_and_one_shot_unchanged() {
+    let mut f = Fixture::new(20);
+    let c = f.claim();
+    f.e.execute(&f.s, c).unwrap();
+    let budgets = f.s.budget_reservations().unwrap();
+    let operations = f.s.create_operations().unwrap();
+    f.e.request_local_cleanup();
+    finish_local_cleanup(&mut f.e);
+    assert_eq!(
+        f.e.poll_local_cleanup(),
+        LocalCleanupStatus::LocalOnlyAbsent
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(f.e.identity.journal.join("state.json")).unwrap())
+            .unwrap();
+    let id = &f.e.launch().unwrap().instance().id;
+    assert_eq!(json["records"][id]["status"], "Absent");
+    assert_eq!(f.s.budget_reservations().unwrap(), budgets);
+    assert_eq!(f.s.create_operations().unwrap(), operations);
+    assert_eq!(budgets[0].state, BudgetState::Uncertain);
+    assert!(operations[0].cleanup_required);
+    assert!(f.e.submitted);
+    assert!(f.e.claim(&f.s, "op-a", utc_seconds().unwrap()).is_err());
+    for _ in 0..3 {
+        f.e.request_local_cleanup();
+        assert_eq!(
+            f.e.poll_local_cleanup(),
+            LocalCleanupStatus::LocalOnlyAbsent
+        );
+        assert_eq!(f.e.executed_intent.as_ref().unwrap(), &operations[0].intent);
+    }
+}
+#[test]
+fn cleanup_natural_exit_and_ack_or_present_diagnostics_are_not_automatic_absence() {
+    let mut f = cleanup_fixture_command(
+        DevelopmentCommand::new(
+            "/bin/sh".into(),
+            vec!["-c".into(), "/bin/sleep 60 & exit 0".into()],
+        )
+        .unwrap(),
+    );
+    let c = f.claim();
+    f.e.execute(&f.s, c).unwrap();
+    wait_reaped(&f.e);
+    assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::NotRequested);
+    let expected = f.e.executed_instance.as_ref().unwrap().clone();
+    let launch = f.e.launch().unwrap();
+    assert!(matches!(
+        cleanup_observation(
+            &expected,
+            launch,
+            m8s_core::Observation::Present(expected.clone())
+        ),
+        LocalCleanupStatus::Pending {
+            direct_child: m8s_provider_local::LocalTerminationState::DirectChildReaped
+        }
+    ));
+    for kind in 0..5 {
+        let mut wrong = expected.clone();
+        match kind {
+            0 => wrong.id.push('x'),
+            1 => wrong.owner.push('x'),
+            2 => wrong.node_uid.push('x'),
+            3 => wrong.tier.push('x'),
+            _ => wrong.state = m8s_core::InstanceState::Exited,
+        };
+        assert_eq!(
+            cleanup_observation(&expected, launch, m8s_core::Observation::Present(wrong)),
+            LocalCleanupStatus::Uncertain
+        );
+    }
+    f.e.request_local_cleanup();
+    f.e.hooks.cleanup_destroy_error = true;
+    assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::Uncertain);
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(f.e.identity.journal.join("state.json")).unwrap())
+            .unwrap();
+    assert_ne!(json["records"][&expected.id]["status"], "Absent");
+    f.e.hooks.cleanup_destroy_error = false;
+    finish_local_cleanup(&mut f.e);
+}
+#[test]
+fn cleanup_cancelled_lost_response_and_missing_or_corrupt_store_do_not_block_owned_teardown() {
+    for kind in 0..3 {
+        let mut f = Fixture::new(20);
+        let c = f.claim();
+        if kind == 1 {
+            f.e.hooks.lose_response = true;
+        }
+        f.e.execute(&f.s, c).unwrap();
+        if kind == 0 {
+            f.s.cancel_create("op-a", utc_seconds().unwrap()).unwrap();
+        } else if kind == 1 {
+            f.s.conn
+                .execute("DELETE FROM create_operation", [])
+                .unwrap();
+        } else {
+            f.s.conn
+                .execute("UPDATE budget_account SET record='{'", [])
+                .unwrap();
+        }
+        let before: String =
+            f.s.conn
+                .query_row("SELECT record FROM budget_reservation", [], |r| r.get(0))
+                .unwrap();
+        f.e.request_local_cleanup();
+        finish_local_cleanup(&mut f.e);
+        let after: String =
+            f.s.conn
+                .query_row("SELECT record FROM budget_reservation", [], |r| r.get(0))
+                .unwrap();
+        assert_eq!(after, before);
+        assert_eq!(
+            decode::<BudgetReservation>(&after).unwrap().state,
+            BudgetState::Uncertain
+        );
+    }
+    let mut f = Fixture::new(20);
+    let c = f.claim();
+    let other = Store::open(&f.db, "owner").unwrap();
+    let (h, seen, resume) = pause_pair();
+    f.e.hooks.after_launch = Some(h);
+    let t = thread::spawn(move || {
+        let r = f.e.execute(&f.s, c);
+        (f.e, r)
+    });
+    seen.recv_timeout(Duration::from_secs(5)).unwrap();
+    other.conn.execute("DROP TABLE budget_account", []).unwrap();
+    resume.send(()).unwrap();
+    let (mut e, r) = t.join().unwrap();
+    assert!(matches!(r.unwrap(), LocalDevelopmentOutcome::Ambiguous));
+    e.request_local_cleanup();
+    finish_local_cleanup(&mut e);
+    assert_eq!(
+        other.budget_reservations().unwrap()[0].state,
+        BudgetState::Uncertain
+    );
+}
+#[test]
+fn cleanup_anchor_replacement_before_and_after_terminal_is_uncertain_never_cached_or_repaired() {
+    for terminal in [false, true] {
+        let mut f = Fixture::new(20);
+        let c = f.claim();
+        f.e.execute(&f.s, c).unwrap();
+        f.e.request_local_cleanup();
+        if terminal {
+            finish_local_cleanup(&mut f.e);
+        } else {
+            wait_reaped(&f.e);
+        }
+        let journal = f.e.identity.journal.clone();
+        let displaced = f._dir.0.join("displaced");
+        fs::rename(&journal, &displaced).unwrap();
+        fs::DirBuilder::new().mode(0o700).create(&journal).unwrap();
+        let original = fs::read(displaced.join("state.json")).unwrap();
+        assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::Uncertain);
+        assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::Uncertain);
+        assert!(fs::read_dir(&journal).unwrap().next().is_none());
+        assert_eq!(fs::read(displaced.join("state.json")).unwrap(), original);
+        assert!(reaped(&f.e));
+    }
+}
+#[test]
+fn cleanup_submitted_failure_and_reopened_unresolved_journal_never_adopt_missing_handles() {
+    let d = Directory::new();
+    let mut f = cleanup_fixture_command(
+        DevelopmentCommand::new(d.0.join("missing-local-fixture"), vec![]).unwrap(),
+    );
+    let c = f.claim();
+    assert!(matches!(
+        f.e.execute(&f.s, c).unwrap(),
+        LocalDevelopmentOutcome::Ambiguous
+    ));
+    assert!(f.e.executed_intent.is_some());
+    assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::Uncertain);
+    f.e.request_local_cleanup();
+    assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::Uncertain);
+    let mut f = Fixture::new(20);
+    let c = f.claim();
+    f.e.execute(&f.s, c).unwrap();
+    f.e.stop_handle().request_stop();
+    wait_reaped(&f.e);
+    let journal = f.e.identity.journal.clone();
+    drop(f.e);
+    let end = Instant::now() + Duration::from_secs(5);
+    let mut e = loop {
+        match LocalDevelopmentExecutor::open(plan(journal.clone()), "owner") {
+            Ok(e) => break e,
+            Err(Error::Provider(m8s_provider::Error::Unavailable)) if Instant::now() < end => {
+                thread::sleep(Duration::from_millis(5))
+            }
+            Err(e) => panic!("reopen:{e:?}"),
+        }
+    };
+    // A new wrapper has no submission; it does NOT claim global absence or adopt
+    // old handles. Concrete unresolved journal still refuses even a fresh UID.
+    assert_eq!(
+        e.poll_local_cleanup(),
+        LocalCleanupStatus::NoLocalSubmission
+    );
+    e.request_local_cleanup();
+    assert_eq!(
+        e.poll_local_cleanup(),
+        LocalCleanupStatus::NoLocalSubmission
+    );
+    let result = e.local.as_mut().unwrap().launch_development_until(
+        &LaunchSpec {
+            owner: "owner".into(),
+            node_uid: "new-uid".into(),
+            tier: "tier".into(),
+        },
+        LocalDeadlines::new(
+            SystemTime::now() + Duration::from_secs(10),
+            SystemTime::now() + Duration::from_secs(12),
+        )
+        .unwrap(),
+    );
+    assert!(result.is_err());
+    assert!(e.launch.is_none());
+}
+#[test]
+fn cleanup_coordinator_barrier_cannot_block_independent_stop_and_reap_progress() {
+    let mut f = Fixture::new(20);
+    let c = f.claim();
+    f.e.execute(&f.s, c).unwrap();
+    f.e.request_local_cleanup();
+    let (h, seen, resume) = pause_pair();
+    f.e.hooks.before_cleanup_io = Some(h);
+    let observer = f.e.launch.as_ref().unwrap().clone();
+    let t = thread::spawn(move || {
+        let status = f.e.poll_local_cleanup();
+        (f.e, status)
+    });
+    seen.recv_timeout(Duration::from_secs(5)).unwrap();
+    // Test driver holds coordinator before any journal call, never deliberately
+    // stalls a kernel primitive. Worker receives stop BEFORE this barrier.
+    let end = Instant::now() + Duration::from_secs(5);
+    while observer.termination_state()
+        != m8s_provider_local::LocalTerminationState::DirectChildReaped
+    {
+        assert!(Instant::now() < end, "worker stalled behind coordinator");
+        thread::sleep(Duration::from_millis(5));
+    }
+    resume.send(()).unwrap();
+    let (mut e, status) = t.join().unwrap();
+    assert!(reaped(&e));
+    assert!(matches!(
+        status,
+        LocalCleanupStatus::LocalOnlyAbsent | LocalCleanupStatus::Pending { .. }
+    ));
+    e.hooks.before_cleanup_io = None;
+    finish_local_cleanup(&mut e);
+}
+#[test]
+fn cleanup_foreign_identity_target_or_decoy_refuses_before_journal_mutation() {
+    for kind in 0..5 {
+        let mut a = Fixture::new(20);
+        let c = a.claim();
+        a.e.execute(&a.s, c).unwrap();
+        let mut b = Fixture::new(20);
+        let c = b.claim();
+        b.e.execute(&b.s, c).unwrap();
+        let before = fs::read(a.e.identity.journal.join("state.json")).unwrap();
+        let decoy = fs::read(b.e.identity.journal.join("state.json")).unwrap();
+        match kind {
+            0 => a.e.executed_intent.as_mut().unwrap().owner.push('x'),
+            1 => a.e.executed_intent.as_mut().unwrap().node_uid.push('x'),
+            2 => a.e.identity.target.push('x'),
+            3 => {
+                a.e.executed_instance.as_mut().unwrap().id =
+                    b.e.launch().unwrap().instance().id.clone()
+            }
+            _ => std::mem::swap(&mut a.e.launch, &mut b.e.launch),
+        }
+        a.e.request_local_cleanup();
+        assert_eq!(a.e.poll_local_cleanup(), LocalCleanupStatus::Uncertain);
+        assert_eq!(
+            fs::read(a.e.identity.journal.join("state.json")).unwrap(),
+            before
+        );
+        assert_eq!(
+            fs::read(b.e.identity.journal.join("state.json")).unwrap(),
+            decoy
+        );
+        b.e.stop_handle().request_stop();
+        wait_reaped(&a.e);
+        wait_reaped(&b.e); // exact retained ownership only
+    }
+}
+#[test]
+fn cleanup_valid_tombstone_reopens_for_new_uid_journal_only_not_old_uid_or_store_budget() {
+    let mut f = Fixture::new(20);
+    let c = f.claim();
+    f.e.execute(&f.s, c).unwrap();
+    f.e.request_local_cleanup();
+    finish_local_cleanup(&mut f.e);
+    let journal = f.e.identity.journal.clone();
+    drop(f.e);
+    let end = Instant::now() + Duration::from_secs(5);
+    let mut e = loop {
+        match LocalDevelopmentExecutor::open(plan(journal.clone()), "owner") {
+            Ok(e) => break e,
+            Err(Error::Provider(m8s_provider::Error::Unavailable)) if Instant::now() < end => {
+                thread::sleep(Duration::from_millis(5))
+            }
+            Err(e) => panic!("reopen:{e:?}"),
+        }
+    };
+    let deadline = || {
+        LocalDeadlines::new(
+            SystemTime::now() + Duration::from_secs(10),
+            SystemTime::now() + Duration::from_secs(12),
+        )
+        .unwrap()
+    };
+    let old = LaunchSpec {
+        owner: "owner".into(),
+        node_uid: "node-a".into(),
+        tier: "tier".into(),
+    };
+    assert!(
+        e.local
+            .as_mut()
+            .unwrap()
+            .launch_development_until(&old, deadline())
+            .is_err()
+    );
+    // Direct typed Local use is a TEST of journal reuse, never Store authority.
+    let new = LaunchSpec {
+        node_uid: "new-local-only-uid".into(),
+        ..old
+    };
+    let launch = e
+        .local
+        .as_mut()
+        .unwrap()
+        .launch_development_until(&new, deadline())
+        .unwrap();
+    launch.stop_handle().request_stop();
+    let end = Instant::now() + Duration::from_secs(5);
+    while launch.termination_state() != m8s_provider_local::LocalTerminationState::DirectChildReaped
+    {
+        assert!(Instant::now() < end);
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(
+        f.s.budget_reservations().unwrap()[0].state,
+        BudgetState::Uncertain
+    );
+    assert!(
+        f.s.reserve_budget(
+            &policy(f.now),
+            &period(f.now),
+            &request("b", f.now, 20),
+            f.now
+        )
+        .is_err()
+    );
+    assert!(f.s.claim_create("op-a", f.now).is_err());
+    // Test-only exact owned journal finalization of this direct Local launch.
+    m8s_provider::Provider::destroy(e.local.as_mut().unwrap(), &launch.instance().id).unwrap();
+    assert_eq!(
+        m8s_provider::Provider::describe(e.local.as_mut().unwrap(), &launch.instance().id).unwrap(),
+        m8s_core::Observation::Absent
+    );
+}
+
+#[test]
+fn cleanup_state_file_replacement_refuses_even_after_reap_and_never_repairs_or_uses_cached_absence()
+{
+    let mut f = Fixture::new(20);
+    let c = f.claim();
+    f.e.execute(&f.s, c).unwrap();
+    let expected = f.e.executed_instance.as_ref().unwrap();
+    assert_eq!(
+        cleanup_observation(
+            expected,
+            f.e.launch().unwrap(),
+            m8s_core::Observation::Absent
+        ),
+        LocalCleanupStatus::Uncertain
+    ); // no direct reap yet, even private diagnostic refuses
+    f.e.request_local_cleanup();
+    wait_reaped(&f.e);
+    let journal = f.e.identity.journal.clone();
+    fs::rename(journal.join("state.json"), journal.join("displaced.json")).unwrap();
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut replacement = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(journal.join("state.json"))
+        .unwrap();
+    replacement
+        .write_all(b"synthetic replacement; do not repair")
+        .unwrap();
+    drop(replacement);
+    for _ in 0..2 {
+        assert_eq!(f.e.poll_local_cleanup(), LocalCleanupStatus::Uncertain);
+    }
+    assert_eq!(
+        fs::read(journal.join("state.json")).unwrap(),
+        b"synthetic replacement; do not repair"
+    );
+    assert!(journal.join("displaced.json").is_file());
+    assert!(reaped(&f.e));
+    assert_eq!(
+        f.s.budget_reservations().unwrap()[0].state,
+        BudgetState::Uncertain
+    );
+}
