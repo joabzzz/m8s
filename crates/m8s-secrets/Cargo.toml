@@ -1,0 +1,9 @@
+[package]
+name = "m8s-secrets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+zeroize.workspace = true

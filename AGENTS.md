@@ -1,0 +1,12 @@
+# m8s development
+- No real provider calls (including searches), credentials, spend, pushes, publishing, or upstream filing.
+- Never read/request/set Vast credentials. Tests use deterministic mocks and synthetic fixtures.
+- Core has no provider dependencies. Use micro-USD, byte capacities, Mbps and injected seconds.
+- Keep secret values out of Debug, Serialize, argv, logs, fixtures and the repository.
+- Launch intent precedes effects; uncertainty is not absence; stopped is not destroyed.
+- Delete instance rows only after explicit provider-confirmed absence. Scope orphan cleanup by exact owner.
+- Do not advertise Ready without certificate verification, served model and owner-routed canary.
+- Do not weaken iroh bootstrap/control to plaintext transport. Unimplemented security paths fail closed.
+- Run scripts/check (fmt, tests, clippy); max two compiler jobs. Coordinate heavy builds.
+- Only integration owner edits root Cargo.toml/Cargo.lock. Workers do not delegate.
+- Commit coherent slices; export ignored bundles/m8s-<milestone>.bundle with git bundle create --all.

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Loss-prevention fallback only. Does NOT turn uncommitted work into a Git bundle.
+set -eu
+python3 - <<'PY'
+import hashlib, pathlib, subprocess, tarfile
+root=pathlib.Path.cwd()
+out=root/"bundles"
+out.mkdir(exist_ok=True)
+files=sorted(set(subprocess.check_output(["git","ls-files","--cached","--others","--exclude-standard","-z"]).decode().split("\0"))-{""})
+files=[f for f in files if (root/f).is_file() and f!=".git"]
+archive=out/"m8s-source-milestone.tar.gz"
+with tarfile.open(archive,"w:gz") as tar:
+    for f in files: tar.add(root/f,arcname=f,recursive=False)
+patch=out/"m8s-source-milestone.patch"
+tracked=subprocess.check_output(["git","diff","--binary","HEAD"])
+untracked=subprocess.check_output(["git","ls-files","--others","--exclude-standard","-z"]).decode().split("\0")
+with patch.open("wb") as stream:
+    stream.write(tracked)
+    for f in sorted(filter(None,untracked)):
+        if (root/f).is_file():
+            result=subprocess.run(["git","diff","--no-index","--binary","--","/dev/null",f],capture_output=True)
+            if result.returncode not in (0,1): raise RuntimeError(result.stderr.decode())
+            stream.write(result.stdout)
+for path in (archive,patch):
+    print(hashlib.sha256(path.read_bytes()).hexdigest(),path)
+print("UNCOMMITTED SOURCE SNAPSHOT ONLY; Git commit/completion bundle still required")
+PY

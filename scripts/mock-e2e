@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
+cargo build --workspace --locked -j 2
+python3 - <<'PY'
+import json, os, pathlib, socket, stat, subprocess, tempfile, time
+root=pathlib.Path.cwd()
+with tempfile.TemporaryDirectory(prefix="m8s-e2e-",dir="/tmp") as tmp:
+    state=pathlib.Path(tmp)/"state"
+    daemon=None
+    def start():
+        p=subprocess.Popen([str(root/"target/debug/m8sd"),str(state),"e2e-owner"],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        for _ in range(100):
+            if p.poll() is not None: raise RuntimeError(p.stderr.read().decode())
+            if (state/"control.sock").exists():
+                try: cli("status"); return p
+                except Exception: pass
+            time.sleep(.05)
+        p.kill();raise AssertionError("socket not ready")
+    def cli(*args):
+        p=subprocess.run([str(root/"target/debug/m8s"),"--socket",str(state/"control.sock"),*args,"--json"],capture_output=True,text=True,timeout=5)
+        assert p.returncode==0,p.stderr
+        return json.loads(p.stdout)
+    def wait_for(predicate):
+        for _ in range(100):
+            value=cli("status")
+            if predicate(value):return value
+            time.sleep(.05)
+        raise AssertionError(value)
+    try:
+        daemon=start()
+        assert stat.S_IMODE(state.stat().st_mode)==0o700
+        assert stat.S_IMODE((state/"control.sock").stat().st_mode)==0o600
+        duplicate=subprocess.run([str(root/"target/debug/m8sd"),str(state),"e2e-owner"],capture_output=True,timeout=5)
+        assert duplicate.returncode!=0
+        with socket.socket(socket.AF_UNIX) as bad:
+            bad.connect(str(state/"control.sock"))
+            bad.sendall(b'{"command":"status","unexpected":true}\n')
+            refused=json.loads(bad.makefile("rb").readline())
+            assert not refused["ok"]
+        cli("status") # malformed control input did not terminate the daemon
+        cli("up","qwen27")
+        first=wait_for(lambda r:len(r["nodes"])==1)
+        assert first["nodes"][0]["phase"]=="Booting"
+        node=first["nodes"][0]["instance_id"]
+        daemon.terminate();daemon.wait(timeout=5);daemon=start()
+        restarted=cli("status")
+        assert restarted["nodes"][0]["instance_id"]==node
+        cli("scale","qwen27","2")
+        wait_for(lambda r:len(r["nodes"])==2)
+        assert cli("logs")["events"]
+        cli("down")
+        final=wait_for(lambda r:not r["nodes"])
+        assert all(n==0 for _,n in final["tiers"])
+        print(json.dumps({"mode":"mock-only","up":True,"scale":True,"restart_same_instance":True,"down_confirmed_absent":True,"private_socket":True,"singleton":True,"secure_bootstrap":"unavailable; never Ready"}))
+    finally:
+        if daemon is not None and daemon.poll() is None:
+            daemon.terminate();daemon.wait(timeout=5)
+PY

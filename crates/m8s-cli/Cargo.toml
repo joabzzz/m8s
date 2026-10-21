@@ -1,0 +1,13 @@
+[package]
+name = "m8s-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+m8s-api.workspace = true
+serde_json.workspace = true
+
+[[bin]]
+name = "m8s"
+path = "src/main.rs"

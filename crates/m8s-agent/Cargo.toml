@@ -1,0 +1,9 @@
+[package]
+name = "m8s-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+m8s-core.workspace = true
+thiserror.workspace = true

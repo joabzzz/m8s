@@ -1,0 +1,29 @@
+# User-selected illustrations, NOT recommendations, certified runtime claims, or
+# downloadable model references. Replace source with an owner-selected pinned
+# revision and verify actual GGUF size, runtime overhead and measured KV usage.
+# Capacities are decimal bytes; no ambiguous GB fields. License is not enforced.
+[[models]]
+id = "example-27b-q4km"
+source = "example://owner-must-select-pinned-27b"
+params_billions = 27
+quant = "Q4_K_M"
+weights_bytes = 17000000000
+runtime_overhead_bytes_per_replica = 2000000000
+kv_bytes_per_1024_tokens = 64000000
+max_context_tokens = 131072
+license = "owner-must-verify"
+license_class = "unknown"
+runtime_status = "untested"
+
+[[models]]
+id = "example-70b-q4km"
+source = "example://owner-must-select-pinned-70b"
+params_billions = 70
+quant = "Q4_K_M"
+weights_bytes = 42000000000
+runtime_overhead_bytes_per_replica = 2000000000
+kv_bytes_per_1024_tokens = 320000000
+max_context_tokens = 32768
+license = "owner-must-verify"
+license_class = "unknown"
+runtime_status = "untested"

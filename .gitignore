@@ -1,1 +1,7 @@
-/target
+/target/
+/bundles/
+*.db
+*.db-shm
+*.db-wal
+
+/.cargo-home/
