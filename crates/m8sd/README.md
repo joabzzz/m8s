@@ -276,3 +276,102 @@ this bounded implementation, not a permanent product restriction: future explici
 Admin-approved increases or migration need their own reviewed operation, retaining
 all spend/liability history. Late/cross-period actual bills, including overruns,
 are charged in full to the explicit settlement month and remain lifetime charges.
+
+## Durable operation/create claim (no executor)
+
+`m8sd::operation` adds `create_operation` in the same private Store database;
+no separate file, connection, provider authority, dependency or background worker.
+Only `Store::open` schema initialization is wired. Existing main/reconcile/budget/
+nonce/provider behavior and transport proof boundaries are unchanged.
+
+```text
+prepare_create(&CreateIntent, now) -> Result<CreateOperation>
+claim_create(operation_id, now) -> Result<CreateClaim>
+cancel_create(operation_id, now) -> Result<CreateOperation>
+record_create_result(operation_id, &CreateObservation, now)
+    -> Result<CreateOperation>
+create_operations() -> Result<Vec<CreateOperation>>
+```
+
+`CreateIntent` immutably binds owner/run/request/nodeUID/operationID and supplied
+canonical nonsecret launch fingerprint. The fingerprint is a **trusted adapter
+assertion**, not signed-image/specification/admission proof. Recovery metadata
+`CreateOperation` is cloneable/serializable, never effect permission. Exact
+prepare retry returns retained metadata; changing identity/fingerprint refuses.
+Unique owner/request and owner/nodeUID constraints prevent operation-ID rotation
+from bypassing a used/cancelled budget reservation.
+
+Every mutation is owner-checked BEGIN IMMEDIATE. Prepare requires exact existing
+Reserved budget metadata with no prior resource/settlement, valid normalized cost
+arithmetic, current trusted clock/approval/quote bounds and an exact persisted
+Launching node with no instance, deleting=0 and desired tier>0. Missing/corrupt
+account/reservation/period refuses, never means zero cost or absence. Claim
+rechecks the immutable original reservation snapshot AND current aggregate
+budget charges/caps/other unknown liabilities, so a late overrun or uncertainty
+cannot be bypassed with an old prepared record. It rechecks live node deletion
+and desire in that same transaction: existing down/scale0 permanently set deleting,
+so down/up, missing node or changed phase cannot silently restore dispatch.
+
+Exactly one Prepared->DispatchConsumed transition may return `CreateClaim`.
+Dispatch timestamp + cleanup-required intent AND linked budget Uncertain state
+commit **before** returning it. The claim has private fields, no public constructor,
+Clone/Debug/Serialize/Deserialize; only read-only exact intent and anchored serving/
+cleanup deadline accessors. No recovery API remints it. Drop, unwind, restart,
+ambiguous response, timeout or caller PID change cannot restore authority. No
+lease/takeover/reset/delete API exists. A compile-fail ownership test rejects
+moving the claim twice. A future trusted executor must take the claim **by value**,
+use its exact specification and enforce its original reservation-anchored deadline;
+it must not restart a full runtime when dispatch is delayed. The type itself does
+not prove deadline/egress/watcher enforcement. There is no executor in this slice.
+
+Explicit cancellation changes Prepared or DispatchConsumed irreversibly to
+Cancelled, preserves consumed-dispatch history, and marks budget uncertainty;
+no refund or retry is inferred. Preclaim cancellation requires no external cleanup
+because no create authority was issued, but reservation liability is retained.
+After claim, cancellation keeps cleanup-required: an outstanding issued claim
+cannot be atomically recalled or prove an effect was not sent. No DB transaction
+spans any future external effect; tests keep a claim alive while another actual
+SQLite connection cancels. Cancellation on corrupt/missing accounting refuses
+rather than performing an implicit repair/refund; dispatch remains fail-closed
+until explicit trusted recovery. Existing down reads are a claim gate, not a new
+operation cleanup executor or automatic operation-state integration.
+
+`CreateObservation::Ambiguous` covers timeout/error/ACK/lost or incomplete result;
+it retains uncertainty and cleanup obligation, never absence/zero cost. A Bound
+result requires complete <=30s fresh local trusted owner/run/nodeUID observation,
+not predating durable dispatch, exact instance and explicit volume IDs (or explicit
+NoneAllocated). It is stored immutably on the exact operation and budget together.
+Wrong owner/node, incomplete/future/stale observation, changed instance/volume set
+or a conflicting existing binding refuses. Bound after ambiguous/cancelled recovery
+may learn identity but never resets authority/uncertainty, changes node phase,
+settles billing or advertises Ready. Existing BillingUnknown detail is preserved,
+and Settled budget cannot be overwritten. Empty lists/ACK/errors are not absence.
+
+Tests are actual SQLite claim/cancel/reservation visibility races and restart,
+drop/unwind, immutable fingerprint/result, corruption/missing accounting,
+late-bill/unknown-cap refusal, existing deletion/down gates and move-only compile
+checks with synthetic trusted data. No provider action or fake transport proof.
+Remaining gates include real trusted operation/result/cost adapters, exact driver
+spec dispatch, independent deadline/volume/remote watcher, secure admission,
+resource/billing reconciliation and explicit effect integration. The accepted
+budget ledger and this claim seam are NOT live-paid qualification or permission.
+
+### Shared budget-owned dispatch validation
+
+The only additional budget visibility is crate-private
+`budget::validate_create_dispatch(conn, reservation, account, now)`. It requires
+an already-held transaction and reuses budget's existing private `costs`, `rows`,
+`clock`, `period_valid` and `policy_valid`; none of those became public. The
+private `aggregate_available` is extracted from existing reservation admission:
+new reserve seeds one proposed amount/count, while dispatch seeds none and counts
+its already-persisted reservation exactly once. The existing reserve API,
+settlement behavior, serialized types and schema are unchanged; budget regression
+tests are unchanged. Operation no longer copies cost math or aggregate policy.
+
+Original cost reconstruction uses **reserved_at**, not claim time. Current quote
+freshness/account/period/caps/other liabilities are checked separately in the
+same transaction before marking this operation's own Uncertain state. Positive
+remaining serving time is mandatory and the full original cleanup grace stays
+protected. New operation tests exercise two-operation concurrent claims, concurrent
+new reservation versus dispatch, late other bills/unknown liabilities, and a
+claim with exactly one second of serving time left and untouched cleanup grace.

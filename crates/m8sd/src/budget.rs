@@ -288,6 +288,163 @@ fn costs(q: &CostQuote, policy: &AdminBudget, now: i64) -> Result<(MicroUsd, Mic
     }
     Ok((amount(total)?, hourly))
 }
+/// Shared private admission sum: proposed reservation is added exactly once for
+/// reserve; dispatch adds nothing and counts its already-persisted reservation.
+fn aggregate_available(
+    conn: &Connection,
+    policy: &AdminBudget,
+    period: &CalendarPeriod,
+    now: i64,
+    proposed: Option<(&str, MicroUsd, MicroUsd)>,
+) -> Result<()> {
+    // Initial known spend retains lifetime liability; the explicitly bound
+    // initial-period spend is counted only in that same calendar period.
+    // Nonzero/unknown external liabilities remain durably blocking until a
+    // future explicit trusted reconciliation/migration operation exists.
+    if policy.baseline.external_liability != ExternalLiability::NoneConfirmed {
+        return Err(Error::Invalid);
+    }
+    let (_, reserved, hourly) = proposed.unwrap_or(("", 0, 0));
+    let mut lifetime = u128::from(reserved)
+        .checked_add(u128::from(policy.baseline.prior_lifetime_spent))
+        .ok_or(Error::Invalid)?;
+    let initial_period_spent = if policy.baseline.initial_period == *period {
+        policy.baseline.prior_current_period_spent
+    } else {
+        0
+    };
+    let mut monthly = u128::from(reserved)
+        .checked_add(u128::from(initial_period_spent))
+        .ok_or(Error::Invalid)?;
+    let mut active_hourly = u128::from(hourly);
+    let mut active = u64::from(proposed.is_some());
+    for r in rows(conn, &policy.owner)? {
+        if proposed.is_some_and(|(uid, _, _)| r.request.node_uid == uid) {
+            return Err(Error::Invalid);
+        }
+        if r.state == BudgetState::Settled {
+            let Some(SettlementEvidence {
+                billing: FinalBilling::Known { actual_all_in, .. },
+                ..
+            }) = r.settlement
+            else {
+                return Err(Error::Corrupt);
+            };
+            lifetime = lifetime
+                .checked_add(u128::from(actual_all_in))
+                .ok_or(Error::Invalid)?;
+            if r.billing_period.as_ref() == Some(period) {
+                monthly = monthly
+                    .checked_add(u128::from(actual_all_in))
+                    .ok_or(Error::Invalid)?;
+            }
+        } else {
+            let horizon = r
+                .request
+                .quote
+                .runtime_seconds
+                .checked_add(r.request.quote.cleanup_seconds)
+                .ok_or(Error::Corrupt)?;
+            let deadline = r
+                .reserved_at
+                .checked_add(i64::try_from(horizon).map_err(|_| Error::Corrupt)?)
+                .ok_or(Error::Corrupt)?;
+            if r.state != BudgetState::Reserved || now >= deadline {
+                // An ambiguous effect, unfinalized billing, or missed cleanup
+                // deadline freezes fresh spend, even if numeric caps have room.
+                return Err(Error::Invalid);
+            }
+            lifetime = lifetime
+                .checked_add(u128::from(r.reserved_all_in))
+                .ok_or(Error::Invalid)?;
+            monthly = monthly
+                .checked_add(u128::from(r.reserved_all_in))
+                .ok_or(Error::Invalid)?;
+            active_hourly = active_hourly
+                .checked_add(u128::from(r.reserved_hourly))
+                .ok_or(Error::Invalid)?;
+            active = active.checked_add(1).ok_or(Error::Invalid)?;
+        }
+    }
+    if lifetime > u128::from(policy.trial_all_in)
+        || monthly > u128::from(policy.monthly_all_in)
+        || active_hourly > u128::from(policy.total_hourly)
+        || active > u64::from(policy.max_instances)
+    {
+        return Err(Error::Invalid);
+    }
+    Ok(())
+}
+/// Budget-owned dispatch validation. Caller holds the same owner-checked
+/// IMMEDIATE transaction through the following durable dispatch consumption.
+/// This read-only helper never re-reserves, renews a quote, or rebases runtime.
+pub(crate) fn validate_create_dispatch(
+    conn: &Connection,
+    b: &BudgetReservation,
+    a: &BudgetAccount,
+    now: i64,
+) -> Result<(i64, i64)> {
+    if conn.is_autocommit() {
+        return Err(Error::Invalid);
+    }
+    policy_valid(&a.policy, &b.request.owner)?;
+    clock(a, now)?;
+    period_valid(&a.period, now)?;
+    period_valid(&b.period, now)?;
+    if account(conn, &b.request.owner)?.as_ref() != Some(a)
+        || a.period != b.period
+        || a.last_at < b.reserved_at
+        || b.reserved_at < 0
+        || now < b.reserved_at
+        || b.state != BudgetState::Reserved
+        || b.binding.is_some()
+        || b.settlement.is_some()
+        || b.billing_period.is_some()
+        || now < a.policy.valid_from
+        || now >= a.policy.valid_until
+    {
+        return Err(Error::Invalid);
+    }
+    let registered: String = conn.query_row(
+        "SELECT record FROM budget_period WHERE owner=? AND id=?",
+        params![b.request.owner, b.period.id],
+        |r| r.get(0),
+    )?;
+    if decode::<CalendarPeriod>(&registered)? != b.period {
+        return Err(Error::Corrupt);
+    }
+    // Cost/rate bound is checked at ORIGINAL reserved_at; current freshness is
+    // separate. Calling costs(..., now) would incorrectly extend the rental.
+    let original_cost = costs(&b.request.quote, &a.policy, b.reserved_at)?;
+    if original_cost != (b.reserved_all_in, b.reserved_hourly) {
+        return Err(Error::Corrupt);
+    }
+    fresh(b.request.quote.status, b.request.quote.observed_at, now)?;
+    let serving = b
+        .reserved_at
+        .checked_add(i64::try_from(b.request.quote.runtime_seconds).map_err(|_| Error::Corrupt)?)
+        .ok_or(Error::Corrupt)?;
+    let cleanup = serving
+        .checked_add(i64::try_from(b.request.quote.cleanup_seconds).map_err(|_| Error::Corrupt)?)
+        .ok_or(Error::Corrupt)?;
+    if now >= serving || cleanup > a.policy.valid_until {
+        return Err(Error::Invalid);
+    }
+    let all = rows(conn, &a.policy.owner)?;
+    if !all.iter().any(|r| r == b) {
+        return Err(Error::Corrupt);
+    }
+    for r in &all {
+        if r.request.owner != a.policy.owner
+            || (r.state == BudgetState::Settled && r.billing_period.is_none())
+        {
+            return Err(Error::Corrupt);
+        }
+    }
+    aggregate_available(conn, &a.policy, &a.period, now, None)?;
+    Ok((serving, cleanup))
+}
+
 pub(crate) fn initialize(conn: &Connection) -> Result<()> {
     // Same private owner database/connection. No separate ledger file or authority.
     conn.execute_batch("CREATE TABLE IF NOT EXISTS budget_account(owner TEXT PRIMARY KEY,record TEXT NOT NULL);
@@ -491,81 +648,13 @@ impl Store {
         if deadline > policy.valid_until {
             return Err(Error::Invalid);
         }
-        // Initial known spend retains lifetime liability; the explicitly bound
-        // initial-period spend is counted only in that same calendar period.
-        // Nonzero/unknown external liabilities remain durably blocking until a
-        // future explicit trusted reconciliation/migration operation exists.
-        if policy.baseline.external_liability != ExternalLiability::NoneConfirmed {
-            return Err(Error::Invalid);
-        }
-        let mut lifetime = u128::from(reserved)
-            .checked_add(u128::from(policy.baseline.prior_lifetime_spent))
-            .ok_or(Error::Invalid)?;
-        let initial_period_spent = if policy.baseline.initial_period == *period {
-            policy.baseline.prior_current_period_spent
-        } else {
-            0
-        };
-        let mut monthly = u128::from(reserved)
-            .checked_add(u128::from(initial_period_spent))
-            .ok_or(Error::Invalid)?;
-        let mut active_hourly = u128::from(hourly);
-        let mut active = 1u64;
-        for r in rows(&tx, &self.owner)? {
-            if r.request.node_uid == request.node_uid {
-                return Err(Error::Invalid);
-            }
-            if r.state == BudgetState::Settled {
-                let Some(SettlementEvidence {
-                    billing: FinalBilling::Known { actual_all_in, .. },
-                    ..
-                }) = r.settlement
-                else {
-                    return Err(Error::Corrupt);
-                };
-                lifetime = lifetime
-                    .checked_add(u128::from(actual_all_in))
-                    .ok_or(Error::Invalid)?;
-                if r.billing_period.as_ref() == Some(period) {
-                    monthly = monthly
-                        .checked_add(u128::from(actual_all_in))
-                        .ok_or(Error::Invalid)?;
-                }
-            } else {
-                let horizon = r
-                    .request
-                    .quote
-                    .runtime_seconds
-                    .checked_add(r.request.quote.cleanup_seconds)
-                    .ok_or(Error::Corrupt)?;
-                let deadline = r
-                    .reserved_at
-                    .checked_add(i64::try_from(horizon).map_err(|_| Error::Corrupt)?)
-                    .ok_or(Error::Corrupt)?;
-                if r.state != BudgetState::Reserved || now >= deadline {
-                    // An ambiguous effect, unfinalized billing, or missed cleanup
-                    // deadline freezes fresh spend, even if numeric caps have room.
-                    return Err(Error::Invalid);
-                }
-                lifetime = lifetime
-                    .checked_add(u128::from(r.reserved_all_in))
-                    .ok_or(Error::Invalid)?;
-                monthly = monthly
-                    .checked_add(u128::from(r.reserved_all_in))
-                    .ok_or(Error::Invalid)?;
-                active_hourly = active_hourly
-                    .checked_add(u128::from(r.reserved_hourly))
-                    .ok_or(Error::Invalid)?;
-                active = active.checked_add(1).ok_or(Error::Invalid)?;
-            }
-        }
-        if lifetime > u128::from(policy.trial_all_in)
-            || monthly > u128::from(policy.monthly_all_in)
-            || active_hourly > u128::from(policy.total_hourly)
-            || active > u64::from(policy.max_instances)
-        {
-            return Err(Error::Invalid);
-        }
+        aggregate_available(
+            &tx,
+            policy,
+            period,
+            now,
+            Some((&request.node_uid, reserved, hourly)),
+        )?;
         let r = BudgetReservation {
             request: request.clone(),
             period: period.clone(),
