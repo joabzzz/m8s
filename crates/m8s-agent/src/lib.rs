@@ -1,6 +1,8 @@
-//! Deterministic DMS engine only. No agent transport, bootstrap or mesh supervisor is available.
+//! Deterministic DMS and local subprocess supervision. Secure transport and provider
+//! self-destruction are intentionally unavailable; local process exit is not absence.
 //! The caller must supply an iroh-authenticated endpoint identity, never a claimed wire field.
 use m8s_core::Timestamp;
+pub mod supervisor;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effect {
     Drain,
@@ -50,6 +52,10 @@ impl DeadManSwitch {
             wiped: false,
             gone: false,
         })
+    }
+    /// Latch teardown on shutdown or child failure; it cannot be undone by heartbeats.
+    pub fn trigger(&mut self) {
+        self.triggered = true;
     }
     pub fn heartbeat(&mut self, authenticated_peer: &str, now: Timestamp) -> bool {
         if self.triggered
