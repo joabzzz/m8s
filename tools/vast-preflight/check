@@ -2,11 +2,25 @@
 # Remove secret variable without reading/printing its value. No provider transport.
 set -eu
 cd "$(dirname "$0")"
-env -u VAST_API_KEY -u CONTAINER_API_KEY python3 -B -m unittest discover -s . -v
-env -u VAST_API_KEY -u CONTAINER_API_KEY python3 -B - <<'PY'
+# Fixed known installed native backend here; no package installation or env override.
+if [ -x /opt/homebrew/bin/python3.14 ]; then
+    PYTHON=/opt/homebrew/bin/python3.14
+else
+    PYTHON=python3
+fi
+env -u VAST_API_KEY -u CONTAINER_API_KEY "$PYTHON" -E -s -B - <<'PY'
+import os
+import sys
+assert callable(getattr(os, 'waitid', None)) and hasattr(os, 'WNOWAIT'), 'Native os.waitid/WNOWAIT required'
+print('Native waitid/WNOWAIT verified:', sys.version.split()[0])
+PY
+env -u VAST_API_KEY -u CONTAINER_API_KEY "$PYTHON" -E -s -B -m unittest discover -s . -v
+env -u VAST_API_KEY -u CONTAINER_API_KEY "$PYTHON" -E -s -B - <<'PY'
 from pathlib import Path
 for name in ('preflight.py', 'test_preflight.py', 'https_readonly.py',
-             'readonly_runner.py', 'test_https_readonly.py'):
+             'readonly_runner.py', 'test_https_readonly.py', 'local_watchdog.py',
+             'readonly_supervisor.py', 'test_local_watchdog.py',
+             'test_readonly_supervisor.py'):
     compile(Path(name).read_text(), name, 'exec')
 print('Python source compile checks passed')
 PY

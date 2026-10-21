@@ -72,3 +72,47 @@ not user-selected hosts/transports.
 Evidence, official links, unresolved live gates and proposed independent cleanup
 watcher design are in Knowledge:
 [Metal-0-6 preflight](agor://kb/m8s/research/metal-0-6-vast-preflight.md).
+
+## Local simulation watchdog and read-only supervisor
+
+`local_watchdog.LocalWatchdog` accepts the exact in-memory `FakeProvider` only.
+It holds a directory-scoped account-wide flock, fsyncs atomic journals containing
+intent/reserves before hypothetical submission, never creates anything, and
+reconciles exact owner/run with fresh complete instance+volume evidence. A
+submitted uncertain create cannot be retried or inferred absent. Fake destroys
+repeat until explicit absence; failures latch admission blocked. Aggregate initial
+$2 reservations survive restart and are conservatively retained as spent at
+cleanup (no refund without billing evidence). `poll` uses injected clock/pause;
+exhaustion alerts/blocks rather than declaring success. Journal rows are retained.
+Use one trusted canonical 0700 state directory; different directories do not
+coordinate locks. Corrupt/partial state fails closed, not reset. This is not a
+credential store or malicious-local-user boundary.
+
+`readonly_supervisor.run_readonly(supplier, authorized=True)` is a future-explicit
+root-authorized library entry, NOT executed by these tests. It runs only the fixed
+read-only runner with a fresh minimal child environment, key inherited at runtime
+from the injected supplier (never argv), 20-second monotonic I/O deadline, process
+group SIGKILL BEFORE direct-child reap on ALL outcomes (including clean exit),
+bounded 32KiB stdout and
+strict output-schema whitelist. stderr discarded; partial output dropped on any
+error. Reap target is bounded by two additional seconds; OS scheduling/spawn/reap
+latency is not hard-real-time. Tests use standalone synthetic Python children,
+including sleeping descendants, not the real provider runner. Default supervisor
+CLI is offline. Secret suppliers and local executable/source tree are trusted.
+
+**Local process/host loss defeats these local guards.** No independent remote or
+provider watchdog is deployed/qualified; every live gate remains false. Fake
+provider destroy lists are not evidence that real storage/instances were deleted.
+
+Supervisor ownership contract: exclusive child reaper, default SIGCHLD handler,
+non-reaping POSIX waitid(WNOWAIT) observation before group cleanup, then bounded
+wait/reap. Never signal own process group, PID<=1, already-reaped PID or lost
+ownership. Native os.waitid/WNOWAIT REQUIRED; no ctypes/libSystem/handwritten ABI fallback.
+Unsupported interpreters fail before supplier/spawn; no early-reap fallback.
+The check wrapper selects fixed installed /opt/homebrew/bin/python3.14 here,
+otherwise python3, and verifies native capability before any tests. System
+Python3.9 is explicitly tested to refuse without supplier calls or child spawn. Cleanup errors
+discard even valid output. In this sandbox, signaling an exited zombie-only group
+can return EPERM: that remains an opaque failure, never interpreted as success.
+Actual regression children retain live stdout-closed descendants; kernel FIFO EOF
+proves their writer closed after group kill. No provider process was used.
