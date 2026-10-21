@@ -4,11 +4,10 @@
 #![cfg(unix)]
 mod storage;
 mod timed;
+pub use m8s_agent::supervisor::LocalTerminationState;
 use m8s_agent::{
     DeadManSwitch, Effect, Outcome,
-    supervisor::{
-        ChildSpec, LocalOnlyBoot, LocalTerminationState, RetryTeardown, Supervisor, TeardownDriver,
-    },
+    supervisor::{ChildSpec, LocalOnlyBoot, RetryTeardown, Supervisor, TeardownDriver},
 };
 use m8s_core::{Instance, InstanceState, Observation, Offer};
 use m8s_provider::{Error, LaunchSpec, Provider, Result};
