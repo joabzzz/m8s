@@ -1,5 +1,15 @@
-//! Secret type boundary and read-only injected environment backend.
-//! OS Keychain and secure file persistence are not available yet; no implicit fallback.
+//! Synchronous secret stores. Backends are selected explicitly; never fall back implicitly.
+mod codec;
+mod keychain;
+#[cfg(all(target_os = "macos", feature = "os-keyring", not(test)))]
+pub use keychain::MacKeyringDriver;
+pub use keychain::{KeyringDriver, KeyringStore};
+#[cfg(unix)]
+mod acl;
+#[cfg(unix)]
+mod file;
+#[cfg(unix)]
+pub use file::FileStore;
 use std::collections::BTreeMap;
 use zeroize::Zeroize;
 
@@ -25,6 +35,14 @@ impl SecretName {
     }
 }
 /// Intentionally no Debug, Display, Clone, or Serialize.
+/// ```compile_fail
+/// let value = m8s_secrets::SecretValue::new(vec![]);
+/// println!("{value:?}");
+/// ```
+/// ```compile_fail
+/// let value = m8s_secrets::SecretValue::new(vec![]);
+/// println!("{value}");
+/// ```
 pub struct SecretValue(Vec<u8>);
 impl SecretValue {
     pub fn new(bytes: Vec<u8>) -> Self {
@@ -49,12 +67,25 @@ pub struct SecretInfo {
 pub enum Error {
     #[error("invalid secret name")]
     InvalidName,
+    #[error("unsafe secret store path or permissions")]
+    UnsafePath,
+    #[error("secret store I/O failed")]
+    Io,
+    #[error("invalid or oversized secret store data")]
+    InvalidData,
+    #[error("secret backend failed; no fallback was attempted")]
+    Backend,
     #[error("backend is read-only")]
     ReadOnly,
     #[error("requested backend is unavailable; no fallback was attempted")]
     Unavailable,
 }
-pub trait SecretStore {
+impl From<std::io::Error> for Error {
+    fn from(_: std::io::Error) -> Self {
+        Self::Io
+    }
+}
+pub trait SecretStore: Send + Sync {
     fn backend(&self) -> &'static str;
     fn get(&self, name: &SecretName, now: i64) -> Result<Option<SecretValue>, Error>;
     fn put(
@@ -132,3 +163,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod backend_tests;

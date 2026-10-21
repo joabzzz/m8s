@@ -66,9 +66,13 @@ response states `mode: mock-only` and the bootstrap limitation.
 - `m8s-agent` contains only a deterministic DMS engine. Its authenticated-identity
   input must eventually come from pinned iroh. Drain/wipe failures do not defer
   destroy; only confirmed absence ends retries. No effect executor is shipped.
-- Secret values have no Debug/Display/Serialize and are zeroized on drop. Only an
-  explicitly injected read-only environment store exists; it never scans ambient
-  variables. No secret-retrieval CLI, file fallback or Keychain backend exists.
+- Secret values have no Debug/Display/Serialize and are zeroized on drop.
+  Explicitly selected stores include injected read-only environment, hardened
+  Unix file persistence and injected keyring. No ambient discovery or silent
+  fallback occurs. The opt-in macOS OS adapter is compile-checked only; tests
+  use synthetic files and fake keyring drivers, never the real OS keychain.
+  See crates/m8s-secrets/README.md for strict file/ACL/format and coordination
+  requirements. No secret-retrieval CLI or default backend is wired.
 
 ## Fixture-only provider mapping
 
@@ -83,7 +87,7 @@ This does not enable a live launch path.
 
 No live Vast transport, live account access, signed-image gate,
 iroh bootstrap/control or sealed bundle, MP-001 signer integration, mesh supervision,
-actual DMS self-destroy, OS Keychain/file SecretStore, secret CLI, config loader,
+actual DMS self-destroy, default secret-backend selection/secret CLI, config loader,
 schedules/queue triggers, `top`, eval/audit/harness, node image, or tiny-model mesh E2E.
 The daemon refuses launches from any Provider whose id is not `mock`.
 Core placement/budget policy is not a substitute for durable live budget reservations;
