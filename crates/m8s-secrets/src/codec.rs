@@ -1,11 +1,12 @@
-// A bounded, versioned binary envelope. No value-bearing type implements formatting/serde.
+// Internal keyring envelope only; FileStore never accepts this binary format.
+// No value-bearing type implements formatting/serde.
 use crate::{Error, SecretInfo, SecretName, SecretValue};
 use std::collections::BTreeMap;
 use zeroize::Zeroizing;
 
 pub(crate) const MAX_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_VALUE: usize = 64 * 1024;
-const MAX_ENTRIES: usize = 1024;
+pub(crate) const MAX_ENTRIES: usize = 1024;
 pub(crate) type Entries = BTreeMap<SecretName, (SecretValue, Option<i64>)>;
 
 pub(crate) fn decode(bytes: &[u8]) -> Result<Entries, Error> {

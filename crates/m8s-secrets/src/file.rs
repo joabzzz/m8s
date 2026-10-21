@@ -14,9 +14,7 @@ use std::{
 };
 use zeroize::Zeroizing;
 
-/// EXPERIMENTAL binary-format store, not the accepted ADR-0012 TOML fallback.
-/// No default path/backend or CLI selects it. Needs Admin format decision:
-/// board card 01a15cbc-5bc1-7026-8894-8792bd61053d.
+/// Explicit bounded TOML store. No automatic backend fallback or format migration.
 pub struct FileStore {
     dir: File,
     path: PathBuf,
@@ -177,10 +175,10 @@ impl FileStore {
         io((&mut f)
             .take((codec::MAX_BYTES + 1) as u64)
             .read_to_end(&mut bytes))?;
-        codec::decode(&bytes)
+        crate::toml::decode(&bytes)
     }
     fn save(&self, entries: &codec::Entries) -> Result<(), Error> {
-        let bytes = codec::encode(entries)?;
+        let bytes = crate::toml::encode(entries)?;
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let mut temporary = None;
         for _ in 0..128 {

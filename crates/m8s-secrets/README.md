@@ -7,16 +7,13 @@ read-only. SecretValue has no Debug/Display/Clone/Serialize and zeroizes on drop
 Expiry uses caller-injected seconds; at exact expiry, get/list hide an entry.
 Delete can still remove expired entries. List returns metadata only.
 
-## EXPERIMENTAL file backend — Needs Admin
+## Explicit TOML file fallback (latest ADR-0012)
 
-**This is not the accepted ADR-0012 TOML fallback.** The format/path contract
-requires an Admin decision before any default or CLI selects it. Concrete card:
-**Secret fallback format: retain TOML contract or accept bounded binary?**
-(card 01a15cbc-5bc1-7026-8894-8792bd61053d, Needs Admin on the m8s board).
-The recommendation is to accept the bounded binary format with an ADR amendment;
-retaining TOML with equivalent safe parsing is the alternative. No approval is
-implied by integration of this explicitly experimental library.
-
+The accepted fallback is bounded, versioned TOML (`secrets.toml`), not the
+experimental binary format. Keychain remains the intended macOS default, but
+this library does not select a default backend/path or silently fall back.
+The CLI integration owner must choose the backend explicitly. No legacy-file
+migration, binary autodetection, or alternate-format parser fallback exists.
 
 FileStore::open takes an explicit absolute path on Unix. Supply an existing,
 owned, exactly 0700 parent outside all Git worktrees. No directory creation,
@@ -44,13 +41,38 @@ file; there is intentionally no automatic orphan sweep. A failure after rename
 rollback. Advisory locking requires cooperating writers. Malicious same-UID
 code/root is not defended against.
 
-**Format decision pending Admin:** this uses a bounded, versioned binary
-envelope, not TOML/.env. There was no existing file format to migrate. Choose an
-honest filename such as secrets.bin, not the ADR's proposed secrets.toml. There
-is no migration/parser fallback. Limits: 1 MiB total, 1024 records, 64 KiB/value,
-and the existing 128-byte name limit. Invalid versions, duplicate names, malformed
-lengths/expiry tags and trailing bytes fail closed. Values on disk are **not
-encrypted**. Disk encryption, backups and provisioning are operator concerns.
+### Version 1 schema
+
+The encoder emits valid TOML using a deliberately restricted, line-oriented
+schema (not arbitrary TOML). The parser accepts this subset only:
+
+```toml
+version = 1
+
+[[secrets]]
+name = "test/session"
+value_hex = "007fff"
+expires_at = 10
+```
+
+This example is synthetic. `value_hex` is lowercase hex encoding of arbitrary
+bytes, **not encryption**. The exact header `version = 1` must be first, after
+optional blank/full-line-comment lines. A record has exactly one `name` and
+`value_hex`, in either order, plus optional canonical signed-i64 `expires_at`
+(injected Unix seconds). There is no null/never-expire field: omit expiry.
+Names follow SecretName validation. Empty values are supported by the store;
+the interactive UX rejects empty input. Spaces/tabs around record keys and `=`
+are accepted. LF/CRLF, blank lines and full-line `#` comments are accepted.
+Unknown fields/tables, repeated fields/names, alternate versions, string escapes,
+multiline/literal strings, inline comments, alternate integer forms and other
+TOML features are rejected. This intentionally small grammar avoids generic
+value-bearing serde/Debug allocations and parser diagnostics containing input.
+
+Limits: 1 MiB encoded file, 1024 records, 128-byte names, 64 KiB decoded value.
+Hex doubles value size, so the total-file limit may bind first. The parser checks
+bounds before allocating values; the encoder sizes its zeroizing buffer before
+writing. All parse errors are opaque. On-disk values are **not encrypted**;
+disk encryption, backups and provisioning remain operator concerns.
 
 ## Keyring backend
 
@@ -76,9 +98,43 @@ a physical-erasure guarantee. Keychain approval/access controls, binary signing,
 prompts and size limits remain unverified: compilation is not live acceptance.
 Never use the mesh owner keystore service/account.
 
+## Secret UX library / integration contract
+
+`m8s_secrets::ux` is ready for CLI integration; **no existing CLI main is wired**.
+`parse(&[&str]) -> Command`, `execute(store, command, input, now) -> Output`:
+
+- `set NAME [--stdin] [--expires-at SECONDS]`: no argv value option; rejects
+  expired/non-future expiry before input. Default is explicit terminal entry.
+- `list`: active names/expiry only; never reads values via get.
+- `rm NAME`: deletes even an expired entry; returns whether it existed.
+- `check`: validates local backend readability/schema and reports active count;
+  it does **not** validate provider scope, credentials or connectivity.
+- No `get` or `show`. Errors never interpolate rejected arguments.
+
+The caller injects a selected `SecretStore` and `Input` implementation. Output
+contains metadata only. `SystemInput` performs no access until read is requested.
+Default terminal entry first refuses non-TTY stdin, opens `/dev/tty`, disables
+echo/canonical mode/signals,
+handles newline, backspace and Ctrl-C/Ctrl-D/Ctrl-Z cancellation locally, and
+restores terminal attributes on ordinary success/error/cancellation. It fails
+closed if unavailable; it never substitutes redirected stdin. No value/prompt is
+printed by this library: the CLI may print a fixed non-secret prompt to stderr.
+Abrupt process kill/host failure can bypass restoration; operators may need
+`stty sane`. Non-Unix terminal input is unavailable, not plaintext fallback.
+Explicit `--stdin` reads exact bytes through EOF (including a final newline).
+Both paths bound input at 64 KiB and keep temporary buffers zeroizing. The caller
+must not log raw argv/input or automatically render input errors with context.
+
+Tests use synthetic dedicated temp files, injected keyring mocks and a dedicated
+synthetic pseudo-terminal (no OS Keychain calls, ambient secret environment or
+owner keystore). PTY checks verify no echo and restoration after success and
+cancellation; actual Keychain qualification remains unverified. Dependencies and
+root Cargo files are unchanged.
+
 ## Deferred
 
-CLI set/list/rm/check, default selection, terminal entry, lifecycle expiry sweeps,
+Default-path/backend setup, actual CLI main integration, lifecycle expiry sweeps,
 owner-keystore auditing, provider key scope checks and real credential/provider/
-keychain testing are out of scope. No owner keystore, credential environment,
-or provider access is needed for tests. There is no get/show CLI.
+keychain testing remain out of scope. No owner keystore, credential environment,
+or provider access is needed for tests. Expiry is enforced on get/list/check;
+physical erasure and automatic expiry deletion are not claimed.

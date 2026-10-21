@@ -165,7 +165,7 @@ mod unix {
             .tempdir_in(base)
             .unwrap();
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
-        let path = dir.path().join("secrets.bin");
+        let path = dir.path().join("secrets.toml");
         (dir, path)
     }
     #[test]
@@ -179,6 +179,26 @@ mod unix {
         let m = fs::metadata(&path).unwrap();
         assert_eq!(m.mode() & 0o7777, 0o600);
         assert_eq!(m.nlink(), 1);
+    }
+    #[test]
+    fn file_is_toml_and_never_migrates_binary_or_invalid_toml() {
+        let (_dir, path) = fixture();
+        let mut store = FileStore::open(&path).unwrap();
+        store.put(name("test/session"), value(), None).unwrap();
+        assert!(fs::read(&path).unwrap().starts_with(b"version = 1\n"));
+        let mut entries = codec::Entries::new();
+        entries.insert(name("test/session"), (value(), None));
+        let binary = codec::encode(&entries).unwrap();
+        fs::write(&path, &*binary).unwrap();
+        assert!(FileStore::open(&path).is_err());
+        assert_eq!(store.delete(&name("test/session")), Err(Error::InvalidData));
+        assert!(fs::read(&path).unwrap() == *binary);
+        fs::write(&path, b"version = 2\n").unwrap();
+        assert_eq!(
+            store.put(name("test/other"), value(), None),
+            Err(Error::InvalidData)
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"version = 2\n");
     }
     #[test]
     fn file_rejects_permissions_links_nonregular_and_corruption() {
@@ -243,7 +263,7 @@ mod unix {
     #[test]
     fn lock_file_is_checked_and_updates_are_serialized() {
         let (dir, path) = fixture();
-        let lock = dir.path().join("secrets.bin.lock");
+        let lock = dir.path().join("secrets.toml.lock");
         fs::write(&lock, b"").unwrap();
         fs::set_permissions(&lock, fs::Permissions::from_mode(0o644)).unwrap();
         assert!(FileStore::open(&path).is_err());

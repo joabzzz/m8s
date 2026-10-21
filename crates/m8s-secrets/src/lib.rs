@@ -1,8 +1,10 @@
 //! Synchronous secret stores. Backends are selected explicitly; never fall back implicitly.
-//! FileStore is an EXPERIMENTAL binary-format library pending Admin review;
-//! it does not complete the accepted ADR-0012 secrets.toml fallback contract.
+//! FileStore uses the strict bounded versioned TOML schema described in README.md.
 mod codec;
 mod keychain;
+#[cfg(unix)]
+mod toml;
+pub mod ux;
 #[cfg(all(target_os = "macos", feature = "os-keyring", not(test)))]
 pub use keychain::MacKeyringDriver;
 pub use keychain::{KeyringDriver, KeyringStore};
