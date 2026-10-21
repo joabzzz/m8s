@@ -19,6 +19,10 @@ pub enum Error {
     Corrupt,
 }
 pub type Result<T> = std::result::Result<T, Error>;
+/// A single-reconciler store, not a replica-safe distributed controller.
+/// Callers must hold an exclusive process lock across the entire reconcile loop,
+/// including provider effects. The daemon supplies this with its state-directory
+/// fs2 lock; SQLite transactions alone protect reservations, not whole reconciles.
 pub struct Store {
     conn: Connection,
     owner: String,

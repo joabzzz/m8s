@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory(prefix="m8s-e2e-",dir="/tmp") as tmp:
         p.kill();raise AssertionError("socket not ready")
     def cli(*args):
         p=subprocess.run([str(root/"target/debug/m8s"),"--socket",str(state/"control.sock"),*args,"--json"],capture_output=True,text=True,timeout=5)
-        assert p.returncode==0,p.stderr
+        assert p.returncode==0,(p.stderr,daemon.poll() if daemon else None,daemon.stderr.read().decode() if daemon and daemon.poll() is not None else "")
         return json.loads(p.stdout)
     def wait_for(predicate):
         for _ in range(100):
@@ -28,6 +28,18 @@ with tempfile.TemporaryDirectory(prefix="m8s-e2e-",dir="/tmp") as tmp:
             time.sleep(.05)
         raise AssertionError(value)
     try:
+        for kind in ("public","not-socket","symlink"):
+            bad=pathlib.Path(tmp)/kind
+            if kind=="symlink":
+                target=pathlib.Path(tmp)/"private-target"
+                target.mkdir(mode=0o700)
+                bad.symlink_to(target,target_is_directory=True)
+            else:
+                bad.mkdir(mode=0o700)
+                if kind=="public": bad.chmod(0o755)
+                else: (bad/"control.sock").write_text("do not replace")
+            denied=subprocess.run([str(root/"target/debug/m8sd"),str(bad),"e2e-owner"],capture_output=True,timeout=5)
+            assert denied.returncode!=0,(kind,denied.stderr)
         daemon=start()
         assert stat.S_IMODE(state.stat().st_mode)==0o700
         assert stat.S_IMODE((state/"control.sock").stat().st_mode)==0o600
@@ -39,6 +51,21 @@ with tempfile.TemporaryDirectory(prefix="m8s-e2e-",dir="/tmp") as tmp:
             refused=json.loads(bad.makefile("rb").readline())
             assert not refused["ok"]
         cli("status") # malformed control input did not terminate the daemon
+        with socket.socket(socket.AF_UNIX) as disconnected:
+            disconnected.connect(str(state/"control.sock"))
+            disconnected.sendall(b'{"command":"status"}\n')
+            # Close without reading the response.
+        cli("status")
+        with socket.socket(socket.AF_UNIX) as oversized:
+            oversized.settimeout(5)
+            oversized.connect(str(state/"control.sock"))
+            try:
+                oversized.sendall(b"x"*65537+b"\n")
+                oversized.shutdown(socket.SHUT_WR)
+                oversized.recv(65536)
+            except (BrokenPipeError,ConnectionResetError):
+                pass
+        cli("status")
         cli("up","qwen27")
         first=wait_for(lambda r:len(r["nodes"])==1)
         assert first["nodes"][0]["phase"]=="Booting"
@@ -52,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix="m8s-e2e-",dir="/tmp") as tmp:
         cli("down")
         final=wait_for(lambda r:not r["nodes"])
         assert all(n==0 for _,n in final["tiers"])
-        print(json.dumps({"mode":"mock-only","up":True,"scale":True,"restart_same_instance":True,"down_confirmed_absent":True,"private_socket":True,"singleton":True,"secure_bootstrap":"unavailable; never Ready"}))
+        print(json.dumps({"mode":"mock-only","up":True,"scale":True,"restart_same_instance":True,"down_confirmed_absent":True,"private_socket":True,"singleton":True,"malformed_oversized_disconnected_survived":True,"unsafe_paths_refused":True,"secure_bootstrap":"unavailable; never Ready"}))
     finally:
         if daemon is not None and daemon.poll() is None:
             daemon.terminate();daemon.wait(timeout=5)

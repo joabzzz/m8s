@@ -76,8 +76,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         match listener.accept() {
             Ok((mut stream, _)) => {
-                stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-                stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+                // On macOS a peer that disconnects immediately can make socket
+                // option setup fail with EINVAL. That is a client failure, not
+                // grounds to stop reconciliation for every other local client.
+                if stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .is_err()
+                    || stream
+                        .set_write_timeout(Some(Duration::from_secs(2)))
+                        .is_err()
+                {
+                    continue;
+                }
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
                     let frame = m8s_api::read_frame(&mut stream)?;
                     match serde_json::from_slice::<Request>(&frame)? {

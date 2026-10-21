@@ -20,7 +20,8 @@ cargo build --workspace --locked -j 2
 Choose a short, private state-directory path (Unix sockets have length limits).
 The daemon creates it with mode 0700 and its socket with mode 0600. Existing
 non-private directories are refused. A process lock prevents two daemons from
-using the same directory.
+using the same directory. The Store library requires one exclusive reconciler;
+SQLite reservations alone do not make multiple controller replicas safe.
 
 ```sh
 target/debug/m8sd /tmp/m8s-demo owner-example
