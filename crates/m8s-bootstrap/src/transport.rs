@@ -300,6 +300,17 @@ impl ControlPolicy {
         Ok(self.state.read().map_err(|_| Error::Refused)?.not_after)
     }
     fn authorize(&self, owner: EndpointId, peer: EndpointId, now: i64) -> Result<()> {
+        self.with_authorized(owner, peer, now, || ())
+    }
+    // Hold the authorization read guard until the short synchronous bridge
+    // returns. Revocation update cannot complete before an authorized renewal.
+    fn with_authorized<T>(
+        &self,
+        owner: EndpointId,
+        peer: EndpointId,
+        now: i64,
+        apply: impl FnOnce() -> T,
+    ) -> Result<T> {
         let state = self.state.read().map_err(|_| Error::Refused)?;
         if self.owner != owner
             || now < 0
@@ -309,7 +320,9 @@ impl ControlPolicy {
         {
             Err(Error::Refused)
         } else {
-            Ok(())
+            let result = apply();
+            drop(state);
+            Ok(result)
         }
     }
 }
@@ -321,6 +334,7 @@ pub struct AuthenticatedControlSession {
     owner: EndpointId,
     peer: EndpointId,
     peer_endpoint: String,
+    local_node: EndpointId,
     not_after: i64,
     last_seen: i64,
     sequence: Option<u64>,
@@ -332,16 +346,19 @@ impl Drop for AuthenticatedControlSession {
     }
 }
 pub async fn accept_control(
-    incoming: Incoming,
+    endpoint: &Endpoint,
     owner: EndpointId,
     policy: &ControlPolicy,
     now: i64,
 ) -> Result<AuthenticatedControlSession> {
+    // Capture the actual local TLS endpoint, never a claimed target node in a frame.
+    let incoming = bounded(async { endpoint.accept().await.ok_or(Error::Unavailable) }).await?;
     let connection = handshake(incoming, CONTROL_ALPN).await?;
     let peer = EndpointId(*connection.remote_id().as_bytes());
     policy.authorize(owner, peer, now)?;
     Ok(AuthenticatedControlSession {
         peer_endpoint: connection.remote_id().to_string(),
+        local_node: EndpointId(*endpoint.id().as_bytes()),
         connection,
         owner,
         peer,
@@ -354,6 +371,9 @@ pub async fn accept_control(
 impl AuthenticatedControlSession {
     pub fn peer_endpoint(&self) -> &str {
         &self.peer_endpoint
+    }
+    pub fn node_endpoint(&self) -> EndpointId {
+        self.local_node
     }
     pub fn bound_owner(&self) -> EndpointId {
         self.owner
@@ -368,6 +388,10 @@ impl AuthenticatedControlSession {
     }
 
     fn check(&self, now: i64) -> Result<()> {
+        self.check_transport(now)?;
+        self.policy.authorize(self.owner, self.peer, now)
+    }
+    fn check_transport(&self, now: i64) -> Result<()> {
         if self.connection.close_reason().is_some()
             || self.connection.alpn() != CONTROL_ALPN
             || now < self.last_seen
@@ -375,7 +399,7 @@ impl AuthenticatedControlSession {
         {
             return Err(Error::Refused);
         }
-        self.policy.authorize(self.owner, self.peer, now)
+        Ok(())
     }
     /// Receives one actual authenticated frame and returns an opaque one-use
     /// evidence borrow. No cached session accessor or method can mint renewal.
@@ -383,7 +407,7 @@ impl AuthenticatedControlSession {
     pub async fn receive_heartbeat(
         &mut self,
         clock: impl Fn() -> i64,
-    ) -> Result<AuthenticatedHeartbeat<'_>> {
+    ) -> Result<VerifiedHeartbeat<'_>> {
         self.check(clock())?;
         let (mut send, mut recv) = bounded(async {
             self.connection
@@ -407,7 +431,7 @@ impl AuthenticatedControlSession {
         self.last_seen = now;
         write_frame(&mut send, &[1]).await?;
         self.check(clock())?;
-        Ok(AuthenticatedHeartbeat {
+        Ok(VerifiedHeartbeat {
             session: self,
             sequence,
             observed_at: now,
@@ -420,20 +444,23 @@ impl AuthenticatedControlSession {
 ///
 /// Evidence cannot be consumed twice:
 /// ```compile_fail
-/// use m8s_bootstrap::AuthenticatedHeartbeat;
-/// fn cannot_reuse(evidence: AuthenticatedHeartbeat<'_>) {
-///     let _ = evidence.consume(101, |_, _| true);
-///     let _ = evidence.consume(101, |_, _| true);
+/// use m8s_bootstrap::VerifiedHeartbeat;
+/// fn cannot_reuse(evidence: VerifiedHeartbeat<'_>) {
+///     let _ = evidence.consume(m8s_bootstrap::EndpointId([0;32]), 101, |_, _| true);
+///     let _ = evidence.consume(m8s_bootstrap::EndpointId([0;32]), 101, |_, _| true);
 /// }
 /// ```
-pub struct AuthenticatedHeartbeat<'a> {
+pub struct VerifiedHeartbeat<'a> {
     session: &'a mut AuthenticatedControlSession,
     sequence: u64,
     observed_at: i64,
 }
-impl AuthenticatedHeartbeat<'_> {
+impl VerifiedHeartbeat<'_> {
     pub fn peer_endpoint(&self) -> &str {
         self.session.peer_endpoint()
+    }
+    pub fn node_endpoint(&self) -> EndpointId {
+        self.session.node_endpoint()
     }
     pub fn sequence(&self) -> u64 {
         self.sequence
@@ -444,12 +471,27 @@ impl AuthenticatedHeartbeat<'_> {
     /// Consumes by value and invokes the agent bridge exactly once only after
     /// rechecking bound live policy/connection/lease and five-second freshness.
     /// Callback receives the authenticated receive time, never delayed caller now.
-    pub fn consume<T>(self, now: i64, apply: impl FnOnce(&str, i64) -> T) -> Result<T> {
-        self.session.check(now)?;
-        if now.saturating_sub(self.observed_at) > IO_TIMEOUT.as_secs() as i64 {
-            return Err(Error::Refused);
-        }
-        Ok(apply(self.session.peer_endpoint(), self.observed_at))
+    /// It is a trusted short nonblocking bridge: authorization read guard remains
+    /// held through apply. Do not block, await, or update policy from that callback.
+    /// A completed policy update therefore cannot precede a stale authorized apply.
+    pub fn consume<T>(
+        self,
+        expected_node: EndpointId,
+        now: i64,
+        apply: impl FnOnce(&str, i64) -> T,
+    ) -> Result<T> {
+        self.session
+            .policy
+            .with_authorized(self.session.owner, self.session.peer, now, || {
+                self.session.check_transport(now)?;
+                if self.session.local_node != expected_node {
+                    return Err(Error::Refused);
+                }
+                if now.saturating_sub(self.observed_at) > IO_TIMEOUT.as_secs() as i64 {
+                    return Err(Error::Refused);
+                }
+                Ok(apply(self.session.peer_endpoint(), self.observed_at))
+            })?
     }
 }
 /// Owner sends a heartbeat on a real pinned connection. Endpoint possession is
@@ -489,5 +531,34 @@ mod tests {
         let p = ControlPolicy::new(owner, [delegate], [delegate], 100).unwrap();
         assert!(p.authorize(owner, delegate, 99).is_err());
         assert!(p.authorize(owner, owner, 99).is_ok());
+    }
+    #[test]
+    fn revocation_update_finishes_only_after_authorized_bridge() {
+        use std::sync::{
+            Arc, Barrier,
+            atomic::{AtomicBool, Ordering},
+        };
+        let owner = EndpointId([1; 32]);
+        let policy = Arc::new(ControlPolicy::new(owner, [], [], 100).unwrap());
+        let barrier = Arc::new(Barrier::new(2));
+        let applied = Arc::new(AtomicBool::new(false));
+        let p = policy.clone();
+        let b = barrier.clone();
+        let a = applied.clone();
+        let writer = policy
+            .with_authorized(owner, owner, 1, || {
+                assert!(policy.state.try_write().is_err());
+                let writer = std::thread::spawn(move || {
+                    b.wait();
+                    p.update([], [owner], 100).unwrap();
+                    a.load(Ordering::SeqCst)
+                });
+                barrier.wait();
+                applied.store(true, Ordering::SeqCst);
+                writer
+            })
+            .unwrap();
+        assert!(writer.join().unwrap());
+        assert!(policy.authorize(owner, owner, 1).is_err());
     }
 }

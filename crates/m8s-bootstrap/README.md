@@ -50,7 +50,7 @@ review transitive versions (iroh 1.3 permits newer compatible subcrates).
   mandatory verifier before returning a non-Debug/non-Serialize `ReceivedBundle`.
   Clock is sampled after reading. This codec does not implement MP-001 crypto.
 - `AuthenticatedControlSession` (also re-exported at crate root) is opaque,
-  non-Clone/non-Debug/non-Deserialize. Only `transport::accept_control` after a real
+  non-Clone/non-Debug/non-Deserialize. Only `transport::accept_control(&Endpoint, owner, policy, now)` after a real
   fully authenticated control handshake constructs it. `peer_endpoint(&self)->&str`
   is canonical `connection.remote_id().to_string()`, not request bytes. Pin agent
   ACL strings using that exact canonical representation.
@@ -61,17 +61,22 @@ review transitive versions (iroh 1.3 permits newer compatible subcrates).
   the owner endpoint itself does not require inventing a rented-node cert.
 - `receive_heartbeat(&mut self, clock)` checks full ALPN, live connection, bound
   current ACL/revocation/lease, sequence and monotonic time around bounded IO,
-  then returns opaque `AuthenticatedHeartbeat<'_>` borrowing that session.
+  then returns opaque `VerifiedHeartbeat<'_>` borrowing that session.
   Session stores a private shared handle to the original live policy; callers
   cannot substitute another stale/permissive policy snapshot after acceptance.
-- `AuthenticatedHeartbeat::consume(self, now, apply)` consumes by value, rechecks
-  bound current policy/connection/lease and five-second freshness, then invokes
+- `VerifiedHeartbeat::consume(self, expected_node, now, apply)` consumes by value, rechecks
+  bound current policy/connection/lease, exact local node and five-second freshness, then invokes
   `apply(canonical_peer, verified_receive_timestamp)` exactly once. Agent bridge
   passes that timestamp to lowlevel heartbeat, not delayed caller time. Evidence
-  has no public/synthetic constructor, Clone or Deserialize. Dropping it loses
+  has no public/synthetic constructor, Clone or Deserialize. Target node is derived
+  internally from the actual accepting Endpoint.id(), never a frame claim. Dropping it loses
   permission; its mutable session borrow prevents receiving another frame while
   holding it. There is **no session.authorize_heartbeat or cached-session mint
   method**. Compile-fail doctest proves evidence cannot be consumed twice.
+  Authorization read guard remains held through the synchronous bridge, so a
+  revocation update cannot return before a stale authorized application. Callback
+  must be trusted, short and nonblocking: never await, block or update policy
+  inside it (that would deadlock). No global write lock is held around callbacks.
   BootGate remains failclosed until actual agent/admission integration is done.
 
 

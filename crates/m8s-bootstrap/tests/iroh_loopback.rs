@@ -145,28 +145,37 @@ async fn real_tls_bootstrap_and_single_use_control_frame() {
         assert!(replay_result.is_err());
         let policy = ControlPolicy::new(id(&owner), [], [], 1000).unwrap();
         let server = async {
-            let mut session =
-                accept_control(node.accept().await.unwrap(), id(&owner), &policy, 101)
-                    .await
-                    .unwrap();
+            let mut session = accept_control(&node, id(&owner), &policy, 101)
+                .await
+                .unwrap();
             assert_eq!(session.peer_endpoint(), owner.id().to_string());
             // Only an actual received frame creates evidence. Consume once using
             // its receive timestamp, never a detached cached-session authority.
             let evidence = session.receive_heartbeat(|| 101).await.unwrap();
             assert_eq!(evidence.sequence(), 1);
+            assert_eq!(evidence.node_endpoint(), id(&node));
             assert_eq!(evidence.peer_endpoint(), owner.id().to_string());
             let applied = evidence
-                .consume(101, |peer, at| (peer.to_owned(), at))
+                .consume(id(&node), 101, |peer, at| (peer.to_owned(), at))
                 .unwrap();
             assert_eq!(applied, (owner.id().to_string(), 101));
             let evidence = session.receive_heartbeat(|| 102).await.unwrap();
             assert_eq!(evidence.sequence(), 2);
+            assert!(
+                evidence
+                    .consume(id(&owner), 102, |_, _| panic!(
+                        "wrong-node evidence must not invoke bridge"
+                    ))
+                    .is_err()
+            );
+            let evidence = session.receive_heartbeat(|| 103).await.unwrap();
+            assert_eq!(evidence.sequence(), 3);
             // Revocation updates original shared policy after IO; evidence is
             // still bound to it and cannot substitute a permissive snapshot.
             policy.update([], [id(&owner)], 1000).unwrap();
             assert!(
                 evidence
-                    .consume(102, |_, _| panic!(
+                    .consume(id(&node), 103, |_, _| panic!(
                         "revoked evidence must not invoke bridge"
                     ))
                     .is_err()
@@ -176,6 +185,7 @@ async fn real_tls_bootstrap_and_single_use_control_frame() {
             let connection = owner.connect(addr(&node), CONTROL_ALPN).await.unwrap();
             send_heartbeat(&connection, 1).await.unwrap();
             send_heartbeat(&connection, 2).await.unwrap();
+            send_heartbeat(&connection, 3).await.unwrap();
             connection.closed().await;
         };
         tokio::join!(server, client);

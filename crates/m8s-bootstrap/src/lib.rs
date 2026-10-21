@@ -331,4 +331,4 @@ pub mod transport;
 mod wire;
 
 #[cfg(feature = "iroh-transport")]
-pub use transport::{AuthenticatedControlSession, AuthenticatedHeartbeat, ControlPolicy};
+pub use transport::{AuthenticatedControlSession, ControlPolicy, VerifiedHeartbeat};
