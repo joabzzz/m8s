@@ -258,6 +258,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "m8s-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sha2",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "m8s-cli"
 version = "0.1.0"
 dependencies = [
