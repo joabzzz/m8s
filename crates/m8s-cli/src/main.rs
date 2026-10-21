@@ -8,6 +8,33 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if args.first().is_some_and(|arg| arg == "secrets") {
         return secrets::run(&args[1..]).map_err(Into::into);
     }
+    // Keep the existing whole-argv UTF-8 validation above, including paths.
+    // Dispatch before legacy --json extraction: the shared dashboard owns its
+    // flags/projection. No PATH search, subprocess, shell or global argv changes.
+    let top_args = if args.first().is_some_and(|arg| arg == "top") {
+        Some(
+            args[1..]
+                .iter()
+                .map(std::ffi::OsString::from)
+                .collect::<Vec<_>>(),
+        )
+    } else if args.first().is_some_and(|arg| arg == "--socket")
+        && args.get(2).is_some_and(|arg| arg == "top")
+    {
+        Some(
+            args[..2]
+                .iter()
+                .chain(&args[3..])
+                .map(std::ffi::OsString::from)
+                .collect(),
+        )
+    } else {
+        None
+    };
+    if let Some(top_args) = top_args {
+        let options = m8s_top::app::Options::parse(&top_args)?;
+        return m8s_top::app::run(options).map_err(Into::into);
+    }
     let json = if let Some(i) = args.iter().position(|a| a == "--json") {
         args.remove(i);
         true
@@ -16,7 +43,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     if args.len() < 3 || args[0] != "--socket" {
         return Err(
-            "usage: m8s --socket PATH <up TIER|down|status|logs|scale TIER N> [--json]; m8s secrets --help".into(),
+            "usage: m8s --socket PATH <up TIER|down|status|logs|scale TIER N|top [--once] [--timeout-ms 1..10000]> [--json]; m8s secrets --help".into(),
         );
     }
     let socket = std::path::PathBuf::from(&args[1]);

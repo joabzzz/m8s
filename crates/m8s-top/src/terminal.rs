@@ -1,4 +1,4 @@
-//! Executable-private terminal scope. Library rendering never touches TTY state.
+//! Private terminal scope used only by the explicit app runner. Rendering is pure.
 use std::io;
 pub(crate) trait Modes {
     fn raw_on(&mut self) -> io::Result<()>;

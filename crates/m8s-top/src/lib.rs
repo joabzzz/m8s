@@ -1,6 +1,9 @@
 //! Read-only status projection. No resource commands, credentials, transport
-//! admission or process-wide terminal/signal initialization in this library.
+//! admission or implicit terminal/signal initialization. Explicit `app::run` opts
+//! into executable I/O; importing, parsing and rendering remain effect-free.
+pub mod app;
 pub mod client;
+mod terminal;
 pub mod view;
 
 use m8s_core::{Phase, Timestamp};

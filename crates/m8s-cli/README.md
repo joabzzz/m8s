@@ -61,3 +61,31 @@ not a passing terminal E2E. The CLI fails closed instead of changing input paths
 Keychain items, ambient credential env, the mesh owner keystore or a provider.
 Fake/mock tests do not establish OS Keychain qualification. Default setup,
 lifecycle expiry sweeps and real owner/provider/signing checks remain deferred.
+
+## Read-only dashboard in-process
+
+```sh
+m8s --socket /private/path/control.sock top [--once] [--json] [--timeout-ms 1..10000]
+m8s top --socket /private/path/control.sock [--once] [--json] [--timeout-ms 1..10000]
+```
+
+Both forms call the same explicit `m8s_top::app` parser/runner as standalone
+`m8s-top`, in this process; no executable lookup, shell or child dispatch.
+Only Status is sent, never a provider/resource command. Socket private-path,
+peer-UID, one absolute I/O deadline, redacted errors and terminal RAII behavior
+are identical to [m8s-top](../m8s-top/README.md). Parsing/imports have no socket,
+terminal or signal effects; interactive execution is explicit opt-in.
+
+Non-TTY invocation automatically takes one text snapshot. `--once` and `--json`
+never initialize the terminal; both can be combined (JSON wins). Each is allowed
+once; repeated `--timeout-ms` uses the last valid 1..10000 value. Top JSON is the
+dashboard projection, not the existing status command's raw API envelope.
+Missing evidence remains unknown/null; reported Ready is unverified and stale
+status is never proof. No secure admission, billing cessation or readiness claim.
+
+Existing control/secrets grammar and JSON are unchanged. As before, `m8s`
+rejects any invalid UTF-8 argument (including a socket path) with an opaque
+error; standalone `m8s-top` still accepts OS-byte paths. Dedicated synthetic
+sockets assert Status-only top payloads, safe error output and legacy command
+compatibility. Synthetic PTYs check CLI alias q/SIGINT/SIGTERM cleanup using the
+standalone fixture, with no access to the user's controlling terminal.

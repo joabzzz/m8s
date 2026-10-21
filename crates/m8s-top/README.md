@@ -1,11 +1,13 @@
 # m8s-top — read-only local dashboard
 
-ADR-0015 terminal dashboard slice; standalone executable pending root wiring of
-`m8s top`. Only the existing newline-JSON `Request::Status {}` is sent to the
+ADR-0015 terminal dashboard slice, shared by standalone `m8s-top` and the
+in-process `m8s top` command. Only the existing newline-JSON `Request::Status {}` is sent to the
 explicit Unix socket. There are no launch, scale, destroy, credential or provider
 operations in this crate.
 
 ```sh
+m8s --socket /path/to/control.sock top
+m8s top --socket /path/to/control.sock --once
 m8s-top --socket /path/to/control.sock
 m8s-top --socket /path/to/control.sock --once
 m8s-top --socket /path/to/control.sock --json --timeout-ms 1000
@@ -88,8 +90,14 @@ I/O deadline; elapsed deadline is rechecked before connect/request effects.
 
 ## Terminal lifetime and qualification
 
-The library exports only the read client, status projection and pure renderer.
-It never initializes a terminal or installs process-wide handlers. The executable
+The read client, projection and renderer remain effect-free apart from explicit
+client requests. `app::Options::parse(&[OsString])` validates explicit arguments
+without I/O; its fields are private. Imports/constructors never initialize a
+terminal, install handlers or connect a socket. The deliberately effectful
+`app::run(Options)` is the shared opt-in executable adapter: both binaries call
+it directly in-process, without PATH/sibling discovery, a shell, subprocess
+dispatch or global argv mutation. Call it serially from an explicit command, not
+concurrently with another terminal/signal owner. The runner
 checks TTYs first, installs signal-hook atomic-flag callbacks for SIGTERM/SIGINT
 only in interactive mode, and owns a cleanup guard before entering raw/alternate
 screen mode. Normal exit, propagated errors, partial terminal setup failures,
@@ -107,3 +115,21 @@ fresh synthetic PTYs only (not the user's controlling terminal). PTY tests check
 q/Ctrl-C keys and real SIGINT/SIGTERM restore terminal attributes, cursor and
 alternate screen. Guard fault injection checks partial/error cleanup. No tests
 access credentials, real provider resources, secure admission or private state.
+
+## Argument compatibility
+
+Both binaries share the standalone parser. An explicit `--socket PATH` is
+required; `--once`/`--json` are each allowed once and may be combined (JSON wins).
+`--timeout-ms` accepts 1..10000 inclusive; repeated timeout uses the last value,
+preserving standalone behavior. Unknown/duplicate flags or missing values fail
+without echoing their contents. Filesystem/socket validation happens only on an
+explicit run request, not while parsing. Standalone OS-byte socket paths remain
+opaque; `m8s` preserves its existing whole-argv UTF-8 requirement and opaque
+`invalid arguments` failure, including top paths. Existing non-top grammar and
+raw API JSON envelopes are unchanged. Top JSON is still the distinct projection
+described above.
+
+Synthetic PTY cleanup helpers are shared by standalone and CLI alias tests,
+including q and real SIGINT/SIGTERM; no user controlling terminal or /dev/tty
+bypass is used. Tests prove local command/terminal behavior only, not
+cryptographic daemon identity, secure admission, provider absence or readiness.
