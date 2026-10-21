@@ -176,6 +176,8 @@ impl ProcessOps for LocalProcess {
 /// Nonblocking OS calls and all driver calls must themselves return promptly;
 /// this coordinator cannot enforce deadlines against a stalled kernel/driver.
 pub struct Supervisor<D: TeardownDriver> {
+    #[cfg(feature = "authenticated-control")]
+    control_binding: crate::control::ControlBinding,
     process: Box<dyn ProcessOps>,
     group_signalled: bool,
     stopping: bool,
@@ -187,6 +189,8 @@ pub struct Supervisor<D: TeardownDriver> {
     state: TeardownState,
 }
 impl<D: TeardownDriver> Supervisor<D> {
+    /// Starts an unbound supervisor. Raw heartbeats remain a trusted library seam;
+    /// verified control evidence is refused without a pinned local target.
     pub fn start(
         spec: ChildSpec,
         gate: &mut impl BootGate,
@@ -210,6 +214,8 @@ impl<D: TeardownDriver> Supervisor<D> {
         return Err(io::Error::other("process-group supervision unavailable"));
         let child = command.spawn()?;
         Ok(Self {
+            #[cfg(feature = "authenticated-control")]
+            control_binding: crate::control::ControlBinding::default(),
             process: Box::new(LocalProcess { child }),
             group_signalled: false,
             stopping: false,
@@ -221,7 +227,37 @@ impl<D: TeardownDriver> Supervisor<D> {
             state: TeardownState::Running,
         })
     }
+    /// Pins this supervisor's local TLS node from trusted owner/boot configuration.
+    /// This configuration is NOT evidence that bootstrap/admission succeeded.
+    /// No listener, handler or transport is started; the BootGate still applies.
+    #[cfg(feature = "authenticated-control")]
+    pub fn start_with_control_node(
+        spec: ChildSpec,
+        gate: &mut impl BootGate,
+        dms: DeadManSwitch,
+        driver: D,
+        retry: RetryTeardown,
+        local_node: crate::control::EndpointId,
+    ) -> io::Result<Self> {
+        let mut supervisor = Self::start(spec, gate, dms, driver, retry)?;
+        supervisor.control_binding = crate::control::ControlBinding::pinned(local_node);
+        Ok(supervisor)
+    }
+
+    /// Applies one opaque received heartbeat, using the stored target, not a
+    /// caller-selected per-event node. Bootstrap retains all live authorization
+    /// checks and its read guard through the short, nonblocking DMS update.
+    #[cfg(feature = "authenticated-control")]
+    pub fn verified_heartbeat(
+        &mut self,
+        evidence: crate::control::VerifiedHeartbeat<'_>,
+        now: Timestamp,
+    ) -> Result<bool, crate::control::ControlError> {
+        self.control_binding.consume(evidence, now, &mut self.dms)
+    }
+
     /// Caller must supply an authenticated transport endpoint, never a wire field.
+    /// Trusted backward-compatible library API only, not a network/stdin entrypoint.
     pub fn heartbeat(&mut self, authenticated_peer: &str, now: Timestamp) -> bool {
         self.dms.heartbeat(authenticated_peer, now)
     }
@@ -412,6 +448,8 @@ mod nonblocking_tests {
     ) -> (Supervisor<Driver>, Arc<Mutex<Vec<Effect>>>) {
         let calls = Arc::new(Mutex::new(vec![]));
         let supervisor = Supervisor {
+            #[cfg(feature = "authenticated-control")]
+            control_binding: crate::control::ControlBinding::default(),
             process: Box::new(SyntheticProcess(ops)),
             group_signalled: false,
             stopping: false,

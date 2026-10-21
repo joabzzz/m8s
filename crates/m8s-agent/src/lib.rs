@@ -1,7 +1,9 @@
 //! Deterministic DMS and local subprocess supervision. Secure transport and provider
-//! self-destruction are intentionally unavailable; local process exit is not absence.
+//! self-destruction are not production-qualified; local process exit is not absence.
 //! The caller must supply an iroh-authenticated endpoint identity, never a claimed wire field.
 use m8s_core::Timestamp;
+#[cfg(feature = "authenticated-control")]
+pub mod control;
 pub mod supervisor;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effect {

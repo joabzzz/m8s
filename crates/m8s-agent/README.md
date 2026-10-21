@@ -133,3 +133,39 @@ intentional waiting for child exit; the OS syscalls, trusted teardown drivers an
 adapter destructors must still return promptly. A hung kernel, arbitrary blocking
 driver or dead process cannot be made bounded by this synchronous coordinator.
 No paid/real provider, secure transport, wipe or readiness path is qualified here.
+
+## Optional authenticated control bridge
+
+`authenticated-control` (off by default) enables a path dependency on bootstrap's
+real `iroh-transport`, using its sole `tls-aws-lc-rs` backend. It starts no network
+endpoint and installs no process-global handlers. The executable is unchanged.
+
+`Supervisor::start_with_control_node(..., local_node: EndpointId)` pins an
+immutable local TLS target from **trusted local owner/boot configuration**, not
+from the incoming event. This is configuration, **not proof of secure bootstrap
+or admission**. Existing `start()` remains explicitly unbound; verified dispatch
+on it returns `ControlError::Unbound` without consuming/applying authorization.
+The production `UnavailableBoot` remains closed. LocalOnlyBoot is synthetic only.
+
+`verified_heartbeat(evidence: VerifiedHeartbeat<'_>, now)` consumes one opaque
+bootstrap event against the stored target. Bootstrap owns all current live-policy,
+revocation, connection/ALPN, lease, freshness and single-use checks, retaining its
+authorization read guard through the short DMS callback. Only the canonical
+TLS peer and verified receive timestamp reach DMS; caller dispatch time cannot
+extend the lease. DMS still enforces its own ACL, monotonic time, TTL and hard
+lifetime. Configure its ACL with canonical iroh endpoint strings and bound its
+hard lifetime by the relevant verified certificate expiry. No permissions are
+cached or renewed here. Rejection never calls the DMS callback.
+
+The raw-string `heartbeat` library API remains a trusted compatibility seam,
+not a new stdin/network entrypoint or authentication bypass for adapters. No
+production event constructor or synthetic evidence factory is exposed.
+
+Focused checks: `cargo test -p m8s-agent -j1` and the same with
+`--features authenticated-control`, plus all-target Clippy for both. Feature unit
+helpers exercise configuration refusal/routing and DMS only; compile-fail docs
+check evidence construction/reuse. They do **not** exercise real protocol
+receipt/consumption. Existing bootstrap supported-runner TLS fixtures remain
+explicitly ignored, with actual execution blocked here by AF_ROUTE netmon EPERM.
+No retry/bypass was attempted. Real client/admission, certificate qualification,
+served model and owner-routed canary remain required; this bridge claims no Ready.

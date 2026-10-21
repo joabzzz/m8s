@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+authenticated-control = ["dep:m8s-bootstrap", "m8s-bootstrap/iroh-transport"]
+
 [dependencies]
+m8s-bootstrap = { path = "../m8s-bootstrap", default-features = false, optional = true }
 m8s-core.workspace = true
 thiserror.workspace = true
 

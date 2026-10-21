@@ -1741,6 +1741,7 @@ name = "m8s-agent"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "m8s-bootstrap",
  "m8s-core",
  "signal-hook",
  "thiserror 2.0.21",
