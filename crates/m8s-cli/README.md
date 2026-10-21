@@ -89,3 +89,40 @@ error; standalone `m8s-top` still accepts OS-byte paths. Dedicated synthetic
 sockets assert Status-only top payloads, safe error output and legacy command
 compatibility. Synthetic PTYs check CLI alias q/SIGINT/SIGTERM cleanup using the
 standalone fixture, with no access to the user's controlling terminal.
+
+## Effect-free owner-intent plan
+
+```text
+m8s plan --local-development --config ABSOLUTE_CONFIG --catalog ABSOLUTE_CATALOG --tier ID [--json]
+m8s plan --help
+```
+
+All four input flags are required exactly once, in any order. `--json` is
+optional once. Unknown flags/positionals, duplicates, socket, execution and
+approval overrides fail before files are opened. No discovery or interpolation.
+Use the shipped `m8s-config/examples/m8s.toml` and `m8s-models/models/examples.toml`
+with explicit absolute paths, or your own documents using those existing schemas.
+
+Exit 0 means **intent validated, not authorized or executable** under the fixed
+`ValidationLimits::default()` conservative envelope, reported separately from
+configured budget ceilings. This is not Admin approval, a cost quote, balance,
+reservation, executable local plan or final configuration/public-contract approval.
+Every accepted tier requires GPUs and Vast preferences; the CPU/unmeasured local
+adapter cannot satisfy these. `local_execution_supported=false`,
+`inference_served=false`, readiness `not_assessed`, authorization `not_checked`,
+billing `unknown` and requirements `not_verified` never become deployment evidence.
+DMS durations, cold/fallback, queue, timezone and cron are descriptive only: no
+watchdog, scheduler, next occurrence or automatic tier selection is performed.
+
+Unix only: both explicit inputs must be regular files, at most 65536 bytes,
+opened with final-component no-follow/nonblocking checks and bounded cap+1 reads.
+Ancestor resolution is trusted; this is not protection against hostile parents,
+concurrent regular-file edits or OS/filesystem metadata stalls. Other platforms
+fail closed. No directory creation, repair, file writes, environment/credential
+lookup, Keychain, daemon socket, child, provider, download/cache or Store access.
+Only normalized validated intent is rendered; catalog source/license/runtime free
+text, input paths, argv and raw parser diagnostics are never echoed. Text and
+`m8s.local-intent-plan/v1` JSON use the same private typed view, fully rendered
+and bounded to 64KiB before stdout. JSON failures use fixed opaque categories;
+output I/O failure is nonzero (a broken stream may still receive partial bytes).
+No fingerprint, UID, Offer, claim, launch journal or Ready status is minted.

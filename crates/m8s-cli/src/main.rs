@@ -1,3 +1,4 @@
+mod plan;
 mod secrets;
 use m8s_api::Request;
 fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -5,6 +6,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .skip(1)
         .map(|arg| arg.into_string().map_err(|_| "invalid arguments"))
         .collect::<Result<_, _>>()?;
+    if args.first().is_some_and(|arg| arg == "plan") {
+        return plan::run(&args[1..]).map_err(Into::into);
+    }
     if args.first().is_some_and(|arg| arg == "secrets") {
         return secrets::run(&args[1..]).map_err(Into::into);
     }
@@ -43,7 +47,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     if args.len() < 3 || args[0] != "--socket" {
         return Err(
-            "usage: m8s --socket PATH <up TIER|down|status|logs|scale TIER N|top [--once] [--timeout-ms 1..10000]> [--json]; m8s secrets --help".into(),
+            "usage: m8s --socket PATH <up TIER|down|status|logs|scale TIER N|top [--once] [--timeout-ms 1..10000]> [--json]; m8s secrets --help; m8s plan --help".into(),
         );
     }
     let socket = std::path::PathBuf::from(&args[1]);
