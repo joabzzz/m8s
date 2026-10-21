@@ -7,7 +7,12 @@ license.workspace = true
 [dependencies]
 m8s-api.workspace = true
 serde_json.workspace = true
+m8s-secrets = { path = "../m8s-secrets" }
 
 [[bin]]
 name = "m8s"
 path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3"
+libc = "0.2"

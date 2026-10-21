@@ -1592,8 +1592,11 @@ dependencies = [
 name = "m8s-cli"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "m8s-api",
+ "m8s-secrets",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

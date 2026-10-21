@@ -59,6 +59,8 @@ pub fn parse(args: &[&str]) -> Result<Command, Error> {
 }
 
 /// Injected input boundary; tests never need ambient stdin or an actual terminal.
+/// Terminal mode is requested twice for confirmation. Emit prompts only inside
+/// guarded no-echo mode, as SystemInput::read_with_prompt does.
 pub trait Input {
     fn read(&mut self, mode: InputMode) -> Result<SecretValue, Error>;
 }
@@ -91,9 +93,17 @@ pub fn execute(
             if store.backend() == "env" {
                 return Err(Error::ReadOnly);
             }
+            let terminal = mode == InputMode::Terminal;
             let value = input.read(mode)?;
             if value.expose().is_empty() || value.expose().len() > MAX_VALUE {
                 return Err(Error::InvalidData);
+            }
+            if terminal {
+                let confirmation = input.read(InputMode::Terminal)?;
+                // No value-bearing error or formatting. Both buffers zeroize on all paths.
+                if value.expose() != confirmation.expose() {
+                    return Err(Error::InvalidData);
+                }
             }
             store.put(name, value, expires_at)?;
             Ok(Output::Stored)
@@ -120,28 +130,40 @@ pub fn read_stdin(reader: &mut dyn Read) -> Result<SecretValue, Error> {
     }
     Ok(SecretValue::new(std::mem::take(&mut *bytes)))
 }
-/// No OS access until Input::read is explicitly invoked. Terminal mode uses
+/// No OS access until read/read_with_prompt is explicitly invoked. Terminal mode uses
 /// /dev/tty, never falls back to stdin, and restores attributes on ordinary exits.
 pub struct SystemInput;
 impl Input for SystemInput {
     fn read(&mut self, mode: InputMode) -> Result<SecretValue, Error> {
+        self.read_with_prompt(mode, || Ok(()))
+    }
+}
+impl SystemInput {
+    /// Invoke a fixed, non-secret prompt only after terminal echo is disabled
+    /// and the restoration guard is armed. Never invoked for stdin or terminal
+    /// setup failure. Callback failure restores attributes without reading input.
+    pub fn read_with_prompt(
+        &mut self,
+        mode: InputMode,
+        prompt: impl FnOnce() -> Result<(), Error>,
+    ) -> Result<SecretValue, Error> {
         match mode {
             InputMode::Stdin => read_stdin(&mut std::io::stdin().lock()),
             InputMode::Terminal => {
                 if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
                     return Err(Error::Unavailable);
                 }
-                read_terminal()
+                read_terminal(prompt)
             }
         }
     }
 }
 #[cfg(not(unix))]
-fn read_terminal() -> Result<SecretValue, Error> {
+fn read_terminal(_: impl FnOnce() -> Result<(), Error>) -> Result<SecretValue, Error> {
     Err(Error::Unavailable)
 }
 #[cfg(unix)]
-fn read_terminal() -> Result<SecretValue, Error> {
+fn read_terminal(prompt: impl FnOnce() -> Result<(), Error>) -> Result<SecretValue, Error> {
     use std::os::unix::fs::OpenOptionsExt;
     let mut tty = std::fs::OpenOptions::new()
         .read(true)
@@ -149,10 +171,13 @@ fn read_terminal() -> Result<SecretValue, Error> {
         .custom_flags(libc::O_CLOEXEC | libc::O_NOCTTY)
         .open("/dev/tty")
         .map_err(|_| Error::Unavailable)?;
-    terminal_from(&mut tty)
+    terminal_from(&mut tty, prompt)
 }
 #[cfg(unix)]
-fn terminal_from(tty: &mut std::fs::File) -> Result<SecretValue, Error> {
+fn terminal_from(
+    tty: &mut std::fs::File,
+    prompt: impl FnOnce() -> Result<(), Error>,
+) -> Result<SecretValue, Error> {
     use std::os::fd::{AsRawFd, RawFd};
     struct Restore {
         fd: RawFd,
@@ -185,6 +210,9 @@ fn terminal_from(tty: &mut std::fs::File) -> Result<SecretValue, Error> {
         return Err(Error::Io);
     }
     let result = (|| {
+        // The user must not be invited to type before no-echo is active.
+        // Keeping callback failure inside this result ensures restoration too.
+        prompt()?;
         let mut bytes = Zeroizing::new(Vec::with_capacity(MAX_VALUE));
         let mut byte = Zeroizing::new([0u8; 1]);
         loop {
@@ -331,15 +359,100 @@ mod tests {
             Err(Error::ReadOnly)
         );
     }
+    #[test]
+    fn terminal_confirmation_precedes_put_and_stdin_reads_once() {
+        use std::collections::VecDeque;
+        struct Sequence {
+            values: VecDeque<Result<SecretValue, Error>>,
+            reads: usize,
+        }
+        impl Input for Sequence {
+            fn read(&mut self, _: InputMode) -> Result<SecretValue, Error> {
+                self.reads += 1;
+                self.values.pop_front().expect("unexpected input read")
+            }
+        }
+        for mismatch in [false, true] {
+            let mut store = KeyringStore::injected(Mock::default());
+            let mut input = Sequence {
+                values: VecDeque::from([
+                    Ok(SecretValue::new(b"synthetic-input".to_vec())),
+                    Ok(SecretValue::new(if mismatch {
+                        b"synthetic-mismatch".to_vec()
+                    } else {
+                        b"synthetic-input".to_vec()
+                    })),
+                ]),
+                reads: 0,
+            };
+            let result = execute(
+                &mut store,
+                parse(&["set", "test/confirmed"]).unwrap(),
+                &mut input,
+                0,
+            );
+            assert_eq!(input.reads, 2);
+            assert_eq!(result.is_ok(), !mismatch);
+            assert_eq!(store.list(0).unwrap().len(), usize::from(!mismatch));
+        }
+        let mut store = KeyringStore::injected(Mock::default());
+        let mut input = Sequence {
+            values: VecDeque::from([
+                Ok(SecretValue::new(b"synthetic-input".to_vec())),
+                Err(Error::Io),
+            ]),
+            reads: 0,
+        };
+        assert_eq!(
+            execute(
+                &mut store,
+                parse(&["set", "test/cancel"]).unwrap(),
+                &mut input,
+                0
+            ),
+            Err(Error::Io)
+        );
+        assert!(store.list(0).unwrap().is_empty());
+        let mut input = Sequence {
+            values: VecDeque::from([Ok(SecretValue::new(b"synthetic-input".to_vec()))]),
+            reads: 0,
+        };
+        assert_eq!(
+            execute(
+                &mut store,
+                parse(&["set", "test/stdin", "--stdin"]).unwrap(),
+                &mut input,
+                0
+            ),
+            Ok(Output::Stored)
+        );
+        assert_eq!(input.reads, 1);
+    }
     #[cfg(unix)]
     #[test]
-    fn dedicated_synthetic_pty_noecho_restores_on_success_and_cancel() {
+    fn terminal_setup_failure_never_invokes_prompt() {
+        #[cfg(target_os = "macos")]
+        let base = "/private/tmp";
+        #[cfg(not(target_os = "macos"))]
+        let base = "/tmp";
+        let mut file = tempfile::tempfile_in(base).unwrap();
+        let mut called = false;
+        let result = terminal_from(&mut file, || {
+            called = true;
+            Ok(())
+        });
+        assert!(matches!(result, Err(Error::Unavailable)));
+        assert!(!called);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn dedicated_synthetic_pty_prompt_is_hidden_and_restores_on_success_cancel_prompt_error() {
         use std::{
             fs::File,
             io::Write,
             os::fd::{AsRawFd, FromRawFd},
         };
-        for cancel in [false, true] {
+        for scenario in 0..3 {
             let (mut master, mut slave) = (-1, -1);
             // SAFETY: valid out pointers, null optional name/termios/winsize.
             assert_eq!(
@@ -367,24 +480,48 @@ mod tests {
                 unsafe { t.assume_init() }
             }
             let before = attrs(&inspect);
-            let thread = std::thread::spawn(move || terminal_from(&mut slave));
-            let mut hidden = false;
-            for _ in 0..1000 {
+            let callback_inspect = inspect.try_clone().unwrap();
+            let mut prompt_output = slave.try_clone().unwrap();
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+            const PROMPT: &[u8] = b"synthetic fixed prompt: ";
+            let thread = std::thread::spawn(move || {
+                terminal_from(&mut slave, || {
+                    // This is the prompt boundary itself, not polling after a race.
+                    let t = attrs(&callback_inspect);
+                    assert_eq!(
+                        t.c_lflag & (libc::ECHO | libc::ECHONL | libc::ICANON | libc::ISIG),
+                        0
+                    );
+                    prompt_output.write_all(PROMPT).map_err(|_| Error::Io)?;
+                    prompt_output.flush().map_err(|_| Error::Io)?;
+                    ready_tx.send(()).map_err(|_| Error::Io)?;
+                    if scenario == 2 {
+                        Err(Error::Io)
+                    } else {
+                        Ok(())
+                    }
+                })
+            });
+            ready_rx
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .expect("hidden-mode prompt not emitted");
+            let mut prompt = [0u8; PROMPT.len()];
+            master.read_exact(&mut prompt).unwrap();
+            assert_eq!(prompt, PROMPT);
+            if scenario != 2 {
                 let t = attrs(&inspect);
-                if t.c_lflag & (libc::ECHO | libc::ICANON | libc::ISIG) == 0 {
-                    hidden = true;
-                    break;
+                assert_eq!(
+                    t.c_lflag & (libc::ECHO | libc::ECHONL | libc::ICANON | libc::ISIG),
+                    0
+                );
+                if scenario == 1 {
+                    master.write_all(&[3]).unwrap();
+                } else {
+                    master.write_all(b"synthetic-ptyx\x7f\n").unwrap();
                 }
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-            assert!(hidden);
-            if cancel {
-                master.write_all(&[3]).unwrap();
-            } else {
-                master.write_all(b"synthetic-ptyx\x7f\n").unwrap();
             }
             let result = thread.join().unwrap();
-            if cancel {
+            if scenario != 0 {
                 assert!(result.is_err());
             } else {
                 assert_eq!(result.unwrap().expose(), b"synthetic-pty");

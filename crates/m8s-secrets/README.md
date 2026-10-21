@@ -100,7 +100,8 @@ Never use the mesh owner keystore service/account.
 
 ## Secret UX library / integration contract
 
-`m8s_secrets::ux` is ready for CLI integration; **no existing CLI main is wired**.
+`m8s_secrets::ux` supplies the library command/input boundary; see the
+`m8s-cli` README for actual explicit-file CLI wiring.
 `parse(&[&str]) -> Command`, `execute(store, command, input, now) -> Output`:
 
 - `set NAME [--stdin] [--expires-at SECONDS]`: no argv value option; rejects
@@ -113,12 +114,16 @@ Never use the mesh owner keystore service/account.
 
 The caller injects a selected `SecretStore` and `Input` implementation. Output
 contains metadata only. `SystemInput` performs no access until read is requested.
+Terminal set reads twice and rejects mismatched confirmation before storing.
 Default terminal entry first refuses non-TTY stdin, opens `/dev/tty`, disables
 echo/canonical mode/signals,
 handles newline, backspace and Ctrl-C/Ctrl-D/Ctrl-Z cancellation locally, and
 restores terminal attributes on ordinary success/error/cancellation. It fails
 closed if unavailable; it never substitutes redirected stdin. No value/prompt is
-printed by this library: the CLI may print a fixed non-secret prompt to stderr.
+printed automatically by this library: `SystemInput::read_with_prompt` invokes
+a fixed-prompt callback only after no-echo succeeds and restoration is guarded.
+The CLI writes its fixed stderr prompts inside that callback, never beforehand.
+Callback errors restore terminal attributes without reading input.
 Abrupt process kill/host failure can bypass restoration; operators may need
 `stty sane`. Non-Unix terminal input is unavailable, not plaintext fallback.
 Explicit `--stdin` reads exact bytes through EOF (including a final newline).
@@ -128,12 +133,12 @@ must not log raw argv/input or automatically render input errors with context.
 Tests use synthetic dedicated temp files, injected keyring mocks and a dedicated
 synthetic pseudo-terminal (no OS Keychain calls, ambient secret environment or
 owner keystore). PTY checks verify no echo and restoration after success and
-cancellation; actual Keychain qualification remains unverified. Dependencies and
-root Cargo files are unchanged.
+cancellation; actual Keychain qualification remains unverified. The UX library adds
+no dependencies.
 
 ## Deferred
 
-Default-path/backend setup, actual CLI main integration, lifecycle expiry sweeps,
+Default-path/backend setup, lifecycle expiry sweeps,
 owner-keystore auditing, provider key scope checks and real credential/provider/
 keychain testing remain out of scope. No owner keystore, credential environment,
 or provider access is needed for tests. Expiry is enforced on get/list/check;
