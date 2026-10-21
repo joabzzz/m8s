@@ -371,7 +371,28 @@ mod tests {
             Self(path)
         }
         fn open(&self, args: &[&str]) -> Local {
-            Local::open_development(&self.0, "owner-a".into(), command(args)).unwrap()
+            self.open_fixture(args, || {}).0
+        }
+        // Only this test fixture may wait for transient inherited-fd contention.
+        // Production remains nonblocking; all non-lock errors fail immediately.
+        fn open_fixture(&self, args: &[&str], mut contended: impl FnMut()) -> (Local, usize) {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let mut retries = 0;
+            loop {
+                match Local::open_development(&self.0, "owner-a".into(), command(args)) {
+                    Ok(local) => return (local, retries),
+                    Err(Error::Unavailable) => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "fixture lock still unavailable after {retries} retries"
+                        );
+                        retries += 1;
+                        contended();
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    Err(error) => panic!("unexpected fixture open error: {error:?}"),
+                }
+            }
         }
     }
     impl Drop for Directory {
@@ -838,5 +859,127 @@ mod tests {
         }
         fs::remove_file(alias).unwrap();
         assert!(!directory.0.join("lock").exists());
+    }
+    #[test]
+    fn cloexec_lock_is_inherited_until_exec_and_fixture_waits_only_for_contention() {
+        use std::io::{Read, Write};
+        use std::os::{
+            fd::{AsRawFd, FromRawFd},
+            unix::process::CommandExt,
+        };
+        use std::process::{Child, Command, Stdio};
+        fn pipe() -> (fs::File, fs::File) {
+            let mut fds = [-1; 2];
+            // SAFETY: two valid writable integers; both resulting fds are owned
+            // exactly once by File and closed on exec, including failure paths.
+            assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+            let read = unsafe { fs::File::from_raw_fd(fds[0]) };
+            let write = unsafe { fs::File::from_raw_fd(fds[1]) };
+            for f in [&read, &write] {
+                assert_eq!(
+                    unsafe { libc::fcntl(f.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) },
+                    0
+                );
+            }
+            (read, write)
+        }
+        struct ProbeChild(Child);
+        impl Drop for ProbeChild {
+            fn drop(&mut self) {
+                // Only the retained direct synthetic child, never an arbitrary
+                // numeric PID or host process scan. Also cleans up on panic.
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let directory = Directory::new();
+        let local = directory.open(&["-c", "exit 0"]);
+        let (mut ready, child_ready) = pipe();
+        let (child_release, release) = pipe();
+        let spawning = std::thread::spawn(move || {
+            let ready_fd = child_ready.as_raw_fd();
+            let release_fd = child_release.as_raw_fd();
+            let mut command = Command::new("/bin/sleep");
+            command
+                .arg("60")
+                .env_clear()
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            // SAFETY: child pre-exec code uses ONLY async-signal-safe libc
+            // read/write and stack scalars, no Rust locks/allocations/destructors.
+            // The pipes park exactly between fork and exec, deterministically
+            // exposing the inherited open-file-description despite CLOEXEC.
+            unsafe {
+                command.pre_exec(move || {
+                    let byte = [1u8];
+                    let mut release = [0u8];
+                    let mut ready = libc::pollfd {
+                        fd: release_fd,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    };
+                    if libc::write(ready_fd, byte.as_ptr().cast(), 1) != 1
+                        || libc::poll(&mut ready, 1, 2000) != 1
+                        || libc::read(release_fd, release.as_mut_ptr().cast(), 1) != 1
+                    {
+                        return Err(std::io::Error::from_raw_os_error(libc::EIO));
+                    }
+                    Ok(())
+                });
+            }
+            let child = ProbeChild(command.spawn().unwrap());
+            drop((child_ready, child_release));
+            child
+        });
+        let mut byte = [0u8];
+        let mut poll = libc::pollfd {
+            fd: ready.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: poll only inspects our live owned pipe; a bounded wait prevents
+        // a failed fixture spawn from hanging the test runner.
+        assert_eq!(unsafe { libc::poll(&mut poll, 1, 2000) }, 1);
+        ready.read_exact(&mut byte).unwrap(); // child has inherited the locked fd
+        drop(local); // no live Local owner remains in the parent
+        assert!(matches!(
+            Local::open_development(&directory.0, "owner-a".into(), command(&[])),
+            Err(Error::Unavailable)
+        ));
+        let mut release = Some(release);
+        let (reopened, retries) = directory.open_fixture(&["-c", "exit 0"], || {
+            if let Some(mut release) = release.take() {
+                release.write_all(&[1]).unwrap(); // allow exec, NOT process exit
+            }
+        });
+        assert!(retries >= 1);
+        let mut child = spawning.join().unwrap();
+        assert!(
+            child.0.try_wait().unwrap().is_none(),
+            "exec released the inherited lock while the child is still alive"
+        );
+        // Successfully reopened before child exit proves FD_CLOEXEC worked; it
+        // does not prevent the demonstrated pre-exec inheritance interval.
+        drop(reopened);
+    }
+    #[test]
+    fn fixture_does_not_retry_or_swallow_storage_errors() {
+        let directory = Directory::new();
+        drop(directory.open(&["-c", "exit 0"]));
+        write_private(
+            &directory.0.join("state.json"),
+            b"malformed synthetic state",
+        );
+        let result = std::panic::catch_unwind(|| {
+            directory.open_fixture(&[], || panic!("Storage must never enter contention retry"));
+        });
+        let panic = result.expect_err("storage corruption must fail the fixture");
+        assert!(
+            panic
+                .downcast_ref::<String>()
+                .unwrap()
+                .contains("unexpected fixture open error: Storage")
+        );
     }
 }
