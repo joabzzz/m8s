@@ -1626,6 +1626,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "m8s-provider-local"
+version = "0.1.0"
+dependencies = [
+ "fs2",
+ "libc",
+ "m8s-agent",
+ "m8s-core",
+ "m8s-provider",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "m8s-provider-vast"
 version = "0.1.0"
 dependencies = [
