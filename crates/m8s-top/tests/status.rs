@@ -75,6 +75,12 @@ fn status_request_is_read_only_and_missing_evidence_stays_unknown() {
     assert!(serde_json::from_slice::<m8s_api::Response>(&raw).is_ok());
     let snapshot = server(Duration::from_secs(1), move |mut stream| {
         stream.write_all(&raw).unwrap();
+        // Keep the peer alive until the client has consumed the response.
+        // A full close can reset pending bytes on macOS; this is defensive
+        // fixture lifetime handling, not a retry or a client relaxation.
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut unexpected = [0u8; 1];
+        assert_eq!(stream.read(&mut unexpected).unwrap(), 0);
     })
     .unwrap();
     assert_eq!(snapshot.nodes.len(), 3);
