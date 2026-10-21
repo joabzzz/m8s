@@ -110,8 +110,14 @@ across the ENTIRE load/decode/read-or-mutate/encode/save operation. Each operati
 opens a fresh lock descriptor, rewalks ancestry and pins inodes; checks repeat
 after waiting for flock. Poison or validation failure fails closed before any
 backend effect. File drop/process exit releases flock. No stale-lock deletion,
-permission repair, implicit path discovery, timeout/lock stealing or fallback.
-Calls are blocking/non-reentrant: use `spawn_blocking` from async code. Do not
+permission repair, implicit path discovery, lock stealing or fallback.
+Contention has a monotonic 5-second default budget shared by process-mutex and
+flock acquisition; `acknowledge_exclusive_writers_with_timeout` explicitly sets
+0..=30 seconds (zero is immediate try-only). Timeout is an opaque `LockTimeout`
+before backend access, with no automatic retry or unlock/poison recovery.
+This budget bounds contention polling, not filesystem I/O or an already running
+synchronous driver call; backend-operation deadlines require separate driver/OS
+qualification. Calls are blocking/non-reentrant: use `spawn_blocking` from async code. Do not
 fork live stores/mutexes; independently exec and construct each client.
 
 **Supported guarantee is qualified cooperative exclusive deployment only.**
@@ -137,7 +143,8 @@ driver calls bypass store coordination and are unsupported concurrent writers.
 
 Tests inject memory/file fixture drivers only: independent objects, six actual
 subprocess writers, forced whole-operation race windows, crash/restart releasing
-flock, ambiguity-after-save, read failure/corruption, shared process-lock poison,
+flock, mutex/flock contention timeouts (including a real-process timeout),
+ambiguity-after-save, read failure/corruption, shared process-lock poison,
 lock replacement/modes/links/Git/ACL/path swaps, expiry and deletion. Subprocess
 environments are cleared and contain only dedicated non-secret synthetic fixture
 parameters. No real OS keyring item, credential env or owner keystore is accessed.

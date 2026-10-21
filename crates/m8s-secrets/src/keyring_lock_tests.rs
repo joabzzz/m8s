@@ -204,6 +204,53 @@ fn lock_wait_holds_entire_operation_and_rechecks_after_acquire() {
     assert_eq!(driver.loads.load(Ordering::SeqCst), 0);
 }
 #[test]
+fn process_mutex_timeout_is_bounded_and_has_no_backend_effect() {
+    let (dir, identity) = fixture();
+    assert!(matches!(
+        KeyringLockDomain::acknowledge_exclusive_writers_with_timeout(
+            dir.path(),
+            identity.clone(),
+            Duration::from_secs(31)
+        ),
+        Err(Error::InvalidData)
+    ));
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    let lock = domain(dir.path(), &identity);
+    let process = lock.process.clone();
+    let held = process.gate.lock().unwrap();
+    let immediate = KeyringLockDomain::acknowledge_exclusive_writers_with_timeout(
+        dir.path(),
+        identity.clone(),
+        Duration::ZERO,
+    )
+    .unwrap();
+    let driver = Memory::new(identity);
+    let store = KeyringStore::coordinated(driver.clone(), immediate).unwrap();
+    assert_eq!(store.list(0), Err(Error::LockTimeout));
+    assert_eq!(driver.loads.load(Ordering::SeqCst), 0);
+    drop(held);
+    assert!(store.list(0).unwrap().is_empty());
+}
+#[test]
+fn flock_timeout_does_not_steal_lock_and_releases_process_gate() {
+    let (dir, identity) = fixture();
+    let lock = domain(dir.path(), &identity);
+    let foreign = lock.revalidate().unwrap();
+    foreign.lock_exclusive().unwrap();
+    let timed = KeyringLockDomain::acknowledge_exclusive_writers_with_timeout(
+        dir.path(),
+        identity.clone(),
+        Duration::from_millis(20),
+    )
+    .unwrap();
+    let driver = Memory::new(identity);
+    let store = KeyringStore::coordinated(driver.clone(), timed).unwrap();
+    assert_eq!(store.list(0), Err(Error::LockTimeout));
+    assert_eq!(driver.loads.load(Ordering::SeqCst), 0);
+    drop(foreign);
+    assert!(store.list(0).unwrap().is_empty());
+}
+#[test]
 fn poisoned_shared_process_gate_fails_closed_across_new_objects() {
     let (dir, identity) = fixture();
     let lock = domain(dir.path(), &identity);
@@ -354,13 +401,28 @@ fn disk_store(
     block: Option<PathBuf>,
     ambiguous: bool,
 ) -> KeyringStore<SyntheticDisk> {
+    disk_store_with_timeout(dir, identity, block, ambiguous, Duration::from_secs(5))
+}
+fn disk_store_with_timeout(
+    dir: &Path,
+    identity: &KeyringIdentity,
+    block: Option<PathBuf>,
+    ambiguous: bool,
+    wait_budget: Duration,
+) -> KeyringStore<SyntheticDisk> {
     let driver = SyntheticDisk {
         identity: identity.clone(),
         backend: Mutex::new(FileStore::open(&dir.join("synthetic-backend.toml")).unwrap()),
         block,
         ambiguous,
     };
-    KeyringStore::coordinated(driver, domain(dir, identity)).unwrap()
+    let lock = KeyringLockDomain::acknowledge_exclusive_writers_with_timeout(
+        dir,
+        identity.clone(),
+        wait_budget,
+    )
+    .unwrap();
+    KeyringStore::coordinated(driver, lock).unwrap()
 }
 const WORKER: &str = "keyring_lock::tests::synthetic_subprocess_worker";
 struct SyntheticChild(Child);
@@ -427,7 +489,16 @@ fn synthetic_subprocess_worker() {
         .unwrap();
     let identity = KeyringIdentity::new("synthetic-only", name(&account)).unwrap();
     let marker = (mode == "block").then(|| dir.join("synthetic-entered"));
-    let mut store = disk_store(&dir, &identity, marker, mode == "ambiguous");
+    let budget = if mode == "timeout" {
+        Duration::from_millis(20)
+    } else {
+        Duration::from_secs(5)
+    };
+    let mut store = disk_store_with_timeout(&dir, &identity, marker, mode == "ambiguous", budget);
+    if mode == "timeout" {
+        assert_eq!(store.list(0), Err(Error::LockTimeout));
+        return;
+    }
     if mode == "block" {
         let _ = store.list(0);
         panic!("blocking fixture unexpectedly returned");
@@ -470,6 +541,8 @@ fn real_process_writers_crash_restart_and_ambiguous_save_preserve_evidence() {
         }
         thread::sleep(Duration::from_millis(5));
     }
+    let mut timed_out = spawn(dir.path(), &identity, "timeout", 0);
+    wait(&mut timed_out); // Real independent process must time out, not read the item.
     let mut blocked = spawn(dir.path(), &identity, "write", 99);
     thread::sleep(Duration::from_millis(50));
     assert!(blocked.try_wait().unwrap().is_none());
