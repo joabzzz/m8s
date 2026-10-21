@@ -33,6 +33,24 @@ pub struct Store {
     conn: Connection,
     owner: String,
 }
+// Exact existing mock launch gate, shared by managed LOCAL preparation. Read
+// only: no desired/capacity/accounting mutations or new authority here.
+fn launch_rate_available(conn: &Connection, tier: &str, now: Timestamp) -> Result<bool> {
+    let future: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM launch_attempt WHERE tier=? AND at>?)",
+        params![tier, now],
+        |r| r.get(0),
+    )?;
+    if future {
+        return Ok(false);
+    }
+    let count: u32 = conn.query_row(
+        "SELECT count(*) FROM launch_attempt WHERE tier=? AND at>?",
+        params![tier, now.saturating_sub(3600)],
+        |r| r.get(0),
+    )?;
+    Ok(count < 3)
+}
 impl Store {
     pub fn open(path: impl AsRef<Path>, owner: &str) -> Result<Self> {
         if owner.is_empty() {
@@ -197,20 +215,7 @@ impl Store {
         if desired.unwrap_or(0) == 0 {
             return Ok(None);
         }
-        let future: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM launch_attempt WHERE tier=? AND at>?)",
-            params![tier, now],
-            |r| r.get(0),
-        )?;
-        if future {
-            return Ok(None);
-        }
-        let count: u32 = tx.query_row(
-            "SELECT count(*) FROM launch_attempt WHERE tier=? AND at>?",
-            params![tier, now.saturating_sub(3600)],
-            |r| r.get(0),
-        )?;
-        if count >= 3 {
+        if !launch_rate_available(&tx, tier, now)? {
             return Ok(None);
         }
         let uid: String = tx.query_row("SELECT lower(hex(randomblob(16)))", [], |r| r.get(0))?;

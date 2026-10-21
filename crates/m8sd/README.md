@@ -612,11 +612,15 @@ The 28-day interval, baseline, NoneConfirmed external-liability field, rates and
 all owner/approval/provenance labels are fictional SYNTHETIC-NOT-ADMIN-APPROVAL
 inputs, NOT claims of real provider reconciliation or a real calendar period.
 
-The example alone seeds a clearly marked Launching node and matching attempt in
-the SAME fresh private SQLite DB. This fixture SQL is NOT a public production
-launch-authority API or replacement operation manager. Only public reservation,
-prepare/claim, timed Local and cleanup APIs drive subsequent lifecycle effects.
-No arbitrary command/argv/URL/cloud/config/secret input is supported.
+The example now uses pure planned_intent metadata, explicit synthetic budget
+reservation, then Store-owned prepare_managed to atomically create the derived
+LOCAL UID, Launching node, attempt and Prepared operation in the SAME database.
+There is NO example node/attempt INSERT/setup SQL or caller-supplied UID. The
+constructor may open an EMPTY Local journal before reservation so it can preview
+its pinned identity; a too-small cap creates ZERO manager nodes/attempts/operations
+or children, with no submission. Empty journal creation is neither absence nor
+create authority. Only accounting inputs remain synthetic-not-approval; no
+arbitrary command/argv/URL/cloud/config/secret input is supported.
 
 State directory0700 and exclusive no-follow0600 demo lock are held throughout
 Store/effects/cleanup. Store/Local retain their reviewed private UID/ACL/journal
@@ -629,7 +633,7 @@ A new path is a NEW SYNTHETIC fixture, never a live-account budget reset.
 Output is bounded NDJSON with fixed phase names, no raw argv/env/journals. Exit0
 means LOCAL journal cleanup observed LocalOnlyAbsent and read-only checks retained
 unknown billing, the full Uncertain hold, consumed dispatch/invocation history and
-cleanup-required intent. The synthetic node remains Launching, NOT reconciled
+cleanup-required intent. The managed LOCAL node remains Launching, NOT reconciled
 fleet/Ready/model/admission status. No spent=0, refund or absence-proof claim is
 emitted. Errors exit nonzero, preserve state, request stop and attempt exact-owned
 cleanup without repeating create. A failed/incomplete cleanup is uncertainty,
@@ -644,3 +648,38 @@ remain uncontained. On uncertain error/exit, the fixed harmless sleep may remain
 no child-survival/complete-teardown guarantee is made. Drop is stop-only. No
 signals/watchdog architecture, automatic Store cleanup/billing settlement,
 provider/TLS/MP-001/Keychain/model/network workload or spending is added.
+
+## Store-owned managed LOCAL preparation (explicit existing budget only)
+
+`LocalLaunchRequest { run_id, request_id, operation_id }` contains bounded metadata,
+not owner/UID/tier overrides or a permit. `executor.planned_intent(&store, &request)`
+is pure: no DB/journal I/O, effects, approval or claim. Its domain/version/length-
+prefixed SHA256 derives local-dev- UID from exact owner/run/request only. Rotating
+operationID, target, command or tier cannot manufacture a different UID under an
+old request; the full canonical plan fingerprint separately binds all intent and
+plan fields. Owner comes from exact Store+executor and tier from constructor.
+
+Caller explicitly scales persisted desired and reserves an exact matching budget
+using preview UID BEFORE `prepare_managed`. Managed preparation starts owner-
+checked IMMEDIATE, samples real UTC AFTER writer acquisition, recomputes identity
+inside the transaction, and requires the existing Reserved owner/run/request/UID
+budget through the existing current-policy/caps/liability/original-deadline
+validator. It never reserves/rebinds budget or treats config/metadata as approval.
+
+For new work, ALL retained tier nodes (including deleting, orphan and unknown
+unconfirmed rows) count toward persisted desired. The exact shared mock launch
+rate gate refuses future timestamps and requires fewer than three attempts at
+at>now-3600; equality at the cutoff is unchanged. One atomic commit inserts NEW
+node+attempt+Prepared operation and shared clock, or rolls everything back. There
+is no upsert, adoption, repair, random UID, nested public transaction, claim,
+Local filesystem/spawn or other effect inside that SQL transaction.
+
+Exact identity retries return retained metadata only, even cancelled/dispatched/
+stopped or reopened: no node/attempt recreation, clock/deadline renewal, budget
+debit or recovered claim. Changed identity/request target refuses. Down/up cannot
+revive a deleting old node; claim/execute still revalidate current state/budget
+and retain single-use uncertainty. These methods do not wire the default daemon,
+generic/cloud operation manager, paid provider or approval route. Public lower-
+level prepare and mock reserve retain their previous behavior via private shared
+transaction/rate helpers. Local cleanup still cannot erase Store history, settle
+unknown bills, refund or authorize another create.

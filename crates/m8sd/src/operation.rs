@@ -322,52 +322,70 @@ fn binding_valid(b: &ResourceBinding, intent: &CreateIntent, now: i64) -> Result
     }
     Ok(())
 }
+fn validate_prepare_identity(owner: &str, intent: &CreateIntent) -> Result<()> {
+    for s in [
+        &intent.owner,
+        &intent.run_id,
+        &intent.request_id,
+        &intent.node_uid,
+        &intent.operation_id,
+    ] {
+        label(s)?;
+    }
+    if intent.owner != owner {
+        return Err(Error::OwnerMismatch);
+    }
+    Ok(())
+}
+// Shared exact existing public prepare transaction; no nested BEGIN/effects.
+// bool distinguishes a new row from metadata-only retry (no clock renewal).
+fn prepare_create_tx(
+    tx: &Transaction<'_>,
+    owner: &str,
+    intent: &CreateIntent,
+    now: i64,
+) -> Result<(CreateOperation, bool)> {
+    validate_prepare_identity(owner, intent)?;
+    owned(tx, owner)?;
+    let mut a = account(tx, owner, now)?;
+    if let Some(r) = get(tx, owner, &intent.operation_id)? {
+        if r.intent != *intent || now < r.last_at {
+            return Err(Error::Invalid);
+        }
+        return Ok((r, false));
+    }
+    let b = budget(tx, intent)?;
+    crate::budget::validate_create_dispatch(tx, &b, &a, now)?;
+    live_launch(tx, intent, now)?;
+    let r = CreateOperation {
+        intent: intent.clone(),
+        state: CreateState::Prepared,
+        prepared_at: now,
+        last_at: now,
+        dispatched_at: None,
+        invocation_started_at: None,
+        cancelled_at: None,
+        cleanup_required: false,
+        result: None,
+        uncertainty_observed: false,
+        budget: b,
+    };
+    tx.execute("INSERT INTO create_operation(owner,operation_id,request_id,node_uid,record)VALUES(?,?,?,?,?)",params![owner,intent.operation_id,intent.request_id,intent.node_uid,encode(&r)?])?;
+    a.last_at = now;
+    tx.execute(
+        "UPDATE budget_account SET record=? WHERE owner=?",
+        params![encode(&a)?, owner],
+    )?;
+    Ok((r, true))
+}
 impl Store {
     pub fn prepare_create(&self, intent: &CreateIntent, now: i64) -> Result<CreateOperation> {
-        for s in [
-            &intent.owner,
-            &intent.run_id,
-            &intent.request_id,
-            &intent.node_uid,
-            &intent.operation_id,
-        ] {
-            label(s)?;
-        }
-        if intent.owner != self.owner {
-            return Err(Error::OwnerMismatch);
-        }
+        validate_prepare_identity(&self.owner, intent)?;
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        owned(&tx, &self.owner)?;
-        let mut a = account(&tx, &self.owner, now)?;
-        if let Some(r) = get(&tx, &self.owner, &intent.operation_id)? {
-            if r.intent != *intent || now < r.last_at {
-                return Err(Error::Invalid);
-            }
-            return Ok(r);
+        let (r, inserted) = prepare_create_tx(&tx, &self.owner, intent, now)?;
+        if inserted {
+            tx.commit()?;
         }
-        let b = budget(&tx, intent)?;
-        crate::budget::validate_create_dispatch(&tx, &b, &a, now)?;
-        live_launch(&tx, intent, now)?;
-        let r = CreateOperation {
-            intent: intent.clone(),
-            state: CreateState::Prepared,
-            prepared_at: now,
-            last_at: now,
-            dispatched_at: None,
-            invocation_started_at: None,
-            cancelled_at: None,
-            cleanup_required: false,
-            result: None,
-            uncertainty_observed: false,
-            budget: b,
-        };
-        tx.execute("INSERT INTO create_operation(owner,operation_id,request_id,node_uid,record)VALUES(?,?,?,?,?)",params![self.owner,intent.operation_id,intent.request_id,intent.node_uid,encode(&r)?])?;
-        a.last_at = now;
-        tx.execute(
-            "UPDATE budget_account SET record=? WHERE owner=?",
-            params![encode(&a)?, self.owner],
-        )?;
-        tx.commit()?;
         Ok(r)
     }
     pub fn claim_create(&self, operation_id: &str, now: i64) -> Result<CreateClaim> {

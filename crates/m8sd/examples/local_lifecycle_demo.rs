@@ -11,14 +11,14 @@ mod demo {
             EvidenceStatus, ExternalLiability, RateUnit, TotalUnit,
         },
         operation::{
-            CreateIntent, CreateState,
+            CreateState,
             local_development::{
                 LocalCleanupStatus, LocalDevelopmentExecutor, LocalDevelopmentOutcome,
-                LocalDevelopmentPlan,
+                LocalDevelopmentPlan, LocalLaunchRequest,
             },
         },
     };
-    use rusqlite::{Connection, OpenFlags, TransactionBehavior, params};
+    use rusqlite::{Connection, OpenFlags, params};
     use serde_json::{Value, json};
     use std::{
         ffi::OsString,
@@ -36,7 +36,6 @@ mod demo {
     const LABEL: &str = "SYNTHETIC-NOT-ADMIN-APPROVAL";
     const OWNER: &str = "SYNTHETIC-NOT-ADMIN-APPROVAL-local-demo";
     const TIER: &str = "SYNTHETIC-local-demo";
-    const UID: &str = "synthetic-local-demo-node-1";
     const REQUEST: &str = "synthetic-local-demo-request-1";
     const OP: &str = "synthetic-local-demo-operation-1";
     const MAX_CAP: u64 = 1_000_000;
@@ -231,7 +230,11 @@ mod demo {
         )
         .map_err(|_| Error::Persistence)
     }
-    fn fixtures(cap: u64, at: i64) -> Result<(AdminBudget, CalendarPeriod, BudgetRequest)> {
+    fn fixtures(
+        cap: u64,
+        at: i64,
+        node_uid: &str,
+    ) -> Result<(AdminBudget, CalendarPeriod, BudgetRequest)> {
         let end = at.checked_add(60).ok_or(Error::Persistence)?;
         let period = CalendarPeriod {
             id: format!("{LABEL}-28-day-fixture-NOT-real-calendar"),
@@ -266,7 +269,7 @@ mod demo {
             owner: OWNER.into(),
             run_id: format!("{LABEL}-run"),
             request_id: REQUEST.into(),
-            node_uid: UID.into(),
+            node_uid: node_uid.into(),
             quote: CostQuote {
                 provenance: format!("{LABEL}-fictional-rates-NOT-measured-cost"),
                 observed_at: at,
@@ -285,46 +288,12 @@ mod demo {
         };
         Ok((policy, period, request))
     }
-    fn fixture_connection(path: &Path, readonly: bool) -> Result<Connection> {
+    fn read_only_connection(path: &Path) -> Result<Connection> {
         Connection::open_with_flags(
             path,
-            if readonly {
-                OpenFlags::SQLITE_OPEN_READ_ONLY
-            } else {
-                OpenFlags::SQLITE_OPEN_READ_WRITE
-            } | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NOFOLLOW,
         )
         .map_err(|_| Error::Persistence)
-    }
-    fn seed_synthetic_not_approval_launch_intent(path: &Path, at: i64) -> Result<()> {
-        // EXAMPLE ONLY: missing production launch-intent authority is NOT solved
-        // by this fixture. Exact fresh private DB, same owner, no mock Provider.
-        let mut c = fixture_connection(path, false)?;
-        let tx = c
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|_| Error::Persistence)?;
-        let owned: bool = tx
-            .query_row(
-                "SELECT count(*)=1 AND min(owner)=? FROM pool",
-                [OWNER],
-                |r| r.get(0),
-            )
-            .map_err(|_| Error::Persistence)?;
-        let empty:bool=tx.query_row("SELECT (SELECT count(*) FROM gpu_node)=0 AND (SELECT count(*) FROM launch_attempt)=0",[],|r|r.get(0)).map_err(|_|Error::Persistence)?;
-        if !owned || !empty {
-            return Err(Error::Verification);
-        }
-        tx.execute(
-            "INSERT INTO gpu_node(uid,tier,phase,created_at)VALUES(?,?,?,?)",
-            params![UID, TIER, "\"Launching\"", at],
-        )
-        .map_err(|_| Error::Persistence)?;
-        tx.execute(
-            "INSERT INTO launch_attempt(uid,tier,at)VALUES(?,?,?)",
-            params![UID, TIER, at],
-        )
-        .map_err(|_| Error::Persistence)?;
-        tx.commit().map_err(|_| Error::Persistence)
     }
     fn event(out: &mut impl Write, value: Value) -> Result<()> {
         let bytes = serde_json::to_vec(&value).map_err(|_| Error::Output)?;
@@ -378,8 +347,8 @@ mod demo {
         {
             return Err(Error::Verification);
         }
-        let c = fixture_connection(path, true)?;
-        let yes:bool=c.query_row("SELECT (SELECT count(*) FROM gpu_node WHERE uid=? AND phase='\"Launching\"')=1 AND (SELECT count(*) FROM launch_attempt WHERE uid=?)=1",params![UID,UID],|r|r.get(0)).map_err(|_|Error::Verification)?;
+        let c = read_only_connection(path)?;
+        let yes:bool=c.query_row("SELECT (SELECT count(*) FROM gpu_node WHERE uid=? AND phase='\"Launching\"')=1 AND (SELECT count(*) FROM launch_attempt WHERE uid=?)=1",params![operations[0].intent.node_uid,operations[0].intent.node_uid],|r|r.get(0)).map_err(|_|Error::Verification)?;
         if !yes {
             return Err(Error::Verification);
         }
@@ -394,21 +363,15 @@ mod demo {
         state: &FreshState,
         out: &mut impl Write,
     ) -> Result<()> {
-        let at = now()?;
-        let mut intent = CreateIntent {
-            owner: OWNER.into(),
+        let request = LocalLaunchRequest {
             run_id: format!("{LABEL}-run"),
             request_id: REQUEST.into(),
-            node_uid: UID.into(),
             operation_id: OP.into(),
-            launch_fingerprint: [0; 32],
         };
-        intent.launch_fingerprint = executor
-            .fingerprint(&intent)
-            .map_err(|_| Error::Persistence)?;
         executor
-            .prepare(store, &intent, at)
+            .prepare_managed(store, &request)
             .map_err(|_| Error::Persistence)?;
+        let at = now()?;
         let claim = executor
             .claim(store, OP, at)
             .map_err(|_| Error::LaunchUncertain)?;
@@ -465,7 +428,7 @@ mod demo {
             out,
             json!({"phase":"summary","mode":"local-development-demo","accounting":"synthetic-not-approval",
             "journal_cleanup":"LocalOnlyAbsent","billing":"unknown","budget_state":"Uncertain","reserved_hold_retained":true,
-            "simulated_hold_micro_usd":hold,"claim_state":"consumed","cleanup_required":true,"node_fixture":"synthetic-Launching-not-fleet"}),
+            "simulated_hold_micro_usd":hold,"claim_state":"consumed","cleanup_required":true,"node_state":"managed-local-Launching-not-reconciled-fleet"}),
         )
     }
     fn run(opts: Options, out: &mut impl Write) -> Result<()> {
@@ -478,21 +441,7 @@ mod demo {
             out,
             json!({"phase":"fixture_initialized","mode":"local-development-demo","accounting":"synthetic-not-approval","synthetic_cap_micro_usd":opts.cap}),
         )?;
-        let at = now()?;
         store.scale(TIER, 1).map_err(|_| Error::Persistence)?;
-        seed_synthetic_not_approval_launch_intent(&db, at)?;
-        let (policy, period, request) = fixtures(opts.cap, at)?;
-        let reservation = store
-            .reserve_budget(&policy, &period, &request, at)
-            .map_err(|error| match error {
-                m8sd::Error::Invalid => Error::SyntheticCapRefused,
-                _ => Error::Persistence,
-            })?;
-        event(
-            out,
-            json!({"phase":"reservation_persisted","simulated_hold_micro_usd":reservation.reserved_all_in,"accounting":"synthetic-not-approval"}),
-        )?;
-        state.recheck()?;
         let journal = opts.state.join("local-journal");
         fs::DirBuilder::new()
             .mode(0o700)
@@ -510,6 +459,27 @@ mod demo {
         .map_err(|_| Error::Persistence)?;
         let mut executor =
             LocalDevelopmentExecutor::open(plan, OWNER).map_err(|_| Error::Persistence)?;
+        let request_metadata = LocalLaunchRequest {
+            run_id: format!("{LABEL}-run"),
+            request_id: REQUEST.into(),
+            operation_id: OP.into(),
+        };
+        let preview = executor
+            .planned_intent(&store, &request_metadata)
+            .map_err(|_| Error::Persistence)?;
+        let at = now()?;
+        let (policy, period, request) = fixtures(opts.cap, at, &preview.node_uid)?;
+        let reservation = store
+            .reserve_budget(&policy, &period, &request, at)
+            .map_err(|error| match error {
+                m8sd::Error::Invalid => Error::SyntheticCapRefused,
+                _ => Error::Persistence,
+            })?;
+        event(
+            out,
+            json!({"phase":"reservation_persisted","simulated_hold_micro_usd":reservation.reserved_all_in,"accounting":"synthetic-not-approval"}),
+        )?;
+        state.recheck()?;
         let result = drive(
             &store,
             &mut executor,
@@ -597,7 +567,7 @@ mod demo {
                 .collect()
         }
         fn retained(path: &Path, scenario: Scenario) {
-            let c = fixture_connection(&path.join("state.db"), true).unwrap();
+            let c = read_only_connection(&path.join("state.db")).unwrap();
             let raw: String = c
                 .query_row("SELECT record FROM budget_reservation", [], |r| r.get(0))
                 .unwrap();
@@ -713,7 +683,7 @@ mod demo {
                     .any(|v| v["phase"] == "deadline_stop_observed")
             );
             retained(&path, Scenario::Deadline);
-            let c = fixture_connection(&path.join("state.db"), true).unwrap();
+            let c = read_only_connection(&path.join("state.db")).unwrap();
             let raw: String = c
                 .query_row("SELECT record FROM budget_reservation", [], |r| r.get(0))
                 .unwrap();
@@ -730,8 +700,20 @@ mod demo {
                 Err(Error::SyntheticCapRefused)
             );
             assert!(path.join("state.db").is_file());
-            assert!(!path.join("local-journal").exists());
-            let c = fixture_connection(&path.join("state.db"), true).unwrap();
+            let journal: Value =
+                serde_json::from_slice(&fs::read(path.join("local-journal/state.json")).unwrap())
+                    .unwrap();
+            assert!(journal["records"].as_object().unwrap().is_empty());
+            let c = read_only_connection(&path.join("state.db")).unwrap();
+            let n: i64 = c
+                .query_row(
+                    "SELECT (SELECT count(*) FROM gpu_node)+(SELECT count(*) FROM launch_attempt)",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 0);
+            let c = read_only_connection(&path.join("state.db")).unwrap();
             let n: i64 = c
                 .query_row("SELECT count(*) FROM create_operation", [], |r| r.get(0))
                 .unwrap();
@@ -813,7 +795,7 @@ mod demo {
                 run(parse(args(&path, "10000", "cancel")).unwrap(), &mut writer),
                 Err(Error::Output)
             );
-            let c = fixture_connection(&path.join("state.db"), true).unwrap();
+            let c = read_only_connection(&path.join("state.db")).unwrap();
             let raw: String = c
                 .query_row("SELECT record FROM budget_reservation", [], |r| r.get(0))
                 .unwrap();

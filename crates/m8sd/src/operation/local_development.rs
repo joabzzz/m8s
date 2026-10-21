@@ -14,6 +14,18 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+/// Ordinary bounded request metadata, NOT approval, UID override or claim.
+/// ```compile_fail
+/// use m8sd::operation::local_development::LocalLaunchRequest;
+/// let _ = LocalLaunchRequest { run_id: "r".into(), request_id: "q".into(),
+///     operation_id: "op".into(), node_uid: "override".into() };
+/// ```
+#[derive(Clone)]
+pub struct LocalLaunchRequest {
+    pub run_id: String,
+    pub request_id: String,
+    pub operation_id: String,
+}
 struct Identity {
     journal: PathBuf,
     namespace: String,
@@ -224,6 +236,124 @@ impl LocalDevelopmentExecutor {
             #[cfg(test)]
             hooks: Hooks::default(),
         })
+    }
+    /// Pure preview only: no database/journal access, effects or permission.
+    /// UID depends on owner/run/request, NEVER operationID or mutable target.
+    pub fn planned_intent(
+        &self,
+        store: &Store,
+        request: &LocalLaunchRequest,
+    ) -> Result<CreateIntent> {
+        if store.owner != self.owner {
+            return Err(Error::OwnerMismatch);
+        }
+        for value in [
+            &store.owner,
+            &request.run_id,
+            &request.request_id,
+            &request.operation_id,
+        ] {
+            label(value)?;
+        }
+        let mut hash = Sha256::new();
+        hash.update(b"m8s-managed-local-node\0");
+        hash.update(1u16.to_be_bytes());
+        for value in [&store.owner, &request.run_id, &request.request_id] {
+            hash.update((value.len() as u32).to_be_bytes());
+            hash.update(value.as_bytes());
+        }
+        let mut node_uid = String::from("local-dev-");
+        for byte in hash.finalize() {
+            use std::fmt::Write;
+            write!(&mut node_uid, "{byte:02x}").map_err(|_| Error::Invalid)?;
+        }
+        let mut intent = CreateIntent {
+            owner: store.owner.clone(),
+            run_id: request.run_id.clone(),
+            request_id: request.request_id.clone(),
+            operation_id: request.operation_id.clone(),
+            node_uid,
+            launch_fingerprint: [0; 32],
+        };
+        intent.launch_fingerprint = self.identity.fingerprint(&intent)?;
+        Ok(intent)
+    }
+    /// Authoritative same-Store node/attempt/Prepared metadata, NEVER a claim.
+    /// Requires explicit already-persisted matching Reserved budget and desired.
+    pub fn prepare_managed(
+        &self,
+        store: &Store,
+        request: &LocalLaunchRequest,
+    ) -> Result<CreateOperation> {
+        self.prepare_managed_inner(store, request, InvocationClock::LocalUtc)
+    }
+    fn prepare_managed_inner(
+        &self,
+        store: &Store,
+        request: &LocalLaunchRequest,
+        clock: InvocationClock,
+    ) -> Result<CreateOperation> {
+        let tx = Transaction::new_unchecked(&store.conn, TransactionBehavior::Immediate)?;
+        let now = match clock {
+            InvocationClock::Explicit(now) => now, // private deterministic tests only here
+            InvocationClock::LocalUtc => utc_seconds()?, // AFTER writer acquired
+        };
+        owned(&tx, &store.owner)?;
+        let intent = self.planned_intent(store, request)?; // recompute INSIDE owner TX
+        let a = account(&tx, &store.owner, now)?;
+        if let Some(existing) = get(&tx, &store.owner, &intent.operation_id)? {
+            if existing.intent != intent || now < existing.last_at {
+                return Err(Error::Invalid);
+            }
+            // Metadata only, including cancelled/dispatched/stopped/reopened.
+            // No repair of missing history, new slot, clock renewal or permit.
+            return Ok(existing);
+        }
+        self.available(store, &intent)?;
+        let request_used: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM create_operation WHERE owner=? AND request_id=?)",
+            params![store.owner, intent.request_id],
+            |r| r.get(0),
+        )?;
+        if request_used {
+            return Err(Error::Invalid);
+        }
+        let b = budget(&tx, &intent)?;
+        crate::budget::validate_create_dispatch(&tx, &b, &a, now)?;
+        let desired: Option<u32> = tx
+            .query_row(
+                "SELECT desired FROM tier WHERE name=?",
+                [&self.identity.tier],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let retained: i64 = tx.query_row(
+            "SELECT count(*) FROM gpu_node WHERE tier=?",
+            [&self.identity.tier],
+            |r| r.get(0),
+        )?;
+        if desired.is_none_or(|n| n == 0 || retained < 0 || retained >= i64::from(n))
+            || !crate::launch_rate_available(&tx, &self.identity.tier, now)?
+        {
+            return Err(Error::Invalid);
+        }
+        if tx.execute("INSERT INTO gpu_node(uid,tier,phase,instance_id,created_at,orphan,deleting) VALUES (?,?,'\"Launching\"',NULL,?,0,0)", params![intent.node_uid, self.identity.tier, now])? != 1 { return Err(Error::Corrupt); }
+        if tx.execute(
+            "INSERT INTO launch_attempt(uid,tier,at) VALUES (?,?,?)",
+            params![intent.node_uid, self.identity.tier, now],
+        )? != 1
+        {
+            return Err(Error::Corrupt);
+        }
+        let (operation, inserted) = prepare_create_tx(&tx, &store.owner, &intent, now)?;
+        if !inserted
+            || get(&tx, &store.owner, &intent.operation_id)?.as_ref() != Some(&operation)
+            || account(&tx, &store.owner, now)?.last_at != now
+        {
+            return Err(Error::Corrupt);
+        }
+        tx.commit()?;
+        Ok(operation)
     }
     pub fn fingerprint(&self, intent: &CreateIntent) -> Result<[u8; 32]> {
         self.identity.fingerprint(intent)

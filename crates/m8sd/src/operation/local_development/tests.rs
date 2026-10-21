@@ -676,7 +676,8 @@ fn original_utc_deadline_expires_without_rebase_and_clock_future_refuses() {
                 f.s.conn
                     .execute(
                         "UPDATE budget_account SET record=json_set(record,'$.last_at',?)",
-                        [f.now + 1],
+                        // Remain strictly future even if scheduling advances real UTC.
+                        [i64::MAX],
                     )
                     .unwrap();
             }
@@ -1355,4 +1356,587 @@ fn cleanup_state_file_replacement_refuses_even_after_reap_and_never_repairs_or_u
         f.s.budget_reservations().unwrap()[0].state,
         BudgetState::Uncertain
     );
+}
+
+struct ManagedFixture {
+    _dir: Directory,
+    db: PathBuf,
+    s: Store,
+    e: LocalDevelopmentExecutor,
+    request: LocalLaunchRequest,
+}
+fn managed_request(id: &str) -> LocalLaunchRequest {
+    LocalLaunchRequest {
+        run_id: "run".into(),
+        request_id: id.into(),
+        operation_id: format!("managed-op-{id}"),
+    }
+}
+fn managed_reserve(
+    s: &Store,
+    e: &LocalDevelopmentExecutor,
+    r: &LocalLaunchRequest,
+    at: i64,
+    p: &AdminBudget,
+) {
+    let preview = e.planned_intent(s, r).unwrap();
+    let mut b = request(&r.request_id, at, 20);
+    b.run_id = r.run_id.clone();
+    b.node_uid = preview.node_uid;
+    s.reserve_budget(p, &period(at), &b, at).unwrap();
+}
+fn managed_fixture(at: i64) -> ManagedFixture {
+    managed_fixture_policy(at, &policy(at))
+}
+fn managed_fixture_policy(at: i64, p: &AdminBudget) -> ManagedFixture {
+    let d = Directory::new();
+    let db = d.0.join("state.db");
+    let s = Store::open(&db, "owner").unwrap();
+    s.scale("tier", 1).unwrap();
+    let e = LocalDevelopmentExecutor::open(plan(d.journal()), "owner").unwrap();
+    let r = managed_request("managed-a");
+    managed_reserve(&s, &e, &r, at, p);
+    ManagedFixture {
+        _dir: d,
+        db,
+        s,
+        e,
+        request: r,
+    }
+}
+fn managed_prepare(f: &ManagedFixture, at: i64) -> Result<CreateOperation> {
+    f.e.prepare_managed_inner(&f.s, &f.request, InvocationClock::Explicit(at))
+}
+fn managed_counts(s: &Store) -> (i64, i64, i64) {
+    s.conn.query_row("SELECT (SELECT count(*) FROM gpu_node),(SELECT count(*) FROM launch_attempt),(SELECT count(*) FROM create_operation)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap()
+}
+#[test]
+fn managed_preview_is_pure_stable_domain_bound_no_uid_override_or_target_rotation() {
+    let mut f = managed_fixture(100000);
+    let before = managed_counts(&f.s);
+    let budget = f.s.budget_reservations().unwrap();
+    let i = f.e.planned_intent(&f.s, &f.request).unwrap();
+    assert_eq!(i, f.e.planned_intent(&f.s, &f.request).unwrap());
+    assert!(i.node_uid.starts_with("local-dev-"));
+    let mut h = Sha256::new();
+    h.update(b"m8s-managed-local-node\0");
+    h.update(1u16.to_be_bytes());
+    for value in [&i.owner, &i.run_id, &i.request_id] {
+        h.update((value.len() as u32).to_be_bytes());
+        h.update(value.as_bytes());
+    }
+    let uid = format!("local-dev-{:x}", h.finalize());
+    assert_eq!(uid, i.node_uid);
+    let mut changed = f.request.clone();
+    changed.operation_id.push('x');
+    let j = f.e.planned_intent(&f.s, &changed).unwrap();
+    assert_eq!(j.node_uid, i.node_uid);
+    assert_ne!(j.launch_fingerprint, i.launch_fingerprint);
+    f.e.identity.target.push('x');
+    let j = f.e.planned_intent(&f.s, &f.request).unwrap();
+    assert_eq!(j.node_uid, i.node_uid);
+    assert_ne!(j.launch_fingerprint, i.launch_fingerprint);
+    let other = Directory::new();
+    let foreign = Store::open(other.0.join("state.db"), "different-owner").unwrap();
+    assert!(f.e.planned_intent(&foreign, &f.request).is_err());
+    changed.request_id = "".into();
+    assert!(f.e.planned_intent(&f.s, &changed).is_err());
+    assert_eq!(managed_counts(&f.s), before);
+    assert_eq!(f.s.budget_reservations().unwrap(), budget);
+    assert!(!f.e.submitted);
+    f.s.conn
+        .execute_batch("DROP TABLE create_operation; DROP TABLE gpu_node;")
+        .unwrap();
+    assert_eq!(
+        f.e.planned_intent(&f.s, &f.request).unwrap().node_uid,
+        i.node_uid
+    ); // no DB reads even when tables unavailable
+}
+#[test]
+fn managed_one_atomic_preparation_exact_retry_does_not_debit_or_renew_clock_or_history() {
+    let f = managed_fixture(100000);
+    let b = f.s.budget_reservations().unwrap();
+    let r = managed_prepare(&f, 100001).unwrap();
+    assert_eq!(r.state, CreateState::Prepared);
+    assert_eq!(r.intent, f.e.planned_intent(&f.s, &f.request).unwrap());
+    assert_eq!(managed_counts(&f.s), (1, 1, 1));
+    assert_eq!(f.s.budget_reservations().unwrap(), b);
+    assert_eq!(r.prepared_at, 100001);
+    let account: String =
+        f.s.conn
+            .query_row("SELECT record FROM budget_account", [], |r| r.get(0))
+            .unwrap();
+    assert_eq!(managed_prepare(&f, 100002).unwrap(), r);
+    assert_eq!(managed_counts(&f.s), (1, 1, 1));
+    assert_eq!(
+        f.s.conn
+            .query_row::<String, _, _>("SELECT record FROM budget_account", [], |r| r.get(0))
+            .unwrap(),
+        account
+    );
+    let node: (String, String, i64, i64) =
+        f.s.conn
+            .query_row("SELECT tier,phase,orphan,deleting FROM gpu_node", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .unwrap();
+    assert_eq!(node, ("tier".into(), "\"Launching\"".into(), 0, 0));
+}
+#[test]
+fn managed_retries_cancel_dispatch_reopen_missing_history_are_metadata_never_recreated() {
+    for kind in 0..4 {
+        let f = managed_fixture(100000);
+        let r = managed_prepare(&f, 100000).unwrap();
+        match kind {
+            0 => {
+                f.s.cancel_create(&r.intent.operation_id, 100001).unwrap();
+                f.e.stop_handle().request_stop();
+            }
+            1 => {
+                drop(f.e.claim(&f.s, &r.intent.operation_id, 100001).unwrap());
+            }
+            2 => {
+                f.s.conn.execute("DELETE FROM gpu_node", []).unwrap();
+            }
+            _ => {
+                f.s.conn.execute("DELETE FROM launch_attempt", []).unwrap();
+            }
+        }
+        let current = f.s.create_operations().unwrap().remove(0);
+        let counts = managed_counts(&f.s);
+        let account: String =
+            f.s.conn
+                .query_row("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap();
+        assert_eq!(managed_prepare(&f, 100002).unwrap(), current);
+        assert_eq!(managed_counts(&f.s), counts);
+        assert_eq!(
+            f.s.conn
+                .query_row::<String, _, _>("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap(),
+            account
+        );
+        let journal = f.e.identity.journal.clone();
+        drop(f.e);
+        let e = LocalDevelopmentExecutor::open(plan(journal), "owner").unwrap();
+        let reopened = Store::open(&f.db, "owner").unwrap();
+        assert_eq!(
+            e.prepare_managed_inner(&reopened, &f.request, InvocationClock::Explicit(100002))
+                .unwrap(),
+            current
+        );
+        assert_eq!(managed_counts(&reopened), counts);
+        let mut changed = f.request.clone();
+        changed.operation_id.push('x');
+        assert!(
+            e.prepare_managed_inner(&reopened, &changed, InvocationClock::Explicit(100002))
+                .is_err()
+        );
+    }
+}
+#[test]
+fn managed_rotation_wrong_reserved_identity_period_and_unknown_accounting_fail_atomically() {
+    for kind in 0..9 {
+        let mut f = managed_fixture(100000);
+        match kind {
+            0 => {
+                f.s.conn
+                    .execute("DELETE FROM budget_reservation", [])
+                    .unwrap();
+            }
+            1 => {
+                f.s.conn
+                    .execute("UPDATE budget_reservation SET record='{'", [])
+                    .unwrap();
+            }
+            2 => {
+                f.s.mark_budget_uncertain(&f.request.request_id, 100000)
+                    .unwrap();
+            }
+            3..=6 => {
+                let mut b = f.s.budget_reservations().unwrap().remove(0);
+                match kind {
+                    3 => b.request.node_uid.push('x'),
+                    4 => b.request.run_id.push('x'),
+                    5 => b.period.id.push('x'),
+                    _ => b.state = BudgetState::Settled,
+                };
+                f.s.conn
+                    .execute(
+                        "UPDATE budget_reservation SET record=?",
+                        [encode(&b).unwrap()],
+                    )
+                    .unwrap();
+            }
+            7 => {
+                let mut a: BudgetAccount = decode(
+                    &f.s.conn
+                        .query_row::<String, _, _>("SELECT record FROM budget_account", [], |r| {
+                            r.get(0)
+                        })
+                        .unwrap(),
+                )
+                .unwrap();
+                a.policy.baseline.external_liability = ExternalLiability::Unknown;
+                f.s.conn
+                    .execute("UPDATE budget_account SET record=?", [encode(&a).unwrap()])
+                    .unwrap();
+            }
+            _ => f.request.run_id.push('x'),
+        }
+        assert!(managed_prepare(&f, 100001).is_err());
+        assert_eq!(managed_counts(&f.s), (0, 0, 0));
+        assert!(!f.e.submitted);
+    }
+    for kind in 0..3 {
+        let mut f = managed_fixture(100000);
+        managed_prepare(&f, 100000).unwrap();
+        match kind {
+            0 => f.e.identity.target.push('x'),
+            1 => f.e.identity.tier.push('x'),
+            _ => f.e.identity.command[0] ^= 1,
+        }
+        assert!(managed_prepare(&f, 100001).is_err());
+        assert_eq!(managed_counts(&f.s), (1, 1, 1));
+    }
+}
+#[test]
+fn managed_desired_missing_zero_and_all_retained_including_deleting_unknown_consume_capacity() {
+    for kind in 0..5 {
+        let f = managed_fixture(100000);
+        match kind {
+            0 => {
+                f.s.conn.execute("DELETE FROM tier", []).unwrap();
+            }
+            1 => {
+                f.s.scale("tier", 0).unwrap();
+            }
+            _ => {
+                let phase = match kind {
+                    2 => "\"Destroying\"",
+                    3 => "unparseable-retained-phase",
+                    _ => "\"Booting\"",
+                };
+                f.s.conn.execute("INSERT INTO gpu_node(uid,tier,phase,created_at,orphan,deleting)VALUES('retained','tier',?,100000,1,1)",[phase]).unwrap();
+            }
+        }
+        assert!(managed_prepare(&f, 100000).is_err());
+        assert_eq!(managed_counts(&f.s).1, 0);
+        assert_eq!(managed_counts(&f.s).2, 0);
+    }
+    let f = managed_fixture(100000);
+    let r = managed_prepare(&f, 100000).unwrap();
+    f.s.scale("tier", 0).unwrap();
+    f.s.scale("tier", 1).unwrap();
+    assert_eq!(managed_prepare(&f, 100001).unwrap(), r);
+    assert!(f.e.claim(&f.s, &r.intent.operation_id, 100001).is_err());
+    let deleting: bool =
+        f.s.conn
+            .query_row("SELECT deleting FROM gpu_node", [], |r| r.get(0))
+            .unwrap();
+    assert!(deleting);
+}
+#[test]
+fn managed_same_request_and_distinct_request_desired_one_sqlite_races_create_only_one_history() {
+    for same in [false, true] {
+        let f = managed_fixture(100000);
+        let second_dir = Directory::new();
+        let e2 = LocalDevelopmentExecutor::open(plan(second_dir.journal()), "owner").unwrap();
+        let s2 = Store::open(&f.db, "owner").unwrap();
+        let request2 = if same {
+            f.request.clone()
+        } else {
+            managed_request("managed-b")
+        };
+        if !same {
+            managed_reserve(&s2, &e2, &request2, 100000, &policy(100000));
+        }
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let b = barrier.clone();
+        let db = f.db.clone();
+        let a = thread::spawn(move || {
+            b.wait();
+            f.e.prepare_managed_inner(&f.s, &f.request, InvocationClock::Explicit(100000))
+                .is_ok()
+        });
+        let b = thread::spawn(move || {
+            barrier.wait();
+            e2.prepare_managed_inner(&s2, &request2, InvocationClock::Explicit(100000))
+                .is_ok()
+        });
+        assert_eq!(u8::from(a.join().unwrap()) + u8::from(b.join().unwrap()), 1);
+        let s = Store::open(db, "owner").unwrap();
+        assert_eq!(managed_counts(&s), (1, 1, 1));
+    }
+}
+#[test]
+fn managed_exact_shared_three_per_hour_gate_cutoff_future_and_history_retention() {
+    for offset in [0, 1, 3601] {
+        let f = managed_fixture(200000);
+        for n in 0..3 {
+            f.s.conn
+                .execute(
+                    "INSERT INTO launch_attempt(uid,tier,at)VALUES(?,'tier',?)",
+                    params![format!("history-{n}"), 196400 + offset],
+                )
+                .unwrap();
+        }
+        let available = crate::launch_rate_available(&f.s.conn, "tier", 200000).unwrap();
+        assert_eq!(available, offset == 0);
+        assert_eq!(managed_prepare(&f, 200000).is_ok(), available);
+        assert_eq!(managed_counts(&f.s).1, if available { 4 } else { 3 });
+    }
+    let mut p = policy(200000);
+    p.max_instances = 16;
+    let f = managed_fixture_policy(200000, &p);
+    f.s.scale("tier", 16).unwrap();
+    for n in 0..4 {
+        let r = managed_request(&format!("rate-{n}"));
+        managed_reserve(&f.s, &f.e, &r, 200000, &p);
+        let result =
+            f.e.prepare_managed_inner(&f.s, &r, InvocationClock::Explicit(200000));
+        assert_eq!(result.is_ok(), n < 3);
+    }
+    assert_eq!(managed_counts(&f.s), (3, 3, 3));
+}
+#[test]
+fn managed_sql_abort_each_insert_account_save_and_nested_transaction_leave_no_partial_state() {
+    for stage in [
+        "gpu_node",
+        "launch_attempt",
+        "create_operation",
+        "budget_account",
+    ] {
+        let f = managed_fixture(100000);
+        let before = f.s.budget_reservations().unwrap();
+        let account: String =
+            f.s.conn
+                .query_row("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap();
+        let action = if stage == "budget_account" {
+            "UPDATE"
+        } else {
+            "INSERT"
+        };
+        f.s.conn.execute_batch(&format!("CREATE TRIGGER abort_managed BEFORE {action} ON {stage} BEGIN SELECT RAISE(ABORT,'synthetic stage failure'); END;")).unwrap();
+        assert!(managed_prepare(&f, 100001).is_err());
+        assert_eq!(managed_counts(&f.s), (0, 0, 0));
+        assert_eq!(f.s.budget_reservations().unwrap(), before);
+        assert_eq!(
+            f.s.conn
+                .query_row::<String, _, _>("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap(),
+            account
+        );
+        f.s.conn
+            .execute_batch("DROP TRIGGER abort_managed")
+            .unwrap();
+        managed_prepare(&f, 100001).unwrap();
+        assert_eq!(managed_counts(&f.s), (1, 1, 1));
+    }
+    let f = managed_fixture(100000);
+    f.s.conn.execute_batch("BEGIN IMMEDIATE").unwrap();
+    assert!(managed_prepare(&f, 100000).is_err());
+    assert_eq!(managed_counts(&f.s), (0, 0, 0));
+    f.s.conn.execute_batch("ROLLBACK").unwrap();
+}
+#[test]
+fn managed_current_budget_deadline_and_claim_rechecks_remain_failclosed() {
+    for at in [99999, 100020, 100031] {
+        let f = managed_fixture(100000);
+        assert!(managed_prepare(&f, at).is_err());
+        assert_eq!(managed_counts(&f.s), (0, 0, 0));
+    }
+    let f = managed_fixture(100000);
+    let r = managed_prepare(&f, 100000).unwrap();
+    f.s.mark_budget_uncertain(&f.request.request_id, 100001)
+        .unwrap();
+    assert!(f.e.claim(&f.s, &r.intent.operation_id, 100001).is_err());
+    assert_eq!(managed_prepare(&f, 100001).unwrap(), r); // metadata retry not eligibility
+}
+#[test]
+fn managed_public_real_clock_path_composes_one_child_cleanup_with_same_held_budget() {
+    let at = utc_seconds().unwrap();
+    let mut f = managed_fixture(at);
+    let r = f.e.prepare_managed(&f.s, &f.request).unwrap();
+    let c =
+        f.e.claim(&f.s, &r.intent.operation_id, utc_seconds().unwrap())
+            .unwrap();
+    assert!(matches!(
+        f.e.execute(&f.s, c).unwrap(),
+        LocalDevelopmentOutcome::Bound(_)
+    ));
+    f.e.request_local_cleanup();
+    finish_local_cleanup(&mut f.e);
+    assert_eq!(
+        f.s.budget_reservations().unwrap()[0].state,
+        BudgetState::Uncertain
+    );
+    assert!(f.s.create_operations().unwrap()[0].cleanup_required);
+}
+
+#[test]
+fn managed_current_caps_and_other_uncertain_liability_block_before_new_rows() {
+    for kind in 0..4 {
+        let f = managed_fixture(100000);
+        match kind {
+            0 => {
+                let mut a: BudgetAccount = decode(
+                    &f.s.conn
+                        .query_row::<String, _, _>("SELECT record FROM budget_account", [], |r| {
+                            r.get(0)
+                        })
+                        .unwrap(),
+                )
+                .unwrap();
+                a.policy.trial_all_in = 1;
+                f.s.conn
+                    .execute("UPDATE budget_account SET record=?", [encode(&a).unwrap()])
+                    .unwrap();
+            }
+            1 => {
+                let other = managed_request("other-liability");
+                managed_reserve(&f.s, &f.e, &other, 100000, &policy(100000));
+                f.s.mark_budget_uncertain(&other.request_id, 100000)
+                    .unwrap();
+            }
+            2 => {
+                let mut b = f.s.budget_reservations().unwrap().remove(0);
+                b.request.owner = "wrong-owner".into();
+                f.s.conn
+                    .execute(
+                        "UPDATE budget_reservation SET record=?",
+                        [encode(&b).unwrap()],
+                    )
+                    .unwrap();
+            }
+            _ => {
+                let mut b = f.s.budget_reservations().unwrap().remove(0);
+                b.binding = Some(ResourceBinding {
+                    owner: "owner".into(),
+                    run_id: "run".into(),
+                    node_uid: b.request.node_uid.clone(),
+                    instance_id: "already-bound".into(),
+                    volumes: VolumeBinding::NoneAllocated,
+                    provenance: "synthetic fixture".into(),
+                    observed_at: 100000,
+                    status: EvidenceStatus::Complete,
+                });
+                f.s.conn
+                    .execute(
+                        "UPDATE budget_reservation SET record=?",
+                        [encode(&b).unwrap()],
+                    )
+                    .unwrap();
+            }
+        }
+        assert!(managed_prepare(&f, 100001).is_err());
+        assert_eq!(managed_counts(&f.s), (0, 0, 0));
+    }
+}
+#[test]
+fn managed_real_utc_is_sampled_after_waiting_for_sql_writer_not_before() {
+    let at = utc_seconds().unwrap();
+    let f = managed_fixture(at);
+    let writer = Store::open(&f.db, "owner").unwrap();
+    writer.conn.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let (started, seen) = mpsc::sync_channel(1);
+    let db = f.db.clone();
+    let task = thread::spawn(move || {
+        started.send(()).unwrap();
+        f.e.prepare_managed(&f.s, &f.request)
+    });
+    seen.recv_timeout(Duration::from_secs(5)).unwrap();
+    let end = Instant::now() + Duration::from_secs(2);
+    let current = loop {
+        let now = utc_seconds().unwrap();
+        if now > at {
+            break now;
+        }
+        assert!(Instant::now() < end);
+        thread::sleep(Duration::from_millis(5));
+    };
+    let raw: String = writer
+        .conn
+        .query_row("SELECT record FROM budget_account", [], |r| r.get(0))
+        .unwrap();
+    let mut account: BudgetAccount = decode(&raw).unwrap();
+    account.last_at = current;
+    writer
+        .conn
+        .execute(
+            "UPDATE budget_account SET record=?",
+            [encode(&account).unwrap()],
+        )
+        .unwrap();
+    writer.conn.execute_batch("COMMIT").unwrap();
+    let r = task.join().unwrap().unwrap();
+    assert!(r.prepared_at >= current);
+    let s = Store::open(db, "owner").unwrap();
+    assert_eq!(managed_counts(&s), (1, 1, 1));
+}
+
+#[test]
+fn managed_existing_uid_or_attempt_collision_is_not_upsert_adoption_or_history_repair() {
+    for attempt in [false, true] {
+        let f = managed_fixture(100000);
+        let uid = f.e.planned_intent(&f.s, &f.request).unwrap().node_uid;
+        let before = f.s.budget_reservations().unwrap();
+        let account: String =
+            f.s.conn
+                .query_row("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap();
+        if attempt {
+            f.s.conn
+                .execute(
+                    "INSERT INTO launch_attempt(uid,tier,at)VALUES(?,'other-tier',100000)",
+                    [&uid],
+                )
+                .unwrap();
+        } else {
+            f.s.conn.execute("INSERT INTO gpu_node(uid,tier,phase,created_at)VALUES(?,'other-tier','unknown-retained',100000)",[&uid]).unwrap();
+        }
+        let counts = managed_counts(&f.s);
+        assert!(managed_prepare(&f, 100001).is_err());
+        assert_eq!(managed_counts(&f.s), counts);
+        assert_eq!(f.s.budget_reservations().unwrap(), before);
+        assert_eq!(
+            f.s.conn
+                .query_row::<String, _, _>("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap(),
+            account
+        );
+    }
+}
+
+#[test]
+fn managed_ignored_sql_writes_cannot_commit_partial_intent_or_stale_account_clock() {
+    for stage in [
+        "gpu_node",
+        "launch_attempt",
+        "create_operation",
+        "budget_account",
+    ] {
+        let f = managed_fixture(100000);
+        let before = f.s.budget_reservations().unwrap();
+        let account: String =
+            f.s.conn
+                .query_row("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap();
+        let action = if stage == "budget_account" {
+            "UPDATE"
+        } else {
+            "INSERT"
+        };
+        f.s.conn.execute_batch(&format!("CREATE TRIGGER ignore_managed BEFORE {action} ON {stage} BEGIN SELECT RAISE(IGNORE); END;")).unwrap();
+        assert!(managed_prepare(&f, 100001).is_err());
+        assert_eq!(managed_counts(&f.s), (0, 0, 0));
+        assert_eq!(f.s.budget_reservations().unwrap(), before);
+        assert_eq!(
+            f.s.conn
+                .query_row::<String, _, _>("SELECT record FROM budget_account", [], |r| r.get(0))
+                .unwrap(),
+            account
+        );
+    }
 }
