@@ -5,6 +5,58 @@ use m8s_agent::supervisor::{
 use m8s_agent::{DeadManSwitch, Effect, Outcome};
 use std::time::{Duration, Instant};
 
+// Binary-only: importing or using the library never changes signal dispositions.
+#[cfg(unix)]
+mod termination {
+    use signal_hook::consts::{SIGINT, SIGTERM};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    pub(super) struct ShutdownSignals {
+        requested: Arc<AtomicBool>,
+        handlers: Vec<signal_hook::SigId>,
+    }
+    impl ShutdownSignals {
+        pub(super) fn install() -> Result<Self, &'static str> {
+            let mut signals = Self {
+                requested: Arc::new(AtomicBool::new(false)),
+                handlers: Vec::new(),
+            };
+            for signal in [SIGTERM, SIGINT] {
+                // signal-hook's flag handler only stores to an atomic. No locks,
+                // allocation, logging, subprocess operations or teardown in it.
+                let id = signal_hook::flag::register(signal, signals.requested.clone())
+                    .map_err(|_| "local termination handler installation failed")?;
+                signals.handlers.push(id);
+            }
+            Ok(signals)
+        }
+        pub(super) fn requested(&self) -> bool {
+            self.requested.load(Ordering::Relaxed)
+        }
+    }
+    impl Drop for ShutdownSignals {
+        fn drop(&mut self) {
+            for handler in self.handlers.drain(..) {
+                signal_hook::low_level::unregister(handler);
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+mod termination {
+    pub(super) struct ShutdownSignals;
+    impl ShutdownSignals {
+        pub(super) fn install() -> Result<Self, &'static str> {
+            Err("local termination handling unavailable on this platform")
+        }
+        pub(super) fn requested(&self) -> bool {
+            false
+        }
+    }
+}
+
 struct UnavailableDestroy;
 impl TeardownDriver for UnavailableDestroy {
     fn perform(&mut self, _: Effect) -> Outcome {
@@ -29,6 +81,12 @@ fn run() -> Result<(), &'static str> {
     }
     let program = args.next().ok_or("missing local command")?;
     let dms = DeadManSwitch::new("local-only".into(), vec![], 0, ttl, ttl)?;
+    // Install before spawn so a signal during launch is remembered, not lost.
+    // This local mode performs a single teardown batch, never indefinite retries.
+    let signals = termination::ShutdownSignals::install()?;
+    if signals.requested() {
+        return Err("local termination requested before launch; provider absence unconfirmed");
+    }
     let mut supervisor = Supervisor::start(
         ChildSpec {
             program: program.into(),
@@ -43,13 +101,19 @@ fn run() -> Result<(), &'static str> {
     eprintln!("local-only supervision; no secure transport, readiness or provider destruction");
     let start = Instant::now();
     loop {
+        if signals.requested() {
+            // Idempotent on repeated signals. All effectful cleanup runs here,
+            // on the ordinary main thread, never inside the signal handler.
+            supervisor.shutdown();
+        }
         let now = i64::try_from(start.elapsed().as_secs()).unwrap_or(i64::MAX);
         if supervisor
             .tick(now)
             .map_err(|_| "local child termination failed")?
             != TeardownState::Running
         {
-            // Tick already killed/reaped the direct child. Never call this destroyed.
+            // Successful tick stopped the group and reaped the direct child.
+            // Never equate this with provider-confirmed destruction.
             return Err(
                 "local child terminated; provider absence unconfirmed; owner cleanup required",
             );

@@ -41,12 +41,11 @@ never renews its lease and is not evidence of real admission/provider behavior.
 
 ## Known qualification gaps
 
-OS SIGTERM/SIGINT forwarding, containment of descendants that escape the process
-group, graceful model
+Containment of descendants that escape the process group, graceful model
 API draining, protected tmpfs material and wipe, real authenticated transport,
 bootstrap policy binding, per-instance credential custody, alerts and actual
 provider destroy/absence are not implemented here. Use a qualified container init
-for OS termination handling; do not deploy this binary as container PID 1. Do
+for orphan reaping; do not deploy this binary as container PID 1. Do
 not use local process exit or fake driver tests to assert stopped billing.
 
 Process-group signalling keeps the leader unreaped with `waitid(WNOWAIT)` until
@@ -57,3 +56,30 @@ as group disappearance. OS permission failures remain cleanup errors and never
 prove destruction; provider teardown attempts still run independently. Some
 macOS sandbox policies deny signalling an already-exited group leader; this
 capability remains unqualified rather than being silently treated as success.
+
+## Local executable termination signals
+
+Only the local executable installs `signal-hook` flag handlers for SIGTERM and
+SIGINT, before spawning its child. The library never installs handlers. A handler
+sets an atomic flag only; the normal main loop observes it (25ms polling interval),
+latches `shutdown`, and attempts one DMS teardown batch, including process-group
+SIGKILL and direct-child reaping. This is forced local teardown, not graceful
+forwarding of the received signal or successful model-API draining. Repeated
+signals are idempotent requests, not an immediate-exit escalation that could
+orphan the child. Registration failure prevents launch. Registered callbacks are
+removed when the executable's run scope finishes; this is not a library API for
+restoring process-wide signal dispositions.
+
+Local mode exits 2 after that batch, without indefinite provider retries. A
+successful local cleanup still reports **provider absence unconfirmed**; cleanup
+errors report failure. Tests send real SIGTERM/SIGINT (including repeated mixed
+signals) to a local agent with a synthetic child/grandchild and check bounded
+exit plus group-member disappearance. These are local OS tests, not secure
+admission or provider qualification.
+
+SIGKILL cannot be caught: killing the agent that way, aborts, host failure, or
+uninterruptible kernel operations can defeat best-effort cleanup/exit deadlines.
+The 3-second test bound is observed local behavior, not a guarantee under kernel
+failure. OS signal permission failures, escaped groups and orphan-reaping limits
+remain as documented above. A qualified init/owner-side destroy watcher is still
+required; no signal test proves provider destruction or stopped billing.
