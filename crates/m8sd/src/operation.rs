@@ -9,6 +9,9 @@ use crate::{
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+struct DriverOrigin;
+pub mod development;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateIntent {
@@ -34,6 +37,8 @@ pub struct CreateOperation {
     pub prepared_at: i64,
     pub last_at: i64,
     pub dispatched_at: Option<i64>,
+    #[serde(default)]
+    pub invocation_started_at: Option<i64>,
     pub cancelled_at: Option<i64>,
     pub cleanup_required: bool,
     pub result: Option<ResourceBinding>,
@@ -54,6 +59,9 @@ pub struct CreateOperation {
 /// }
 /// ```
 pub struct CreateClaim {
+    origin: Arc<crate::StoreOrigin>,
+    driver: Option<Arc<DriverOrigin>>,
+    dispatched_at: i64,
     intent: CreateIntent,
     serving_deadline: i64,
     cleanup_deadline: i64,
@@ -148,6 +156,13 @@ fn get(tx: &Connection, owner: &str, id: &str) -> Result<Option<CreateOperation>
                 && (r.dispatched_at.is_some() || r.cancelled_at.is_some()))
             || (r.state == CreateState::DispatchConsumed && r.dispatched_at.is_none())
             || (r.state == CreateState::Cancelled && r.cancelled_at.is_none())
+            || r.invocation_started_at
+                .is_some_and(|at| r.dispatched_at.is_none_or(|start| at < start) || at > r.last_at)
+            || (r.state == CreateState::Prepared && r.invocation_started_at.is_some())
+            || (r.state == CreateState::Cancelled
+                && r.invocation_started_at
+                    .zip(r.cancelled_at)
+                    .is_some_and(|(start, cancel)| start > cancel))
         {
             return Err(Error::Corrupt);
         }
@@ -275,6 +290,7 @@ impl Store {
             prepared_at: now,
             last_at: now,
             dispatched_at: None,
+            invocation_started_at: None,
             cancelled_at: None,
             cleanup_required: false,
             result: None,
@@ -291,6 +307,14 @@ impl Store {
         Ok(r)
     }
     pub fn claim_create(&self, operation_id: &str, now: i64) -> Result<CreateClaim> {
+        self.claim_create_bound(operation_id, now, None)
+    }
+    fn claim_create_bound(
+        &self,
+        operation_id: &str,
+        now: i64,
+        driver: Option<(Arc<DriverOrigin>, [u8; 32], &str)>,
+    ) -> Result<CreateClaim> {
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
         owned(&tx, &self.owner)?;
         let mut a = account(&tx, &self.owner, now)?;
@@ -301,6 +325,19 @@ impl Store {
             || now < r.last_at
         {
             return Err(Error::Invalid);
+        }
+        if let Some((_, fingerprint, tier)) = &driver {
+            if r.intent.launch_fingerprint != *fingerprint {
+                return Err(Error::Invalid);
+            }
+            let actual: String = tx.query_row(
+                "SELECT tier FROM gpu_node WHERE uid=?",
+                [&r.intent.node_uid],
+                |r| r.get(0),
+            )?;
+            if actual != *tier {
+                return Err(Error::Invalid);
+            }
         }
         let mut b = budget(&tx, &r.intent)?;
         if b != r.budget {
@@ -320,6 +357,9 @@ impl Store {
         save_budget(&tx, &b, &mut a, now)?;
         tx.commit()?;
         Ok(CreateClaim {
+            origin: self.origin.clone(),
+            driver: driver.map(|(token, _, _)| token),
+            dispatched_at: now,
             intent: r.intent,
             serving_deadline,
             cleanup_deadline,

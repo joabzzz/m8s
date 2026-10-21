@@ -23,11 +23,13 @@ pub enum Error {
     Corrupt,
 }
 pub type Result<T> = std::result::Result<T, Error>;
+struct StoreOrigin;
 /// A single-reconciler store, not a replica-safe distributed controller.
 /// Callers must hold an exclusive process lock across the entire reconcile loop,
 /// including provider effects. The daemon supplies this with its state-directory
 /// fs2 lock; SQLite transactions alone protect reservations, not whole reconciles.
 pub struct Store {
+    origin: std::sync::Arc<StoreOrigin>,
     conn: Connection,
     owner: String,
 }
@@ -72,6 +74,7 @@ impl Store {
         budget::initialize(&conn)?;
         operation::initialize(&conn)?;
         Ok(Self {
+            origin: std::sync::Arc::new(StoreOrigin),
             conn,
             owner: owner.into(),
         })

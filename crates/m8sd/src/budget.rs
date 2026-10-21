@@ -296,6 +296,7 @@ fn aggregate_available(
     period: &CalendarPeriod,
     now: i64,
     proposed: Option<(&str, MicroUsd, MicroUsd)>,
+    consumed: Option<&BudgetReservation>,
 ) -> Result<()> {
     // Initial known spend retains lifetime liability; the explicitly bound
     // initial-period spend is counted only in that same calendar period.
@@ -318,6 +319,7 @@ fn aggregate_available(
         .ok_or(Error::Invalid)?;
     let mut active_hourly = u128::from(hourly);
     let mut active = u64::from(proposed.is_some());
+    let mut consumed_hold_seen = false;
     for r in rows(conn, &policy.owner)? {
         if proposed.is_some_and(|(uid, _, _)| r.request.node_uid == uid) {
             return Err(Error::Invalid);
@@ -349,7 +351,11 @@ fn aggregate_available(
                 .reserved_at
                 .checked_add(i64::try_from(horizon).map_err(|_| Error::Corrupt)?)
                 .ok_or(Error::Corrupt)?;
-            if r.state != BudgetState::Reserved || now >= deadline {
+            let exact_consumed = consumed
+                .is_some_and(|own| own == &r && r.state == BudgetState::Uncertain)
+                && !consumed_hold_seen;
+            consumed_hold_seen |= exact_consumed;
+            if (r.state != BudgetState::Reserved && !exact_consumed) || now >= deadline {
                 // An ambiguous effect, unfinalized billing, or missed cleanup
                 // deadline freezes fresh spend, even if numeric caps have room.
                 return Err(Error::Invalid);
@@ -366,7 +372,8 @@ fn aggregate_available(
             active = active.checked_add(1).ok_or(Error::Invalid)?;
         }
     }
-    if lifetime > u128::from(policy.trial_all_in)
+    if (consumed.is_some() && !consumed_hold_seen)
+        || lifetime > u128::from(policy.trial_all_in)
         || monthly > u128::from(policy.monthly_all_in)
         || active_hourly > u128::from(policy.total_hourly)
         || active > u64::from(policy.max_instances)
@@ -384,6 +391,34 @@ pub(crate) fn validate_create_dispatch(
     a: &BudgetAccount,
     now: i64,
 ) -> Result<(i64, i64)> {
+    validate_create_hold(conn, b, a, now, false)
+}
+/// Allows only this exact already-consumed hold; still charged once, never
+/// changed back to Reserved. Every other blocking liability remains blocking.
+pub(crate) fn validate_consumed_create(
+    conn: &Connection,
+    original: &BudgetReservation,
+    current: &BudgetReservation,
+    account: &BudgetAccount,
+    now: i64,
+) -> Result<(i64, i64)> {
+    if original.state != BudgetState::Reserved {
+        return Err(Error::Invalid);
+    }
+    let mut expected = original.clone();
+    expected.state = BudgetState::Uncertain;
+    if expected != *current {
+        return Err(Error::Invalid);
+    }
+    validate_create_hold(conn, current, account, now, true)
+}
+fn validate_create_hold(
+    conn: &Connection,
+    b: &BudgetReservation,
+    a: &BudgetAccount,
+    now: i64,
+    consumed: bool,
+) -> Result<(i64, i64)> {
     if conn.is_autocommit() {
         return Err(Error::Invalid);
     }
@@ -396,7 +431,12 @@ pub(crate) fn validate_create_dispatch(
         || a.last_at < b.reserved_at
         || b.reserved_at < 0
         || now < b.reserved_at
-        || b.state != BudgetState::Reserved
+        || b.state
+            != if consumed {
+                BudgetState::Uncertain
+            } else {
+                BudgetState::Reserved
+            }
         || b.binding.is_some()
         || b.settlement.is_some()
         || b.billing_period.is_some()
@@ -441,7 +481,14 @@ pub(crate) fn validate_create_dispatch(
             return Err(Error::Corrupt);
         }
     }
-    aggregate_available(conn, &a.policy, &a.period, now, None)?;
+    aggregate_available(
+        conn,
+        &a.policy,
+        &a.period,
+        now,
+        None,
+        if consumed { Some(b) } else { None },
+    )?;
     Ok((serving, cleanup))
 }
 
@@ -654,6 +701,7 @@ impl Store {
             period,
             now,
             Some((&request.node_uid, reserved, hourly)),
+            None,
         )?;
         let r = BudgetReservation {
             request: request.clone(),

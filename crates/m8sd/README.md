@@ -375,3 +375,66 @@ remaining serving time is mandatory and the full original cleanup grace stays
 protected. New operation tests exercise two-operation concurrent claims, concurrent
 new reservation versus dispatch, late other bills/unknown liabilities, and a
 claim with exactly one second of serving time left and untouched cleanup grace.
+
+## Explicit sealed development executor (synthetic only)
+
+`operation::development` adds a deliberately bounded fake effect path, not a
+Provider adapter or daemon route. No callback, trait object, executable/argv,
+network endpoint, credential or arbitrary provider is accepted. Construction is
+explicit `SyntheticPlan::new(namespace, target, tier)` and
+`DevelopmentExecutor::new_synthetic(plan)`; provider kind is fixed SyntheticV1.
+Labels are immutable/private and bounded to64 bytes. Canonical SHA256 input has a
+fixed domain and version plus length-prefixed fixed kind/namespace/target/tier
+and every intent identity field (owner/run/request/nodeUID/operationID). The
+launch fingerprint is the hash output slot, not recursively part of its input.
+There is no serde/Debug/map-based canonicalization or target mutation API.
+
+```text
+plan.fingerprint(&CreateIntent) -> Result<[u8;32]>
+executor.prepare(&Store, &CreateIntent, now) -> Result<CreateOperation>
+executor.claim(&Store, operation_id, now) -> Result<CreateClaim>
+executor.execute(&mut self, &Store, CreateClaim, now)
+    -> Result<DevelopmentOutcome::{Bound(Box<metadata>), Ambiguous, NotInvoked}>
+executor.invocations() / resources()        # synthetic diagnostics only
+executor.advance(now)                     # explicit virtual clock only
+```
+
+Each open Store has a private Arc allocation token; each executor has a separate
+private Arc token. Only executor claim issuance can bind that actual executor
+token during the SAME existing durable claim transition. There is no later
+attachment/rebind API. Execute consumes the claim on every outcome, compares
+both allocations with Arc::ptr_eq, recomputes the pinned canonical fingerprint,
+and checks tier. Equal owner/IDs/plans, another connection/path, reopened DB,
+replacement executor and ordinary unbound `Store::claim_create` are not substitutes.
+Prepared metadata may be claimed once through a new correct executor after reopen;
+already consumed history never yields new authority.
+
+Execution re-reads live operation/immutable dispatch identity, current node/desire/
+deleting, original anchored deadlines, shared clock and current budget under
+owner-checked IMMEDIATE. Budget-owned consumed validation permits ONLY this exact
+Uncertain hold, fully charged once; all other uncertain/unknown/expired liabilities
+and late caps still block. It does not temporarily restore Reserved or copy cost
+math. A private exact-consumed exception cannot cover two duplicate uncertain
+payloads. Optional `invocation_started_at` defaults toNone for old JSON rows;
+metadata without allocation authority does not become executable. Inconsistent or
+already-started invocation markers refuse.
+
+The invocation marker and clocks commit BEFORE the sealed backend increments or
+creates any fake resource. No transaction spans an effect. Cancel before that
+transaction wins means zero invocations; cancel after marker commit may race one
+invocation, even in the commit-to-backend gap, and cleanup remains owed. It is
+not retroactive cancellation. A bound late response may update cleanup metadata
+without resurrecting cancellation or clearing ambiguity. Fault/lost-response/
+result-write failure retains full budget liability and any in-memory fake resource;
+no outcome returns the claim or offers retry. Test-only private scripted faults
+and bounded synchronization hooks are cfg(test), not public executable callbacks.
+
+Fake service eligibility uses injected time strictly before the original serving
+deadline; explicit virtual advancement removes fake resources at the original
+cleanup deadline. This is SYNTHETIC state/deadline enforcement, not an autonomous
+wall-clock/remote watchdog, process preemption, provider exactly-once, owned absence,
+refund or Ready. Dropping Store/executor/claim is not proof of absence; recovery
+cleanup intent remains durable. No schema table/dependency/provider/main/reconcile/
+agent/CLI/transport wiring was added. Real child/provider execution requires a
+separate design, continuing supervisor clock, independent watcher and all existing
+Admin/OS/admission/billing gates. The sealed backend cannot spend money.
