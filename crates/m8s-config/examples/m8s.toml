@@ -1,0 +1,34 @@
+# Parser example only: no runtime/model/provider security qualification or effects.
+schema = 1
+[owner]
+timezone = "America/New_York"
+[budget]
+monthly_micro_usd = 20000000
+max_total_hourly_micro_usd = 3000000
+max_instance_hourly_micro_usd = 1000000
+[dead_mans_switch]
+ttl = "1h"
+max_lifetime = "12h"
+[policy]
+minimum_down_mbps = 1000
+[tier.small]
+model = "example-27b-q4km"
+provider = ["vast-secure", "vast-community"]
+replicas = { min = 0, max = 2 }
+gpu = { count = 1, min_vram_bytes = 24000000000 }
+cold = { mode = "wait", timeout = "15m" }
+interruptible = false
+manual = true
+[[tier.small.schedule]]
+open = "0 8 * * 1-5"
+close = "0 18 * * 1-5"
+[tier.small.queue]
+queue_wait_ms_gt = 2000
+inflight_gt = 4
+scale_up_for = "5m"
+scale_down_idle = "30m"
+[tier.large]
+model = "example-70b-q4km"
+replicas = { min = 0, max = 1 }
+gpu = { count = 1, min_vram_bytes = 80000000000 }
+cold = { mode = "fallback", tier = "small" }
