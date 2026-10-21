@@ -79,9 +79,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 // On macOS a peer that disconnects immediately can make socket
                 // option setup fail with EINVAL. That is a client failure, not
                 // grounds to stop reconciliation for every other local client.
-                if stream
-                    .set_read_timeout(Some(Duration::from_secs(2)))
-                    .is_err()
+                // BSD may inherit O_NONBLOCK from the listener. A client can
+                // validate its peer before writing; do not treat that normal
+                // pause as an empty/failed request. Per-client I/O stays bounded.
+                if stream.set_nonblocking(false).is_err()
+                    || stream
+                        .set_read_timeout(Some(Duration::from_secs(2)))
+                        .is_err()
                     || stream
                         .set_write_timeout(Some(Duration::from_secs(2)))
                         .is_err()
