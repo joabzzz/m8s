@@ -5,7 +5,9 @@
 mod storage;
 use m8s_agent::{
     DeadManSwitch, Effect, Outcome,
-    supervisor::{ChildSpec, LocalOnlyBoot, RetryTeardown, Supervisor, TeardownDriver},
+    supervisor::{
+        ChildSpec, LocalOnlyBoot, LocalTerminationState, RetryTeardown, Supervisor, TeardownDriver,
+    },
 };
 use m8s_core::{Instance, InstanceState, Observation, Offer};
 use m8s_provider::{Error, LaunchSpec, Provider, Result};
@@ -343,6 +345,15 @@ impl Provider for Local {
         let process = self.processes.get_mut(id).ok_or(Error::Unavailable)?;
         process.shutdown();
         process.tick(0).map_err(|_| Error::Unavailable)?;
+        // Provider tick deliberately does not propagate local cleanup failures:
+        // remote containment must keep progressing. This local-only adapter
+        // must inspect that separate evidence before acknowledging its effect.
+        if matches!(
+            process.local_termination_state(),
+            LocalTerminationState::Uncertain | LocalTerminationState::Running
+        ) {
+            return Err(Error::Unavailable);
+        }
         // Acknowledgement is not absence; only subsequent observe can persist it.
         Ok(())
     }

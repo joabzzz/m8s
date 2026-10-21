@@ -112,10 +112,10 @@ fn run() -> Result<(), &'static str> {
             .map_err(|_| "local child termination failed")?
             != TeardownState::Running
         {
-            // Successful tick stopped the group and reaped the direct child.
-            // Never equate this with provider-confirmed destruction.
+            // Tick requests teardown without waiting for direct-child exit.
+            // Pending local cleanup is not provider-confirmed destruction.
             return Err(
-                "local child terminated; provider absence unconfirmed; owner cleanup required",
+                "local teardown requested; provider absence unconfirmed; owner cleanup required",
             );
         }
         std::thread::sleep(Duration::from_millis(25));
