@@ -1,0 +1,25 @@
+{
+  "_fixture_notice": "Hand-written synthetic facts; NOT provider observation or pricing evidence",
+  "account": {
+    "balance": "6.0000009",
+    "email": "DO-NOT-RETURN@example.invalid",
+    "api_key": "DO-NOT-RETURN-synthetic",
+    "autobilling_enabled": false
+  },
+  "offers": {
+    "offers": [{
+      "id": 123,
+      "dph_total": "1.00",
+      "storage_cost": "0.001",
+      "inet_down_cost": "0.001",
+      "inet_up_cost": "0.002",
+      "inet_down": "1250.9",
+      "geolocation": "US",
+      "datacenter": false,
+      "verification": "verified",
+      "rentable": true,
+      "rented": false,
+      "host_note": "DO-NOT-RETURN-untrusted text"
+    }]
+  }
+}
