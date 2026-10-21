@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 struct DriverOrigin;
 pub mod development;
+#[cfg(all(feature = "local-development", unix))]
+pub mod local_development;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateIntent {
@@ -231,6 +233,68 @@ fn live_launch(tx: &Transaction<'_>, intent: &CreateIntent, now: i64) -> Result<
         return Err(Error::Invalid);
     }
     Ok(())
+}
+enum InvocationClock {
+    Explicit(i64),
+    #[cfg(all(feature = "local-development", unix))]
+    LocalUtc,
+}
+// Shared internal invocation burn. No caller-supplied code or effects in TX.
+fn start_bound_invocation(
+    store: &Store,
+    claim: &CreateClaim,
+    clock: InvocationClock,
+    tier: &str,
+    #[cfg(test)] fail_before_commit: bool,
+) -> Result<bool> {
+    let tx = Transaction::new_unchecked(&store.conn, TransactionBehavior::Immediate)?;
+    // Local wall time sampled AFTER obtaining the SQL writer, not before a
+    // possibly-blocking BEGIN; Explicit keeps existing synthetic semantics.
+    let now = match clock {
+        InvocationClock::Explicit(now) => now,
+        #[cfg(all(feature = "local-development", unix))]
+        InvocationClock::LocalUtc => local_development::utc_seconds()?,
+    };
+    owned(&tx, &store.owner)?;
+    let mut a = account(&tx, &store.owner, now)?;
+    let mut r = get(&tx, &store.owner, &claim.intent.operation_id)?.ok_or(Error::Invalid)?;
+    if r.intent != claim.intent || r.dispatched_at != Some(claim.dispatched_at) || now < r.last_at {
+        return Err(Error::Invalid);
+    }
+    if r.state == CreateState::Cancelled {
+        return Ok(false);
+    }
+    if r.state != CreateState::DispatchConsumed
+        || r.result.is_some()
+        || r.uncertainty_observed
+        || r.invocation_started_at.is_some()
+    {
+        return Err(Error::Invalid);
+    }
+    let b = budget(&tx, &r.intent)?;
+    let deadlines = crate::budget::validate_consumed_create(&tx, &r.budget, &b, &a, now)?;
+    if deadlines != (claim.serving_deadline, claim.cleanup_deadline) {
+        return Err(Error::Invalid);
+    }
+    live_launch(&tx, &r.intent, now)?;
+    let actual: String = tx.query_row(
+        "SELECT tier FROM gpu_node WHERE uid=?",
+        [&r.intent.node_uid],
+        |r| r.get(0),
+    )?;
+    if actual != tier {
+        return Err(Error::Invalid);
+    }
+    r.invocation_started_at = Some(now);
+    r.last_at = now;
+    save(&tx, &r)?;
+    save_budget(&tx, &b, &mut a, now)?;
+    #[cfg(test)]
+    if fail_before_commit {
+        return Err(Error::Invalid);
+    }
+    tx.commit()?;
+    Ok(true)
 }
 fn binding_valid(b: &ResourceBinding, intent: &CreateIntent, now: i64) -> Result<()> {
     if b.owner != intent.owner

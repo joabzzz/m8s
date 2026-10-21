@@ -1899,6 +1899,7 @@ dependencies = [
  "m8s-bootstrap",
  "m8s-core",
  "m8s-provider",
+ "m8s-provider-local",
  "rusqlite",
  "serde",
  "serde_json",

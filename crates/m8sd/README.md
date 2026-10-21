@@ -438,3 +438,90 @@ cleanup intent remains durable. No schema table/dependency/provider/main/reconci
 agent/CLI/transport wiring was added. Real child/provider execution requires a
 separate design, continuing supervisor clock, independent watcher and all existing
 Admin/OS/admission/billing gates. The sealed backend cannot spend money.
+
+## Opt-in real LOCAL development executor (not cloud or daemon wiring)
+
+The `local-development` Cargo feature is **off by default**. On Unix it exposes
+`operation::local_development::{LocalDevelopmentPlan, LocalDevelopmentExecutor}`.
+The only backend is the actual timed `m8s-provider-local::Local`, constructed
+inside this wrapper. There is no arbitrary Provider, closure, executable runner
+trait, URL, environment-secret or credential input. `DevelopmentCommand` is
+trusted nonsecret local configuration: the fixed env-clear/null-stdio/new-group
+contract and its bounded raw Unix path/argv digest are pinned, not executable
+file contents or a sandbox. Use only a trusted harmless developer executable
+that does not daemonize/escape its group; exclusive retained-child reaping and
+trusted path ancestors are required. No model/network workload is authorized.
+
+`LocalDevelopmentPlan::new(command, journal, namespace, target, tier)` owns the
+actual command and immutable bounded labels, requiring a bounded absolute,
+lexically canonical raw Unix journal path (no dot/parent/alias spelling). Local
+validates its real private descriptor/journal/lock policy when opened; the
+wrapper does not repair/replace that anchor. A versioned domain-separated,
+length-prefixed SHA256 binds fixed LocalDevelopmentV1, command digest, raw journal
+path, namespace/target/tier and owner/run/request/nodeUID/operationID. Namespace
+is a pinned label, not transport identity; actual Local journal identity is also
+bound through that exact path and private allocation. Fingerprint is the output
+slot, never recursively self-hashed. Different kinds/targets/commands refuse.
+
+`LocalDevelopmentExecutor::open(plan, owner)` opens no child. `prepare/claim`
+reuse the existing Store transaction and attach the actual issuing executor Arc
+and exact Store per-open Arc only during issuance. Ordinary/unbound, SyntheticV1,
+other-executor, second-connection and reopened-Store claims refuse; recovery
+metadata never reconstructs authority. Existing plain Store API is unchanged.
+The only synthetic-module change delegates its invocation transaction to a
+private shared helper, preserving its explicit-clock and rollback-test behavior.
+
+`execute(&mut self, &Store, CreateClaim)` consumes the claim on **every** outcome.
+It rechecks exact intent/dispatch, live node/tier/deletion/desired, no earlier
+invocation/result/ambiguity, current budget/clock/period/caps/other liabilities,
+and the original serving/cleanup bounds. The existing budget-owned validator
+allows only this exact own Uncertain hold, still charged once, never a Reserved
+reset. It samples real UTC Unix seconds **after** acquiring BEGIN IMMEDIATE,
+commits the invocation marker before submission, and releases SQL before any
+Local journal/spawn/channel wait. Absolute original Unix-second deadlines are
+checked into SystemTime, then LocalDeadlines samples actual high-resolution UTC
+and monotonic time; no new runtime is added and expired bounds refuse. The
+executor makes at most one timed Local submission over its entire lifetime.
+
+A successful exact Local return binds owner/run/UID/instance plus explicit
+`NoneAllocated` volumes because this local adapter creates no volumes. This is
+LOCAL cleanup metadata, not provider/MP-001/bootstrap/admission, Ready, serving
+model, canary, cloud absence, billing or settlement evidence. Cancellation and
+ambiguity remain sticky; stopped/reaped cannot refund or delete Store state.
+Launch/result errors, lost result, journal or SQL write failure keep full budget
+liability and possible-effect intent; no create retry or capability is returned.
+The executor retains LocalLaunch before writing results; failed Local launch
+drops the coordinator to request stop while its timed worker retains any owned
+child and journal lock until direct reap. Drop requests stop, never claims absence.
+
+**Cancellation is paired, not automatically observed:** take the cloneable
+`executor.stop_handle()` before calling execute. Pair durable
+`Store::cancel_create` with `handle.request_stop()`. This stop-only atomic/OnceLock
+latch uses one AtomicU8 Requested|Published state plus OnceLock, and no SQL, I/O,
+mutex or wait; no API resets it or renews a deadline.
+Request before handle publication is retained and applied when publication
+occurs. Both request/publication use AcqRel fetch_or on the SAME atomic: the
+second RMW necessarily sees the other's bit. OnceLock initialization precedes
+the Published release, so an acquiring requester also sees the real handle;
+when request wins, publication itself signals. This is a modification-order
+argument, not a two-variable visibility assumption or stress-test proof.
+A duplicate private attachment refuses and stops both handles while retaining
+new launch ownership; it cannot silently replace the original handle.
+**Local publishes the actual stop handle only after startup and active
+journal persistence return: an early wrapper request is ONLY latched during
+that gap, not a prompt signal.** The independent timed worker still progresses
+after spawn without Store/journal locks; a kernel-stalled spawn is excluded.
+DB-only down/cancel records cleanup intent and does NOT automatically wake the
+handle. Cancellation before invocation commit wins with zero submission; after
+commit there may be one child, including the commit/submission gap. Once the
+actual handle is published, stop progresses independently of result Store writes.
+
+Parent-alive timely OS scheduling/nonblocking signal/wait assumptions apply:
+anchored deadline means a stop request plus polling/scheduling latency, not
+proof every descendant exited by that instant. Parent SIGKILL/abort/host loss,
+process-wide suspension, scheduler starvation, escaping executables and stalled
+kernel primitives are not contained. No paid/cloud capability, autonomous
+watcher, cancellation observer, restart PID adoption, absence/refund automation,
+main/reconcile integration or production security qualification is introduced.
+Tests use private synthetic accounting/paths and harmless `/bin/sleep` children,
+not real provider billing or remote admission.

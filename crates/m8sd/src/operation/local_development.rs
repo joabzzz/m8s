@@ -1,0 +1,444 @@
+//! Explicit real LOCAL developer child only. No cloud, admission, billing or
+//! readiness proof; no main/reconcile wiring. Trusted executable/UTC/ancestors.
+use super::*;
+use m8s_provider::LaunchSpec;
+use m8s_provider_local::{DevelopmentCommand, Local, LocalDeadlines, LocalLaunch, LocalStopHandle};
+use sha2::{Digest, Sha256};
+use std::{
+    os::unix::ffi::OsStrExt,
+    path::{Component, PathBuf},
+    sync::{
+        OnceLock,
+        atomic::{AtomicU8, Ordering},
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+struct Identity {
+    journal: PathBuf,
+    namespace: String,
+    target: String,
+    tier: String,
+    command: [u8; 32],
+}
+impl Identity {
+    fn fingerprint(&self, intent: &CreateIntent) -> Result<[u8; 32]> {
+        let mut hash = Sha256::new();
+        hash.update(b"m8s-local-development-plan\0");
+        hash.update(1u16.to_be_bytes());
+        for text in [
+            &intent.owner,
+            &intent.run_id,
+            &intent.request_id,
+            &intent.node_uid,
+            &intent.operation_id,
+        ] {
+            label(text)?;
+        }
+        for bytes in [
+            b"LocalDevelopmentV1".as_slice(),
+            self.command.as_slice(),
+            self.journal.as_os_str().as_bytes(),
+            self.namespace.as_bytes(),
+            self.target.as_bytes(),
+            self.tier.as_bytes(),
+            intent.owner.as_bytes(),
+            intent.run_id.as_bytes(),
+            intent.request_id.as_bytes(),
+            intent.node_uid.as_bytes(),
+            intent.operation_id.as_bytes(),
+        ] {
+            hash.update((bytes.len() as u32).to_be_bytes());
+            hash.update(bytes);
+        }
+        Ok(hash.finalize().into())
+    }
+}
+/// Fixed LocalDevelopmentV1, owned command and immutable nonsecret target.
+/// Digest binds raw Unix command/path configuration, NOT executable contents,
+/// filesystem immutability, sandboxing, approval or provider identity.
+pub struct LocalDevelopmentPlan {
+    command: DevelopmentCommand,
+    identity: Identity,
+}
+impl LocalDevelopmentPlan {
+    pub fn new(
+        command: DevelopmentCommand,
+        journal: PathBuf,
+        namespace: &str,
+        target: &str,
+        tier: &str,
+    ) -> Result<Self> {
+        for text in [namespace, target, tier] {
+            label(text)?;
+            if text.len() > 64 {
+                return Err(Error::Invalid);
+            }
+        }
+        let raw = journal.as_os_str().as_bytes();
+        let normalized: PathBuf = journal.components().collect();
+        if !journal.is_absolute()
+            || raw.len() > 4096
+            || raw.contains(&0)
+            || raw != normalized.as_os_str().as_bytes()
+            || journal
+                .components()
+                .any(|c| !matches!(c, Component::RootDir | Component::Normal(_)))
+        {
+            return Err(Error::Invalid);
+        }
+        let digest = command.fingerprint();
+        Ok(Self {
+            command,
+            identity: Identity {
+                journal,
+                namespace: namespace.into(),
+                target: target.into(),
+                tier: tier.into(),
+                command: digest,
+            },
+        })
+    }
+    pub fn fingerprint(&self, intent: &CreateIntent) -> Result<[u8; 32]> {
+        self.identity.fingerprint(intent)
+    }
+}
+const REQUESTED: u8 = 1;
+const PUBLISHED: u8 = 2;
+// BOTH operations use the SAME atomic modification order. For one request and
+// one publication, whichever RMW is second necessarily sees the other's bit.
+// Publication's Release follows OnceLock initialization; a requesting Acquire
+// that sees PUBLISHED therefore also sees the actual handle. If request wins,
+// publication sees REQUESTED and signals itself. No cross-variable store/load
+// visibility assumption (or stress-test-as-proof) is needed.
+fn mark_requested(state: &AtomicU8) -> bool {
+    state.fetch_or(REQUESTED, Ordering::AcqRel) & PUBLISHED != 0
+}
+fn mark_published(state: &AtomicU8) -> bool {
+    state.fetch_or(PUBLISHED, Ordering::AcqRel) & REQUESTED != 0
+}
+struct StopLatch {
+    state: AtomicU8,
+    actual: OnceLock<LocalStopHandle>,
+}
+/// Cloneable stop-only latch, available BEFORE execute can block on journal or
+/// Store persistence. Before the actual Local handle is published (after startup
+/// and active journal save), a request is ONLY latched, not a prompt signal.
+/// The independent timed worker still progresses after spawn in that gap.
+/// No launch/renewal/reap/absence capability. One executor,
+/// one irreversible stop latch; never reset for another attempt.
+#[derive(Clone)]
+pub struct LocalDevelopmentStop(Arc<StopLatch>);
+impl LocalDevelopmentStop {
+    pub fn request_stop(&self) {
+        if mark_requested(&self.0.state) {
+            // PUBLISHED can only follow successful OnceLock initialization.
+            self.0
+                .actual
+                .get()
+                .expect("published local stop handle")
+                .request_stop();
+        }
+    }
+    fn requested(&self) -> bool {
+        self.0.state.load(Ordering::Acquire) & REQUESTED != 0
+    }
+    fn attach(&self, actual: LocalStopHandle) -> Result<()> {
+        // Private single-call executor: one successful publication only. Even
+        // an internal duplicate must stop BOTH handles, never discard a newly
+        // owned child silently or replace the original publication.
+        if let Err(rejected) = self.0.actual.set(actual) {
+            rejected.request_stop();
+            self.request_stop();
+            return Err(Error::Invalid);
+        }
+        if mark_published(&self.0.state) {
+            self.0
+                .actual
+                .get()
+                .expect("initialized local stop handle")
+                .request_stop();
+        }
+        Ok(())
+    }
+}
+pub enum LocalDevelopmentOutcome {
+    /// Exact LOCAL process binding, cleanup metadata only; never Ready/absence.
+    Bound(Box<CreateOperation>),
+    Ambiguous,
+    NotInvoked,
+}
+/// One allocation, at most one timed Local submission; no Provider/callback API.
+/// The caller pairs durable Store::cancel_create with stop_handle.request_stop.
+/// DB-only down/cancel is cleanup intent, NOT automatic wakeup/containment.
+/// Drop requests stop. Parent loss/host loss/kernel stalls remain uncontained.
+/// ```compile_fail
+/// use m8sd::operation::local_development::LocalDevelopmentPlan;
+/// let _ = LocalDevelopmentPlan { command: todo!(), identity: todo!() };
+/// ```
+pub struct LocalDevelopmentExecutor {
+    identity: Identity,
+    owner: String,
+    token: Arc<DriverOrigin>,
+    local: Option<Local>,
+    launch: Option<LocalLaunch>,
+    stop: LocalDevelopmentStop,
+    submitted: bool,
+    #[cfg(test)]
+    hooks: Hooks,
+}
+impl LocalDevelopmentExecutor {
+    pub fn open(plan: LocalDevelopmentPlan, owner: &str) -> Result<Self> {
+        label(owner)?;
+        // Local validates private eUID/mode/descriptor/journal/lock policy.
+        // This creates no child. Trusted ancestors/executable remain assumptions.
+        let local = Local::open_development(&plan.identity.journal, owner.into(), plan.command)?;
+        Ok(Self {
+            identity: plan.identity,
+            owner: owner.into(),
+            token: Arc::new(DriverOrigin),
+            local: Some(local),
+            launch: None,
+            stop: LocalDevelopmentStop(Arc::new(StopLatch {
+                state: AtomicU8::new(0),
+                actual: OnceLock::new(),
+            })),
+            submitted: false,
+            #[cfg(test)]
+            hooks: Hooks::default(),
+        })
+    }
+    pub fn fingerprint(&self, intent: &CreateIntent) -> Result<[u8; 32]> {
+        self.identity.fingerprint(intent)
+    }
+    pub fn stop_handle(&self) -> LocalDevelopmentStop {
+        self.stop.clone()
+    }
+    /// Retained local launch observation only; never provider absence/billing.
+    pub fn launch(&self) -> Option<&LocalLaunch> {
+        self.launch.as_ref()
+    }
+    pub fn submission_started(&self) -> bool {
+        self.submitted
+    }
+    fn available(&self, store: &Store, intent: &CreateIntent) -> Result<()> {
+        if self.submitted
+            || self.stop.requested()
+            || self.owner != store.owner
+            || intent.owner != self.owner
+            || self.identity.fingerprint(intent)? != intent.launch_fingerprint
+        {
+            return Err(Error::Invalid);
+        }
+        Ok(())
+    }
+    pub fn prepare(
+        &self,
+        store: &Store,
+        intent: &CreateIntent,
+        now: i64,
+    ) -> Result<CreateOperation> {
+        self.available(store, intent)?;
+        let tier: String = store.conn.query_row(
+            "SELECT tier FROM gpu_node WHERE uid=?",
+            [&intent.node_uid],
+            |r| r.get(0),
+        )?;
+        if tier != self.identity.tier {
+            return Err(Error::Invalid);
+        }
+        store.prepare_create(intent, now)
+    }
+    pub fn claim(&self, store: &Store, operation_id: &str, now: i64) -> Result<CreateClaim> {
+        let r = get(&store.conn, &store.owner, operation_id)?.ok_or(Error::Invalid)?;
+        self.available(store, &r.intent)?;
+        store.claim_create_bound(
+            operation_id,
+            now,
+            Some((
+                self.token.clone(),
+                self.identity.fingerprint(&r.intent)?,
+                &self.identity.tier,
+            )),
+        )
+    }
+    /// Consumes claim on ALL outcomes. Clock is real UTC Unix seconds sampled
+    /// internally; absolute reservation deadlines are NEVER rebased to runtime.
+    pub fn execute(
+        &mut self,
+        store: &Store,
+        claim: CreateClaim,
+    ) -> Result<LocalDevelopmentOutcome> {
+        self.available(store, &claim.intent)?;
+        if !Arc::ptr_eq(&claim.origin, &store.origin)
+            || claim
+                .driver
+                .as_ref()
+                .is_none_or(|d| !Arc::ptr_eq(d, &self.token))
+        {
+            return Err(Error::Invalid);
+        }
+        if !start_bound_invocation(
+            store,
+            &claim,
+            InvocationClock::LocalUtc,
+            &self.identity.tier,
+            #[cfg(test)]
+            self.hooks.before_commit_fail,
+        )? {
+            return Ok(LocalDevelopmentOutcome::NotInvoked);
+        }
+        #[cfg(test)]
+        {
+            pause(&self.hooks.after_commit)?;
+            if self.hooks.after_commit_unwind {
+                panic!("local after-commit unwind");
+            }
+        }
+        // Stop before submission may prevent child; after commit a racing stop
+        // may still allow one. Its latch attaches before result Store writes.
+        if self.stop.requested() {
+            return Ok(LocalDevelopmentOutcome::NotInvoked);
+        }
+        let deadlines = LocalDeadlines::new(
+            absolute(claim.serving_deadline)?,
+            absolute(claim.cleanup_deadline)?,
+        )?;
+        self.submitted = true; // irrevocable before exactly one Local submission
+        let result = self
+            .local
+            .as_mut()
+            .ok_or(Error::Invalid)?
+            .launch_development_until(
+                &LaunchSpec {
+                    owner: claim.intent.owner.clone(),
+                    node_uid: claim.intent.node_uid.clone(),
+                    tier: self.identity.tier.clone(),
+                },
+                deadlines,
+            );
+        let launch = match result {
+            Ok(launch) => launch,
+            Err(_) => {
+                // Local::drop requests stop for retained timed workers; those
+                // workers retain child+directory lock independently until reap.
+                self.stop.request_stop();
+                self.local.take();
+                let _ = store.record_create_result(
+                    &claim.intent.operation_id,
+                    &CreateObservation::Ambiguous,
+                    utc_seconds()?,
+                );
+                return Ok(LocalDevelopmentOutcome::Ambiguous);
+            }
+        };
+        let actual_stop = launch.stop_handle();
+        let instance = launch.instance().clone();
+        self.launch = Some(launch); // retain ownership even if attach refuses
+        #[cfg(test)]
+        pause(&self.hooks.before_attach)?;
+        if self.stop.attach(actual_stop).is_err() {
+            let _ = store.record_create_result(
+                &claim.intent.operation_id,
+                &CreateObservation::Ambiguous,
+                utc_seconds()?,
+            );
+            return Ok(LocalDevelopmentOutcome::Ambiguous);
+        }
+        #[cfg(test)]
+        pause(&self.hooks.after_launch)?;
+        let observed_at = match utc_seconds() {
+            Ok(now) => now,
+            Err(e) => {
+                self.stop.request_stop();
+                return Err(e);
+            }
+        };
+        if instance.owner != claim.intent.owner
+            || instance.node_uid != claim.intent.node_uid
+            || instance.tier != self.identity.tier
+            || label(&instance.id).is_err()
+        {
+            self.stop.request_stop();
+            let _ = store.record_create_result(
+                &claim.intent.operation_id,
+                &CreateObservation::Ambiguous,
+                observed_at,
+            );
+            return Ok(LocalDevelopmentOutcome::Ambiguous);
+        }
+        let binding = ResourceBinding { owner: claim.intent.owner.clone(), run_id: claim.intent.run_id.clone(),
+            node_uid: claim.intent.node_uid.clone(), instance_id: instance.id,
+            volumes: VolumeBinding::NoneAllocated, provenance: "local-development-v1: retained child; local adapter creates no volumes; not cloud proof".into(),
+            observed_at, status: EvidenceStatus::Complete };
+        #[cfg(test)]
+        if self.hooks.lose_response {
+            self.stop.request_stop();
+            let _ = store.record_create_result(
+                &claim.intent.operation_id,
+                &CreateObservation::Ambiguous,
+                observed_at,
+            );
+            return Ok(LocalDevelopmentOutcome::Ambiguous);
+        }
+        match store.record_create_result(
+            &claim.intent.operation_id,
+            &CreateObservation::Bound(binding),
+            observed_at,
+        ) {
+            Ok(r) => Ok(LocalDevelopmentOutcome::Bound(Box::new(r))),
+            Err(_) => {
+                self.stop.request_stop();
+                Ok(LocalDevelopmentOutcome::Ambiguous)
+            }
+        }
+    }
+}
+impl Drop for LocalDevelopmentExecutor {
+    fn drop(&mut self) {
+        self.stop.request_stop();
+    }
+}
+fn absolute(seconds: i64) -> Result<SystemTime> {
+    UNIX_EPOCH
+        .checked_add(Duration::from_secs(
+            u64::try_from(seconds).map_err(|_| Error::Invalid)?,
+        ))
+        .ok_or(Error::Invalid)
+}
+pub(super) fn utc_seconds() -> Result<i64> {
+    i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| Error::Invalid)?
+            .as_secs(),
+    )
+    .map_err(|_| Error::Invalid)
+}
+#[cfg(test)]
+struct Pause {
+    entered: std::sync::mpsc::SyncSender<()>,
+    resume: std::sync::mpsc::Receiver<()>,
+}
+#[cfg(test)]
+fn pause(p: &Option<Pause>) -> Result<()> {
+    if let Some(p) = p {
+        p.entered.send(()).map_err(|_| Error::Invalid)?;
+        p.resume
+            .recv_timeout(Duration::from_secs(8))
+            .map_err(|_| Error::Invalid)?;
+    }
+    Ok(())
+}
+#[cfg(test)]
+#[derive(Default)]
+struct Hooks {
+    before_commit_fail: bool,
+    after_commit_unwind: bool,
+    after_commit: Option<Pause>,
+    after_launch: Option<Pause>,
+    before_attach: Option<Pause>,
+    lose_response: bool,
+}
+#[cfg(test)]
+mod tests;

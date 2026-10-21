@@ -199,43 +199,14 @@ impl DevelopmentExecutor {
         Ok(())
     }
     fn start_invocation(&self, store: &Store, claim: &CreateClaim, now: i64) -> Result<bool> {
-        let tx = Transaction::new_unchecked(&store.conn, TransactionBehavior::Immediate)?;
-        owned(&tx, &store.owner)?;
-        let mut a = account(&tx, &store.owner, now)?;
-        let mut r = get(&tx, &store.owner, &claim.intent.operation_id)?.ok_or(Error::Invalid)?;
-        if r.intent != claim.intent
-            || r.dispatched_at != Some(claim.dispatched_at)
-            || now < r.last_at
-        {
-            return Err(Error::Invalid);
-        }
-        if r.state == CreateState::Cancelled {
-            return Ok(false);
-        }
-        if r.state != CreateState::DispatchConsumed
-            || r.result.is_some()
-            || r.uncertainty_observed
-            || r.invocation_started_at.is_some()
-        {
-            return Err(Error::Invalid);
-        }
-        let b = budget(&tx, &r.intent)?;
-        let deadlines = crate::budget::validate_consumed_create(&tx, &r.budget, &b, &a, now)?;
-        if deadlines != (claim.serving_deadline, claim.cleanup_deadline) {
-            return Err(Error::Invalid);
-        }
-        live_launch(&tx, &r.intent, now)?;
-        self.check_tier(store, &r.intent)?;
-        r.invocation_started_at = Some(now);
-        r.last_at = now;
-        save(&tx, &r)?;
-        save_budget(&tx, &b, &mut a, now)?;
-        #[cfg(test)]
-        if self.hooks.before_commit_fail {
-            return Err(Error::Invalid);
-        }
-        tx.commit()?;
-        Ok(true)
+        start_bound_invocation(
+            store,
+            claim,
+            InvocationClock::Explicit(now),
+            &self.plan.tier,
+            #[cfg(test)]
+            self.hooks.before_commit_fail,
+        )
     }
     /// Consumes claim on EVERY outcome, including failed validation/persistence.
     /// Cancellation before start wins: zero calls. After commit: possible one
