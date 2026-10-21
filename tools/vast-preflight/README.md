@@ -1,7 +1,8 @@
 # Vast preflight (offline / unqualified)
 
 Standalone Python 3 stdlib tooling; no changes to core/provider crates or Cargo.
-**No live runner, launch, destroy, payment, credential reader or default transport.**
+**Default CLI is offline. No launch, destroy or payment implementation.**
+An explicit opt-in read-only HTTPS runner exists but is NOT authorized for live use.
 
 ```sh
 tools/vast-preflight/check
@@ -20,7 +21,8 @@ The root `scripts/check` does **not** run these tests; run both at integration.
 
 - `ReadOnlyClient(exchange, secret_supplier)`: runtime dependency injection;
   fixed account/offer read allowlist, sanitized facts, opaque failures. No raw
-  result/header export, no key argument on a command line, no environment reads.
+  result/header export, no key argument on a command line. Core client has no
+  environment reads; opt-in runner supplier reads only VAST_API_KEY at runtime.
 - `dry_run(account, offer, plan, gates, now_s)`: pure conservative micro-USD
   budget/deadline simulation. Passing result still has `live_authorized=False`.
 - `cleanup_step(intent, snapshot, now_s, abort=False)`: pure watcher decision;
@@ -44,12 +46,28 @@ identity for explicit Mbps) precedes threshold comparison; unknown units fail. L
 is rejected conservatively because occupied regions cannot be inferred safely.
 Fixtures contain fake prices and markers, never actual credentials.
 
-Injected transport is trusted secret-handling code. Before any authorized use it
-must enforce fixed official HTTPS origin, verified TLS, no redirects/proxies,
-bounded bodies/timeouts, and no debug/header/response logging. No transport ships
-here; tests inject memory-only exchange functions. Python object introspection,
-traceback-local dumps and process memory are not covered by repr redaction; no
-zeroization claim is made. Never give an account key to a rented host.
+`https_readonly.https_client` constructs a real stdlib HTTPS adapter without
+connecting or obtaining the key. Its fixed origin is `https://console.vast.ai:443`;
+only exact GET account and POST fixed on-demand offer query are accepted. No
+redirect following, retries, proxy discovery, base URL override or debug logging.
+TLS verifies hostname/certificates with compiled-in CA paths, ignores certificate
+environment overrides, and fails closed if trust loading fails. Socket I/O timeout
+is 10 seconds, body read <=1 MiB+1, oversized/encoded/error/redirect replies fail
+opaquely. This socket timeout is NOT an independent whole-process watchdog or
+hard wall-clock bound against DNS/slow-drip traffic. Use an external bounded
+supervisor before live execution. Client/runner exports only whitelisted facts.
+
+`readonly_runner.py` without flags is offline and does not consume credentials.
+`--authorized-readonly` is a future root-authorized opt-in, not an authorization
+grant in itself. Runtime injection must be established securely before use; no
+key value goes in argv, files, logs or tool arguments. Runner always reports
+`live_authorized=false`, unknown topup and blocked pricing qualification. No
+unauthenticated or authenticated provider calls have been made by these tests.
+
+Python object introspection, traceback-local dumps and process memory are not
+covered by repr redaction; no zeroization claim. Never give an account key to a
+rented host. Test connection factories are trusted test-only injection seams,
+not user-selected hosts/transports.
 
 Evidence, official links, unresolved live gates and proposed independent cleanup
 watcher design are in Knowledge:
