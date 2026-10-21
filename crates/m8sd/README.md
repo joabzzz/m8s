@@ -148,3 +148,131 @@ though its attempt latch stays terminal. Changing a request after receive fails
 before burn. No caller-forgeable ID or public proof constructor was introduced.
 These are pure internal negative-policy tests; the actual iroh loopback remains
 runtime-unqualified and is not retried in this review slice.
+
+## Durable all-in budget intent (not live spend integration)
+
+`m8sd::budget` adds owner-scoped `budget_account`, immutable `budget_period`, and
+retained `budget_reservation` rows on **the same private Store connection/database**.
+No separate journal, file, process, background executor or budget authority is
+created. `Store::open` initializes only these schemas. Existing reconcile remains
+explicitly mock-only and does **not** call these APIs. This is not permission to
+rent, a verified Admin approval, a billing proof, or a wired paid-spend guard.
+
+Public trusted-operation-manager API:
+
+```text
+reserve_budget(&AdminBudget, &CalendarPeriod, &BudgetRequest, now)
+    -> Result<BudgetReservation>
+budget_reservations() -> Result<Vec<BudgetReservation>>
+mark_budget_uncertain(request_id, now) -> Result<()>
+bind_budget_resources(request_id, &ResourceBinding, now) -> Result<()>
+settle_budget(request_id, &CalendarPeriod, &SettlementEvidence, now)
+    -> Result<BudgetReservation>
+```
+
+All times are trusted injected local seconds; costs use core `MicroUsd = u64`.
+Every input is a **trusted adapter assertion, not independently verified evidence**.
+Keep all IDs/provenance non-sensitive; no credentials, tokens or secret quote
+payloads belong in these serializable/debuggable metadata types. There is no
+approval default. The caller supplies explicit Admin owner/approval ID, validity
+window, lifetime all-in trial cap (the initial authorized trial may be2,000,000
+microUSD; that value is NOT a universal product limit), monthly/total-hourly/
+per-instance-hourly/concurrent-instance/runtime caps, minimum cleanup grace and
+contingency. The first accepted envelope is immutable for that owner: changing
+approval ID, caps or run ID cannot replenish/reset the account. No amendment API
+exists in this slice.
+
+Reservation is BEGIN IMMEDIATE, pool-owner checked, and commits before any future
+hypothetical create. Complete successful cost observation must be nonfuture,
+nonnegative and at most30s old. `CostQuote.valid_until` is explicitly the normalized
+rate/all-components cost bound THROUGH the reserved cleanup deadline, inclusive;
+it is not merely offer acceptance validity. Checked runtime+cleanup deadline must
+be <= this bound (equality accepted); short acceptance quotes cannot qualify. Runtime+cleanup must fit the explicit
+approval window. It reserves separately rounded-up compute and storage over
+runtime+cleanup, plus explicit full transfer and contingency totals. Checked
+u128 intermediates/checked u64 conversion prevent truncation and overflow.
+The **all-in hourly** cap is conservatively defined as
+`ceil(full_reserved_microUSD * 3600 / serving_runtime_seconds)`; this includes
+cleanup/storage/transfer/contingency rather than merely the provider compute
+rate. Lifetime actual costs plus every unresolved full reservation count against
+the immutable trial cap. Current settlement-period actual costs plus unresolved
+reservations from **all** periods count against the monthly cap; unresolved
+all-in hourly and instance counts aggregate across runs/restarts.
+
+`CalendarPeriod` is an explicit trusted UTC calendar-month interval, not derived
+from an untrusted clock. Adapter must supply real month boundaries; Store checks
+28–31day bounds, now in `[start,end)`, immutable ID+boundaries, monotone local clock
+and only nonoverlapping forward transitions. There is no automatic epoch reset.
+A known final bill is conservatively charged in full to its explicit settlement
+period, including bills resolved after rollover. Lifetime spend never resets.
+An unresolved earlier period carries its full liability into later months.
+An ambiguous operation, unknown final billing, or missed reserved cleanup deadline
+freezes **all fresh spend**, even if numeric caps have headroom. Clock rollback,
+future observations/windows, incomplete/unknown/error quote evidence refuse.
+
+Request ID and node UID are owner-unique forever. Exact request+quote+period retry
+returns retained metadata without debit, state/clock mutation or renewed quote;
+changed request fingerprint refuses. Recovery listing remains available when old
+quotes/windows no longer qualify. A returned reservation is **not an effect or
+repeat-create authorization**. Future operation manager must persist effect/claim
+intent and deduplicate provider effects; this API alone does not implement
+exactly-once create. Mark uncertainty before ambiguous effects; never rerent just
+because a process died or an API returned an error. Down/up and provider-confirmed
+node cleanup never delete/reset these accounting tombstones.
+
+Resource binding is one immutable complete fresh owner/run/nodeUID/instance and
+explicit volume set (or explicit `NoneAllocated`), with provenance. Missing or
+empty lists are not implicitly no-volume. Settlement must exactly match this
+retained binding and supply a fresh complete trusted observation of owned-instance
+absence AND every bound volume's absence, plus explicit final billing. Destroy
+acknowledgement, empty list, error, partial/unknown, stopped and process-dead
+enums do not qualify. `FinalBilling::Unknown` retains full reservation and blocks
+fresh spend, even with complete absence. Known final actual cost alone permits
+unused release; actual overruns are recorded in full even above all caps (never
+clamped/refused to hide debt). Exact repeated settlement changes no accounting;
+changed settled evidence refuses. No asynchronous/provider call runs inside a
+transaction; no effect executor exists.
+
+Remaining gates: trusted real Admin/clock/cost-unit/complete resource/billing
+adapters, historical external debt reconciliation before enabling spending,
+durable operation-manager effect claiming/deduplication, independent remote
+watcher/deadline/destroy/volume cleanup, secure runtime prerequisites and actual
+provider qualification. Missing or ambiguous evidence must keep paid admission
+disabled. The earlier Python fake watchdog journal is unchanged and is NOT
+production budget authority. Tests here are actual SQLite races/restarts and
+synthetic trusted observations/mocks, not a paid/provider/watcher qualification.
+
+### Explicit initial reconciliation and normalized units
+
+The Admin envelope additionally requires `AccountBaseline` with prior
+`prior_lifetime_spent`, `prior_current_period_spent` bound to explicit
+`initial_period: CalendarPeriod`, and explicit `ExternalLiability::{NoneConfirmed,KnownReserved,Unknown}`,
+local observed time, completeness and provenance. **No missing baseline defaults
+to zero**. `initialize_budget(&AdminBudget, &CalendarPeriod, now)` persists this
+trusted fresh baseline once even if it is unknown or already exceeds approved
+caps; `budget_account()` exposes it for recovery. Reserve first performs this
+idempotent initialization in its own short transaction, so an accepted initial
+debt baseline remains recorded even when the proposed reservation is refused.
+The reservation/accounting decision itself still commits atomically in a single
+BEGIN IMMEDIATE. Missing account with existing reservation records is corruption,
+not a new epoch. Prior lifetime spend always counts against the lifetime cap; prior current-period
+spend counts against its exact immutable initial period. It must not exceed prior
+lifetime spend. Actual late/cross-period new bills count in their settlement
+period, while all unresolved liabilities carry into every period. Nonzero known external liability and unknown
+external liability freeze fresh spending across all periods until a future
+explicit Admin-approved reconciliation/migration exists; they cannot be silently
+cleared by changing envelope, run, month, down/up or process restart. Initial
+zero spend + `NoneConfirmed` must be an **explicit trusted reconciliation**, not
+inferred from an empty local ledger. This covers the tracked approval and its
+baseline, NOT universal provider account balance/credit/debt proof.
+
+Compute and storage each require explicit `RateUnit::MicroUsdPerHour`; transfer
+and contingency require `TotalUnit::MicroUsd`. Unknown/unsupported/missing units
+are refused, not coerced. Provenance must identify the trusted normalized quote;
+this module does not resolve provider pricing-unit conflicts. Reservation math
+is intent only: it does NOT prove watchdog runtime/cleanup deadlines, storage or
+egress limits are actually enforced. The immutable envelope limitation is for
+this bounded implementation, not a permanent product restriction: future explicit
+Admin-approved increases or migration need their own reviewed operation, retaining
+all spend/liability history. Late/cross-period actual bills, including overruns,
+are charged in full to the explicit settlement month and remain lifetime charges.

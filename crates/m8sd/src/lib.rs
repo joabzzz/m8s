@@ -69,6 +69,7 @@ impl Store {
         }
         tx.commit()?;
         nonce::initialize(&conn)?;
+        budget::initialize(&conn)?;
         Ok(Self {
             conn,
             owner: owner.into(),
@@ -379,6 +380,7 @@ impl Store {
     }
 }
 
+pub mod budget;
 pub mod nonce;
 
 mod private;
