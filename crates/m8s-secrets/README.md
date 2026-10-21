@@ -76,19 +76,78 @@ disk encryption, backups and provisioning remain operator concerns.
 
 ## Keyring backend
 
-KeyringStore::injected(driver) stores one bounded envelope per driver item, so
-names and expiry cannot become inconsistent with separate value items. The
-driver owns its namespace and must atomically replace its item. Driver errors
-are opaque, never treated as absence or file-fallback signals. The store mutex
-serializes its operations, **not independent objects or processes**. Use one
-host-owned store or external serialization; multi-writer keyring coordination
-is not implemented in this slice.
+`KeyringStore` stores one bounded internal binary envelope per driver item, so
+names and expiry cannot become inconsistent with separate value items. This is
+not the public TOML file contract. Driver errors remain opaque, never absence,
+rollback guarantees or file-fallback signals. A failed save may already have
+committed; the next explicit successful load supplies the backend evidence.
+
+### Explicit exclusive-writer coordination (not OS/default qualification)
+
+Identified backends use these library-only APIs:
+
+1. `KeyringIdentity::new(service, account)` supplies **non-secret** exact backend
+   identity metadata (validated service/account names, each at most 128 bytes).
+2. `KeyringLockDomain::acknowledge_exclusive_writers(directory, identity)` is an
+   **explicit security-contract acknowledgement**, not an automatically verified
+   assertion. The owner must provision one trusted private lock directory and
+   ensure **every** daemon/CLI/other writer for that service/account uses it.
+3. `KeyringStore::coordinated(driver, domain)` rejects missing/mismatched driver
+   identity before backend load/save. Identity is rechecked on each operation.
+
+The lock directory follows FileStore's descriptor-relative path walk: explicit
+absolute components, owner-0700 private directory, no symlinks/Git ancestry or
+extended ACLs, trusted ancestors. The empty stable lock name is fixed by SHA256
+of version-tagged, length-delimited service/account identity (not secret values).
+It is owner-0600, regular, singly linked, no-follow/nonblocking/close-on-exec,
+ACL checked, synced with its parent on construction and never replaced/deleted.
+No secrets are written to lock files; this is not a new private keystore.
+
+A shared process-wide identity registry rejects concurrent live conflicting
+lock domains and shares one mutex for matching pinned directory/lock inodes.
+Every get/list/put/delete holds that shared mutex **and an exclusive flock**
+across the ENTIRE load/decode/read-or-mutate/encode/save operation. Each operation
+opens a fresh lock descriptor, rewalks ancestry and pins inodes; checks repeat
+after waiting for flock. Poison or validation failure fails closed before any
+backend effect. File drop/process exit releases flock. No stale-lock deletion,
+permission repair, implicit path discovery, timeout/lock stealing or fallback.
+Calls are blocking/non-reentrant: use `spawn_blocking` from async code. Do not
+fork live stores/mutexes; independently exec and construct each client.
+
+**Supported guarantee is qualified cooperative exclusive deployment only.**
+No API can prove third-party/raw/legacy OS Keychain clients honor this protocol,
+or discover a globally canonical directory safely. All writers must agree on
+one identity/domain and a filesystem with qualified local flock semantics.
+Do not change/recreate/move a domain while ANY process can use the old one.
+After all handles have dropped, creating a different domain requires a fresh
+explicit acknowledgement and operational exclusion of all old/foreign clients;
+there is no persistent global authority proving that exclusion. Malicious
+same-UID code/root is outside this model, as for FileStore. Admin deployment/
+security qualification is tracked in Needs Admin card
+`01a15e95-8a36-77b3-97ea-8fbd08f21b49`. CLI Keychain/default remains **unavailable**;
+synthetic locking tests do not qualify actual Keychain or cross-application use.
+
+`KeyringDriver::identity()` must be pure and immutable, returning `Some` for any
+backend with independent clients. `None` and `KeyringStore::injected(driver)`
+remain ONLY for isolated synthetic/in-memory drivers; they do not provide a
+multi-writer guarantee. An identified driver (including the OS adapter) cannot
+perform backend operations through `injected`: it fails unavailable before
+load/save. Custom drivers must uphold the identity/exclusivity contract; raw
+driver calls bypass store coordination and are unsupported concurrent writers.
+
+Tests inject memory/file fixture drivers only: independent objects, six actual
+subprocess writers, forced whole-operation race windows, crash/restart releasing
+flock, ambiguity-after-save, read failure/corruption, shared process-lock poison,
+lock replacement/modes/links/Git/ACL/path swaps, expiry and deletion. Subprocess
+environments are cleared and contain only dedicated non-secret synthetic fixture
+parameters. No real OS keyring item, credential env or owner keystore is accessed.
 
 The optional os-keyring feature compiles MacKeyringDriver on macOS using exactly
 keyring 3.6.3, apple-native, no default features. Downloaded local source was
 inspected for its byte API and credential Debug/log representation (service,
 account, domain only). Constructor takes an explicit validated namespace and
-makes no OS calls. Explicit load/save operations use service m8s-secret-store-v1
+makes no OS calls. Its pure identity reports service/account; use it only via a
+qualified coordinated store, not injected/raw driver calls. Explicit load/save operations use service m8s-secret-store-v1
 and that namespace only. This adapter is excluded from unit test builds. Tests
 use only injected mock drivers and **never call keyring**. No Linux Secret
 Service adapter or implicit macOS default is wired yet.

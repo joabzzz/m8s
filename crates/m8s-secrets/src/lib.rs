@@ -3,11 +3,15 @@
 mod codec;
 mod keychain;
 #[cfg(unix)]
+mod keyring_lock;
+#[cfg(unix)]
+pub use keyring_lock::KeyringLockDomain;
+#[cfg(unix)]
 mod toml;
 pub mod ux;
 #[cfg(all(target_os = "macos", feature = "os-keyring", not(test)))]
 pub use keychain::MacKeyringDriver;
-pub use keychain::{KeyringDriver, KeyringStore};
+pub use keychain::{KeyringDriver, KeyringIdentity, KeyringStore};
 #[cfg(unix)]
 mod acl;
 #[cfg(unix)]
@@ -83,6 +87,8 @@ pub enum Error {
     ReadOnly,
     #[error("requested backend is unavailable; no fallback was attempted")]
     Unavailable,
+    #[error("secret store coordination timed out; no backend operation was attempted")]
+    LockTimeout,
 }
 impl From<std::io::Error> for Error {
     fn from(_: std::io::Error) -> Self {

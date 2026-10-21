@@ -27,7 +27,7 @@ fn io<T>(r: std::io::Result<T>) -> Result<T, Error> {
 fn cstr(s: &[u8]) -> Result<CString, Error> {
     CString::new(s).map_err(|_| Error::UnsafePath)
 }
-fn open_at(dir: &File, name: &CStr, flags: i32) -> std::io::Result<File> {
+pub(crate) fn open_at(dir: &File, name: &CStr, flags: i32) -> std::io::Result<File> {
     for attempt in 0..16 {
         // SAFETY: valid borrowed descriptor and NUL-terminated name, mode supplied for O_CREAT.
         let fd = unsafe {
@@ -59,7 +59,7 @@ fn uid() -> u32 {
     // SAFETY: geteuid has no preconditions or effects.
     unsafe { libc::geteuid() }
 }
-fn private_file(f: &File) -> Result<(), Error> {
+pub(crate) fn private_file(f: &File) -> Result<(), Error> {
     let m = io(f.metadata())?;
     file_metadata(&m, uid())?;
     crate::acl::reject_extended(f)
@@ -113,7 +113,7 @@ impl FileStore {
         store.transaction(|_| Ok(()), false)?;
         Ok(store)
     }
-    fn parent(path: &Path) -> Result<(File, CString), Error> {
+    pub(crate) fn parent(path: &Path) -> Result<(File, CString), Error> {
         if !path.is_absolute() {
             return Err(Error::UnsafePath);
         }
