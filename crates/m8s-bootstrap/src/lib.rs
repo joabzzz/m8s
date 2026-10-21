@@ -1,5 +1,5 @@
-//! Owner-side ADR-0006 protocol policy. No live transport or certificate implementation.
-//! The iroh boundary is deliberately closed until an authenticated adapter is integrated.
+//! Owner-side ADR-0006 policy with optional real encrypted iroh transport.
+//! Certificate implementations and live provider observation remain integration gates.
 use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, net::IpAddr};
@@ -17,6 +17,8 @@ pub enum Error {
     Unavailable,
     #[error("bootstrap storage failure")]
     Storage,
+    #[error("secure transport failed or timed out")]
+    Transport,
     #[error("certificate signing or verification failed")]
     Certificate,
 }
@@ -72,6 +74,7 @@ pub struct IrohSession {
 }
 
 /// Explicit fail-closed placeholder, not a plaintext or mock network implementation.
+#[cfg(not(feature = "iroh-transport"))]
 pub fn accept_iroh() -> Result<IrohSession> {
     Err(Error::Unavailable)
 }
@@ -86,7 +89,9 @@ pub struct Redemption {
     pub self_destruct_present: bool,
 }
 
-/// Exact public claims which a real MP-001 adapter must sign and verify.
+/// Exact public claims which the signer/verifier adapter binds. `owner` is the
+/// pinned iroh owner endpoint, not an MP-001 signing-owner ID: a production adapter
+/// must map it to the separately configured trusted mesh signing identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CertificateClaims {
     pub owner: EndpointId,
@@ -99,8 +104,9 @@ pub struct NodeCertificate(pub Vec<u8>);
 pub trait NodeSigner {
     fn sign(&mut self, claims: &CertificateClaims) -> Result<NodeCertificate>;
 }
-/// Must perform real MP-001 signature verification AND exact claim equality,
-/// including owner, endpoint and validity. No production implementation is provided.
+/// Must perform real MP-001 signature verification AND exact claim binding,
+/// including the configured owner-endpoint-to-signing-identity mapping, node and
+/// validity. Never infer signing trust from an untrusted certificate public key. No production implementation is provided.
 pub trait CertificateVerifier {
     fn verify(&self, certificate: &NodeCertificate, expected: &CertificateClaims) -> Result<()>;
 }
@@ -139,18 +145,35 @@ impl ControlAcl {
     }
 }
 
-/// Join material stays private and zeroized; only a future encrypted transport
-/// adapter can deliver this. This is NOT a serialized or encrypted sealed bundle yet.
+/// Owner-selected model/config/heartbeat settings. Config may contain sensitive
+/// material: deliberately no Debug/Serialize, zeroizing bytes.
+pub struct BundleSettings {
+    pub model: String,
+    pub config: Zeroizing<Vec<u8>>,
+    pub heartbeat_ttl_seconds: u64,
+}
+
+/// Consumed-nonce output. Join material stays private and zeroized; the optional
+/// real transport adapter delivers it only on its original encrypted stream.
 pub struct PendingDelivery {
     certificate: NodeCertificate,
     join_token: Zeroizing<Vec<u8>>,
     claims: CertificateClaims,
     acl: ControlAcl,
+    settings: Option<BundleSettings>,
 }
 impl PendingDelivery {
     pub fn claims(&self) -> &CertificateClaims {
         &self.claims
     }
+    pub fn with_settings(mut self, settings: BundleSettings) -> Result<Self> {
+        if settings.model.is_empty() || settings.heartbeat_ttl_seconds == 0 {
+            return Err(Error::Refused);
+        }
+        self.settings = Some(settings);
+        Ok(self)
+    }
+    #[cfg(not(feature = "iroh-transport"))]
     pub fn deliver(self, _session: &IrohSession) -> Result<()> {
         // Explicitly retain ownership of sensitive fields until zeroizing drop.
         let _ = (&self.certificate, &self.join_token, &self.acl);
@@ -249,6 +272,7 @@ impl Ledger {
             join_token,
             claims,
             acl: ControlAcl::owner_only(expected.owner),
+            settings: None,
         })
     }
 }
@@ -300,3 +324,11 @@ impl HeartbeatGuard {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "iroh-transport")]
+pub mod transport;
+#[cfg(any(feature = "iroh-transport", test))]
+mod wire;
+
+#[cfg(feature = "iroh-transport")]
+pub use transport::{AuthenticatedControlSession, AuthenticatedHeartbeat, ControlPolicy};

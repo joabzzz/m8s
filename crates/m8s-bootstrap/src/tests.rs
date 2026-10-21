@@ -265,6 +265,7 @@ fn heartbeats_bind_identity_expiry_and_monotonic_sequence() {
     assert!(guard.receive(&session(CONTROL_ALPN, 2), 2, 161).is_err());
     assert!(guard.receive(&session(CONTROL_ALPN, 2), 2, 200).is_err());
 }
+#[cfg(not(feature = "iroh-transport"))]
 #[test]
 fn transport_and_delivery_remain_unavailable() {
     assert!(matches!(accept_iroh(), Err(Error::Unavailable)));
@@ -305,4 +306,187 @@ fn outer_transactions_and_duplicate_issuance_are_refused() {
         .is_err()
     );
     assert_eq!(signer.calls, 0);
+}
+
+#[test]
+fn cancelled_delivery_does_not_restore_nonce() {
+    let ledger = ledger();
+    let delivery = redeem(
+        &ledger,
+        &session(BOOT_ALPN, 2),
+        request(),
+        101,
+        &mut authority(),
+        &authority(),
+    )
+    .unwrap();
+    drop(delivery); // Equivalent to abandoning delivery after synchronous consume/sign.
+    assert!(
+        redeem(
+            &ledger,
+            &session(BOOT_ALPN, 2),
+            request(),
+            102,
+            &mut authority(),
+            &authority()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn signer_unwind_does_not_restore_nonce() {
+    struct InterruptedSigner;
+    impl NodeSigner for InterruptedSigner {
+        fn sign(&mut self, _: &CertificateClaims) -> Result<NodeCertificate> {
+            panic!("synthetic signer interruption");
+        }
+    }
+    let ledger = ledger();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ledger.redeem(
+            &session(BOOT_ALPN, 2),
+            request(),
+            &binding(),
+            101,
+            2000,
+            Zeroizing::new(vec![9]),
+            &mut InterruptedSigner,
+            &authority(),
+        )
+    }));
+    assert!(outcome.is_err());
+    assert!(
+        redeem(
+            &ledger,
+            &session(BOOT_ALPN, 2),
+            request(),
+            102,
+            &mut authority(),
+            &authority()
+        )
+        .is_err()
+    );
+}
+
+mod actual_crypto {
+    use super::*;
+    // The integration helper imports the public library name; mirror the fixture
+    // below to avoid exposing internal test constructors or changing production API.
+    use ed25519_dalek::{Signature, Signer, SigningKey};
+    struct Signing(SigningKey);
+    struct Verification(ed25519_dalek::VerifyingKey);
+    fn bytes(c: &CertificateClaims) -> Vec<u8> {
+        let mut b = b"m8s-test-only-certificate-v1\0".to_vec();
+        b.extend_from_slice(&c.owner.0);
+        b.extend_from_slice(&c.node.0);
+        b.extend_from_slice(&c.issued_at.to_be_bytes());
+        b.extend_from_slice(&c.expires_at.to_be_bytes());
+        b
+    }
+    impl NodeSigner for Signing {
+        fn sign(&mut self, c: &CertificateClaims) -> Result<NodeCertificate> {
+            Ok(NodeCertificate(self.0.sign(&bytes(c)).to_bytes().to_vec()))
+        }
+    }
+    impl CertificateVerifier for Verification {
+        fn verify(&self, c: &NodeCertificate, e: &CertificateClaims) -> Result<()> {
+            let s = Signature::from_slice(&c.0).map_err(|_| Error::Certificate)?;
+            self.0
+                .verify_strict(&bytes(e), &s)
+                .map_err(|_| Error::Certificate)
+        }
+    }
+    #[test]
+    fn real_signature_claim_confusion_and_tampering_fail_closed() {
+        let key = SigningKey::from_bytes(&[17; 32]);
+        let verify = Verification(key.verifying_key());
+        let mut signer = Signing(key);
+        let claims = CertificateClaims {
+            owner: binding().owner,
+            node: EndpointId([2; 32]),
+            issued_at: 100,
+            expires_at: 200,
+        };
+        let mut certificate = signer.sign(&claims).unwrap();
+        verify.verify(&certificate, &claims).unwrap();
+        for field in 0..4 {
+            let mut confused = claims.clone();
+            match field {
+                0 => confused.owner = EndpointId([7; 32]),
+                1 => confused.node = EndpointId([7; 32]),
+                2 => confused.issued_at += 1,
+                _ => confused.expires_at += 1,
+            };
+            assert!(verify.verify(&certificate, &confused).is_err());
+        }
+        certificate.0[0] ^= 1;
+        assert!(verify.verify(&certificate, &claims).is_err());
+        certificate.0.truncate(63);
+        assert!(verify.verify(&certificate, &claims).is_err());
+        let ledger = ledger();
+        let key = SigningKey::from_bytes(&[17; 32]);
+        let mut signer = Signing(key);
+        assert!(
+            ledger
+                .redeem(
+                    &session(BOOT_ALPN, 2),
+                    request(),
+                    &binding(),
+                    101,
+                    2000,
+                    Zeroizing::new(vec![9]),
+                    &mut signer,
+                    &verify
+                )
+                .is_ok()
+        );
+        assert!(
+            ledger
+                .redeem(
+                    &session(BOOT_ALPN, 2),
+                    request(),
+                    &binding(),
+                    102,
+                    2000,
+                    Zeroizing::new(vec![9]),
+                    &mut signer,
+                    &verify
+                )
+                .is_err()
+        );
+    }
+    #[test]
+    fn real_signature_wrong_signer_burns_before_verification_failure() {
+        let verify = Verification(SigningKey::from_bytes(&[17; 32]).verifying_key());
+        let mut wrong = Signing(SigningKey::from_bytes(&[18; 32]));
+        let ledger = ledger();
+        assert!(matches!(
+            ledger.redeem(
+                &session(BOOT_ALPN, 2),
+                request(),
+                &binding(),
+                101,
+                2000,
+                Zeroizing::new(vec![9]),
+                &mut wrong,
+                &verify
+            ),
+            Err(Error::Certificate)
+        ));
+        let mut correct = Signing(SigningKey::from_bytes(&[17; 32]));
+        assert!(matches!(
+            ledger.redeem(
+                &session(BOOT_ALPN, 2),
+                request(),
+                &binding(),
+                102,
+                2000,
+                Zeroizing::new(vec![9]),
+                &mut correct,
+                &verify
+            ),
+            Err(Error::Refused)
+        ));
+    }
 }
