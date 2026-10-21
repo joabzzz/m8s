@@ -44,6 +44,7 @@ pub struct Offer {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InstanceState {
+    Starting,
     Running,
     Stopped,
     Exited,

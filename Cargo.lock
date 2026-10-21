@@ -215,6 +215,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "m8s-provider-vast"
+version = "0.1.0"
+dependencies = [
+ "m8s-core",
+ "m8s-provider",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "m8s-secrets"
 version = "0.1.0"
 dependencies = [

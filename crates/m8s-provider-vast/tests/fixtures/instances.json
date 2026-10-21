@@ -1,0 +1,7 @@
+{
+  "instances": [
+    {"id": 501, "label": "m8s:v1:owner:uid:tier", "actual_status": "running", "extra_env": {"SYNTHETIC_SECRET": "never-log-this"}, "onstart": "synthetic-sensitive-field"},
+    {"id": 502, "label": "m8s:v1:owner-other:other:tier", "actual_status": "stopped"},
+    {"id": 503, "label": "unrelated rental", "actual_status": "exited"}
+  ]
+}

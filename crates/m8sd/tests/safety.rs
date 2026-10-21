@@ -287,3 +287,29 @@ fn nonce_mismatches_and_concurrent_replay_are_refused() {
         .sum::<usize>();
     assert_eq!(successes, 1);
 }
+
+#[test]
+fn starting_instances_retain_desired_capacity_but_down_still_destroys() {
+    let mut s = Store::open(path(), "owner").unwrap();
+    let mut p = Mock::default();
+    s.scale("tier", 1).unwrap();
+    s.reconcile(&mut p, 0).unwrap();
+    let node = s.nodes().unwrap().remove(0);
+    p.insert(Instance {
+        id: node.instance_id.unwrap(),
+        owner: "owner".into(),
+        node_uid: node.uid,
+        tier: "tier".into(),
+        state: InstanceState::Starting,
+    })
+    .unwrap();
+    s.reconcile(&mut p, 1).unwrap();
+    assert!(p.destroy_calls.is_empty());
+    assert_eq!(s.nodes().unwrap().len(), 1);
+    assert_eq!(s.launch_count("tier", 1).unwrap(), 1);
+    s.down().unwrap();
+    s.reconcile(&mut p, 2).unwrap();
+    assert_eq!(p.destroy_calls.len(), 1);
+    s.reconcile(&mut p, 3).unwrap();
+    assert!(s.nodes().unwrap().is_empty());
+}

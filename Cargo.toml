@@ -7,7 +7,7 @@ edition = "2024"
 license = "MIT"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["arbitrary_precision"] }
 thiserror = "2"
 rusqlite = { version = "0.38", features = ["bundled"] }
 m8s-core = { path = "crates/m8s-core" }

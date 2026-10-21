@@ -250,7 +250,7 @@ impl Store {
                     let count = retained.entry(n.tier.clone()).or_default();
                     if n.uid.starts_with("orphan:")
                         || matches!(n.phase, Phase::Destroying | Phase::Draining)
-                        || i.state != InstanceState::Running
+                        || matches!(i.state, InstanceState::Stopped | InstanceState::Exited)
                         || *count >= desired
                     {
                         self.phase(&n.uid, Phase::Destroying)?;

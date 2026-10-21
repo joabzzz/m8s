@@ -70,9 +70,18 @@ response states `mode: mock-only` and the bootstrap limitation.
   explicitly injected read-only environment store exists; it never scans ambient
   variables. No secret-retrieval CLI, file fallback or Keychain backend exists.
 
+## Fixture-only provider mapping
+
+The separate m8s-provider-vast crate exercises hand-written S1-derived API fixtures
+through an injected in-memory transport. It has no network client, credentials,
+default transport or daemon dependency. Community/secure filters, exact decimal
+units, labels, launch handles, complete snapshots and owner-checked destroy are
+tested offline. See its README for schema assumptions and live-validation gaps.
+This does not enable a live launch path.
+
 ## Not implemented / not claimed
 
-No Vast transport (even fixture-only), live account access, signed-image gate,
+No live Vast transport, live account access, signed-image gate,
 iroh bootstrap/control or sealed bundle, MP-001 signer integration, mesh supervision,
 actual DMS self-destroy, OS Keychain/file SecretStore, secret CLI, config loader,
 schedules/queue triggers, `top`, eval/audit/harness, node image, or tiny-model mesh E2E.

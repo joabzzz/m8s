@@ -1,0 +1,6 @@
+{
+  "offers": [
+    {"id": 101, "num_gpus": 2, "gpu_ram": 24576, "inet_down": 1000.9, "dph_total": 0.1234567, "reliability": 0.99123, "geolocation": "US", "verified": true, "datacenter": false, "rentable": true, "external": false, "type": "ondemand"},
+    {"id": 102, "num_gpus": 1, "gpu_ram": 81920, "inet_down": 10000, "dph_total": 1.2, "reliability": 0.999, "geolocation": "DE", "verified": true, "datacenter": true, "rentable": true, "external": false, "type": "ondemand"}
+  ]
+}
