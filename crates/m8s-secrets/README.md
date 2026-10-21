@@ -141,7 +141,7 @@ perform backend operations through `injected`: it fails unavailable before
 load/save. Custom drivers must uphold the identity/exclusivity contract; raw
 driver calls bypass store coordination and are unsupported concurrent writers.
 
-Tests inject memory/file fixture drivers only: independent objects, six actual
+Normal tests inject memory/file fixture drivers only: independent objects, six actual
 subprocess writers, forced whole-operation race windows, crash/restart releasing
 flock, mutex/flock contention timeouts (including a real-process timeout),
 ambiguity-after-save, read failure/corruption, shared process-lock poison,
@@ -155,8 +155,9 @@ inspected for its byte API and credential Debug/log representation (service,
 account, domain only). Constructor takes an explicit validated namespace and
 makes no OS calls. Its pure identity reports service/account; use it only via a
 qualified coordinated store, not injected/raw driver calls. Explicit load/save operations use service m8s-secret-store-v1
-and that namespace only. This adapter is excluded from unit test builds. Tests
-use only injected mock drivers and **never call keyring**. No Linux Secret
+and that namespace only. This adapter is excluded from unit test builds. Normal tests
+use injected mock drivers and **never call keyring**; the explicitly ignored
+synthetic OS integration harness below is a separate opt-in operational step. No Linux Secret
 Service adapter or implicit macOS default is wired yet.
 
 Delete removes a named record; the empty envelope/item can remain. This is not
@@ -205,7 +206,206 @@ no dependencies.
 ## Deferred
 
 Default-path/backend setup, lifecycle expiry sweeps,
-owner-keystore auditing, provider key scope checks and real credential/provider/
-keychain testing remain out of scope. No owner keystore, credential environment,
+owner-keystore auditing, provider key scope checks and real-credential/provider
+testing remain out of scope. Synthetic OS qualification
+is a separate explicit gate below. No owner keystore, credential environment,
 or provider access is needed for tests. Expiry is enforced on get/list/check;
 physical erasure and automatic expiry deletion are not claimed.
+
+## Synthetic macOS qualification — Phase A source freeze
+
+Gate 1 is ready for technical qualification (ADR-0012 v8); Admin attendance is
+not required. This harness is **not yet OS execution evidence** and does not
+change default selection. Review its frozen source before explicitly running it.
+Only `tests/os_keyring_qualification.rs` and this qualification documentation are
+in scope; no production APIs, CLI, dependencies or lock schema are changed.
+
+### Source writer/domain inventory at `cc07dd8`
+
+The audit is limited to registered m8s workspace source/manifests, not a host,
+home-directory, Keychain or process scan:
+
+| Actual source | Constructor / effect | Coordination / status |
+| --- | --- | --- |
+| `src/keychain.rs::MacKeyringDriver` | Explicit namespace; fixed service `m8s-secret-store-v1`; `load` exact `get_secret`, `save` exact `set_secret` | Constructor has no OS effect. Only `NoEntry` maps to absence; all other OS failures are opaque `Backend`. No item enumeration/deletion/default constructor. |
+| `src/keychain.rs::KeyringStore` | `coordinated(driver, domain)`; every get/list/put/delete transaction | Identity matched before access and per operation; process mutex + stable flock cover entire envelope load/modify/save. Identified `injected` rejects before driver access. Direct trait calls could bypass this: the trait is public, not an access-control boundary. |
+| `src/keyring_lock.rs::KeyringLockDomain` | Explicit directory and exact identity; optional explicit wait budget | No production path/default provisioning. SHA256 version/length-delimited identity-derived empty stable owner-0600 lock; pinned private owner-0700 directory, revalidated ancestry/ACL/inodes. No auto-discovery or migration. |
+| `m8s-cli/src/main.rs`, `src/secrets.rs::run_inner` | `m8s secrets` requires explicit `--file`, constructs `FileStore` | No production `MacKeyringDriver`, `KeyringStore` or lock-domain constructor/call site. Missing file choice returns `Unavailable`; no fallback. CLI defaults remain OFF. |
+| Other workspace production callers | Vast readonly adapter uses the `SecretValue` type only; daemon has no Keyring writer | No additional OS-driver writer/constructor found by source search. No provider invocation is part of this audit. |
+| Existing secret/CLI tests | `KeyringStore::injected` memory mocks; coordinated memory/synthetic-file fixtures in `keyring_lock_tests.rs` | Synthetic source cooperation only, not actual OS/deployment qualification. |
+| New ignored integration harness | Coordinated wrapper delegates Mac driver load/save only while store transaction holds canonical domain | Exact single synthetic service/account shared by all independent thread/process clients; wrapper rejects a pre-existing envelope on initial load. |
+
+Source search covered `KeyringStore`, `MacKeyringDriver`, `KeyringLockDomain`,
+`KeyringDriver`, `keyring::`, `FileStore`, and secret command wiring in registered
+workspace Rust/manifests. No source evidence proves there are no external,
+legacy, third-party or deployment writers. Acknowledging exclusivity is an
+operational contract, not discovery or verification of those writers.
+
+The harness provisions **only a TEST domain** under `/private/tmp`, never the
+production canonical directory. The ADR candidate `~/.config/m8s` still requires
+future explicit permitted provisioning/validation and a deployment-wide writer
+inventory/routing check. This audit has not accessed/provisioned that directory,
+verified its permissions, or inspected user private stores. No bypass is allowed
+if a future candidate is unwritable. Default enablement additionally needs
+actual OS roundtrip/concurrency qualification, approval/prompt/signing/access
+policy and deployment-client verification; a passing synthetic namespace alone
+cannot discharge those obligations.
+
+### Reviewed execution contract and bounded cleanup proposal
+
+The integration crate is gated by **macOS AND `os-keyring`**, and its OS test is
+explicitly **ignored**. Six ordinary tests cover injected watchdog decisions,
+strict metadata parsing, descriptor checks and actual no-OS exec handshakes;
+none can call a scenario/store, regardless of environment or received mode.
+Normal workspace tests compile the OS path but never execute Keychain calls. The integration library (unlike the unit-test library) includes the Mac
+adapter. `--list`/normal selection are safe; do not use blanket `--ignored`.
+After primary source review, the exact permitted operational invocation is:
+
+```sh
+cargo test -p m8s-secrets --features os-keyring --locked -j 1 \
+  --test os_keyring_qualification -- --ignored --exact os_keyring_qualification \
+  --test-threads=1 --nocapture
+```
+
+Use the same isolated build/cache paths as the frozen normal checks. The parent
+prints **only non-secret account/domain identifiers**. It generates 128 bits of
+OS randomness for a clearly synthetic account, exclusively creates its 0700
+same-named directory under `/private/tmp`, and validates the canonical public
+lock domain before starting a scenario process. Existing paths abort without
+repair or retry. No secret input comes from argv/env/fixtures/repository; fixed
+synthetic bytes are generated in memory, never formatted, compared only as bytes
+without value-bearing assertions, and stored only in the exact synthetic item.
+No real credentials, owner-key stores, Keychain enumeration/search, provider,
+network or home-directory access is performed by the harness.
+
+1. The scenario's first coordinated read requires actual `NoEntry` from the Mac
+   driver. **This is not an existence-only API:** Mac `get_secret` can fetch
+   existing bytes into a `SecretValue` before returning `Some`. On collision,
+   even with a valid empty envelope, the wrapper rejects and drops/zeroizes those
+   bytes **before decode/save/delete**; it never exposes/logs them. The fresh
+   128-bit namespace reduces accidental collisions but does not prove impossibility.
+   An error is not absence. The unpredictable namespace plus
+   initial absence and first ownership-record save establish this run's bounded
+   synthetic scope under the cooperative-writer contract; no API can exclude a
+   malicious same-UID raw writer racing that scope.
+2. Two independent thread stores begin together; two actual independently exec'd
+   process stores announce readiness, then start on one non-secret gate. All
+   clients reconstruct the **same** service/account/domain; none uses an alternate
+   lock or uncoordinated writer. Each inserts four distinct records; an in-lock
+   delay widens envelope contention. All 16 records plus ownership must survive,
+   with byte equality after clients exit and a newly exec'd read-only restart client
+   reconstructs the store. This tests
+   concurrent whole-envelope preservation, not a scheduler-independent proof
+   that both processes reached the OS at the same instant.
+3. Verify injected expiry at 9/10, exact metadata counts, deletion including an
+   expired record, repeated deletion false, and empty listing after reconstruction.
+   Threads are joined and child processes reaped **before** any cleanup writes.
+   Cleanup deletes only this run's known names through the same coordinated
+   `SecretStore`; it never deletes arbitrary names obtained from a listing.
+4. **Proposed safe artifact policy:** leave the empty synthetic OS envelope and
+   the private stable lock/domain plus empty coordination/stage markers. Do not add a
+   production item-removal API or call raw `delete_credential`. This is bounded
+   to one synthetic OS item per explicit run, **not zero OS items**, physical
+   erasure or an absence claim. The parent reports its exact identifiers. Failed
+   or interrupted runs can retain some/all synthetic records; do not auto-clean,
+   retry into a different account, enumerate, sweep or remove the stable lock.
+   Any later physical cleanup needs a separately reviewed exact-item procedure
+   after every writer has exited, coordinated in this same domain.
+
+### v3 current-parent IPC confinement (no malicious same-UID auth claim)
+
+Every entry rejects the presence of ANY legacy `M8S_SYNTHETIC_MODE`,
+`M8S_SYNTHETIC_ACCOUNT` or `M8S_SYNTHETIC_DOMAIN` variable, including non-Unicode
+values, before driver construction. Unrecognized control selectors also fail.
+Without a selector the ignored OS test can only allocate a new root session;
+there is no old-session discovery/reuse or arbitrary namespace constructor.
+
+Each exec receives a newly created anonymous `UnixStream::pair` endpoint as stdin;
+no named listener/path is used. The parent retains the other endpoint and owns
+its `Child` in RAII **before** starting the handshake. Failure kills/reaps only
+that direct child, never a saved numeric process group; descendant/OS effect
+uncertainty is retained. All socket endpoints are close-on-exec except deliberate
+child stdin. The receiver duplicates stdin with `F_DUPFD_CLOEXEC`, takes ownership
+only of that successful new fd, then checks fstat socket type/current UID,
+SO_TYPE stream, AF_UNIX family, same-UID peer and kernel `LOCAL_PEERPID` equal to
+its immediate parent, **before** converting the owned duplicate to `UnixStream`.
+Regular/null/closed/wrong-peer descriptors fail without a driver. No double-close
+or adoption of the original stdin descriptor occurs.
+
+The child sends a fresh 128-bit non-secret OS-random challenge. A live parent
+replies with a fixed-size v3 frame: magic, echoed challenge, allowed mode, current
+root-session ID, exact account/path and pinned directory device/inode. The frame
+is statically bounded below 1 KiB, read into a fixed array before bounded string
+allocations; there are no peer-controlled lengths. EOF, truncation, trailing
+bytes, stale challenge, unknown mode, mismatched session/account, malformed suffix
+or aliased path fails closed. Response ends with a write-half close; child ACK
+occurs only after full validation. One monotonic **two-second whole-handshake**
+budget recalculates remaining socket timeouts for every partial read/write; it
+is not reset by a slow trickle. Filesystem/kernel stalls, entropy, process startup
+and kill/reap still have the honest synchronous/OS limits described below.
+
+Account must be **exactly** `m8s-synthetic-os-qualification-` plus 32 lowercase hex
+digits derived from this root session ID. Directory bytes must be the literal
+`/private/tmp/ACCOUNT`, with no symlink-root alias, dot/parent/doubled separator or
+trailing slash. Session directory owner0700/device/inode is revalidated before
+constructing the public lock domain and again inside coordinated driver calls;
+the existing `KeyringLockDomain` independently pins/revalidates its directory,
+ancestry, ACLs and stable lock before each actual operation. No alternate lock.
+
+Private `RootSession` issues scenario/preflight clients only. A private
+`CreatedSession` is constructed only after exact initial NoEntry and successful
+ownership-record save; only it issues writer/verify clients. All use fresh
+per-child control pairs carrying the same current root scope. Threads share
+that validated scope. No secret values travel over IPC. A deliberately cooperating
+foreign/malicious same-UID parent could emulate this protocol or invoke the public
+OS driver: this is current-flow confinement against accidental ambient/stale
+entry, not a new authentication/access-control boundary against such code.
+
+Normal no-OS exec tests use a separate **Probe-only** test function with no
+scenario/store call path, even if a forged OS mode arrives. They verify an actual
+successful handshake and actual exec rejection of stale challenge/session,
+malformed header/account/path/inode, wrong mode, EOF and selector with null stdin.
+Additional pure tests cover malformed suffixes/exact paths/legacy selectors and
+regular/wrong-peer fd rejection. These control-only fixtures create fresh empty
+private directories, never a lock/store/OS item, and remove only their exact
+empty fixture directory after all direct probe clients are reaped. The actual
+OS namespace/lock/artifact retention policy above is unchanged.
+
+Driver errors signal a non-secret stop marker under that private domain; later
+coordinated loads/saves fail without another OS call. No error retry, fallback,
+policy modification or prompt automation is used. A failure stops qualification,
+with no automatic cleanup writes. Already-running OS operations can have taken
+effect despite an error or process kill; the result is uncertainty, not absence.
+
+Operation count is fixed (four inserts/client and bounded verification/deletion),
+lock contention uses the library's five-second budget, rendezvous waits cap at
+10 seconds, writer completion waits at 30 seconds, fresh restart verification at 15 seconds,
+and the outer parent caps the
+scenario at 90 seconds. Only a true timeout immediately after the single-child
+poll returns `None` signals the dedicated process group, **before any final
+wait/reap**. The leader remains owned and unreaped between that observation and
+signal, preventing numeric PID/PGID reuse. A nonzero exit may already have been
+reaped by `try_wait`; it and polling I/O errors **never signal the old group**.
+Those errors receive direct-child RAII kill/wait only, with no PID adoption or
+claim that uncertain descendants were terminated. Even a successful group signal
+is not proof that every descendant exited; the parent cannot reap grandchildren.
+Deterministic no-OS tests cover reaped success/nonzero exits, polling error,
+unreaped timeout signal order, and pending-then-exited behavior. Child invocations
+run this exact ignored test with a cleared environment containing only a
+non-secret `M8S_SYNTHETIC_CHILD_CONTROL=v3` selector; no mode/account/domain/session
+is supplied in argv/env. The selector alone grants nothing. No nested Cargo/full
+builds or agents. OS API prompts,
+filesystem stalls, kill/reap latency, kernel/OS cancellation and the compiler are
+**not bounded by the lock/operation budget**. The outer process watchdog limits
+ordinary scenario runtime but is not a hard real-time or OS rollback guarantee.
+If denied, unavailable, stalled or otherwise failing, stop and report opaque
+failure/uncertainty; no sandbox bypass, security-policy change or retry masking.
+
+### Evidence separation
+
+Phase A normal test/build/fmt/Clippy results prove only source compatibility and
+ignored selection. Phase B must separately record the exact reviewed hashes,
+runtime/toolchain, non-secret synthetic identifiers, outcome and retained
+artifacts. Neither phase proves external deployment writers cooperate, provisions
+a production home directory, qualifies every binary/signing/prompt configuration,
+or authorizes enabling the default. No Phase B result is claimed here.
