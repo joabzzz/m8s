@@ -134,3 +134,105 @@ cross-platform qualification belong to the integration owner, not this lane.
 
 Architecture references: ADR-0004 adapter separation; ADR-0006 secure bootstrap
 unchanged; ADR-0007 stopped is not destroyed; ADR-0010 no inference gateway.
+
+## Timed parent-owned development foundation (Phase A)
+
+`DevelopmentCommand::fingerprint()` returns SHA-256 over a versioned domain,
+fixed empty-environment/null-stdio/new-process-group mode, and length-prefixed
+raw Unix program/argv bytes (including count and empty arguments). Construction
+rejects NUL, relative programs, more than 256 arguments or more than 64 KiB total
+program+argument bytes. The digest pins **configuration**, not executable file
+contents; path replacement and trusted program behavior remain caller assumptions.
+No command bytes or digest are added to the journal.
+
+```rust,no_run
+# use m8s_provider_local::{DevelopmentCommand, Local, LocalDeadlines};
+# use m8s_provider::LaunchSpec;
+# use std::{path::Path, time::{Duration, SystemTime}};
+# fn example(directory: &Path, spec: &LaunchSpec) -> m8s_provider::Result<()> {
+let command = DevelopmentCommand::new("/bin/sleep".into(), vec!["60".into()])?;
+let mut local = Local::open_development(directory, spec.owner.clone(), command)?;
+let stop_at = SystemTime::now() + Duration::from_secs(1);
+let deadlines = LocalDeadlines::new(stop_at, stop_at + Duration::from_secs(2))?;
+let launch = local.launch_development_until(spec, deadlines)?;
+let stop = launch.stop_handle(); // cloneable, stop-only; cannot renew or launch
+stop.request_stop();             // atomic latch + coalescing wake, no journal
+// Keep `launch` for non-durable direct-child evidence. Dropping it requests stop.
+# Ok(())
+# }
+```
+
+`LocalDeadlines::new` captures Instant **before** high-resolution SystemTime once,
+checks positive serving time, ordered cleanup and conversion overflow, and pins
+both monotonic boundaries without rebasing. Periodic real wall comparisons allow
+earlier stop after forward jumps/resume; rollback cannot extend the monotonic
+boundary. There is no public fake clock, callback, ProcessOps or deadline renewal.
+This is a local scheduling assertion, **not** Store claim authority/admission.
+
+A dedicated detached worker owns the actual Supervisor **from spawn onward**.
+Durable Intent still precedes its spawn request. A pre-spawn expired deadline
+refuses spawn but leaves the intent uncertain; a late-returning spawn is stopped
+before its reply. Response loss cannot discard ownership or authorize retry.
+The launch call waits on `started.recv()` with **no independent caller timeout**.
+There is no bounded launch-return promise: while the worker's own kernel spawn
+primitive is blocked, that worker cannot poll or request stop. Kernel-spawn stalls
+are explicitly outside the watchdog contract. Once spawn returns, it checks the
+anchored deadline and requests stop immediately if late, before replying; it does
+not abandon the child or retry create. A stop handle is returned only after this
+synchronous launch wait and coordinator persistence complete.
+
+Only one unresolved timed worker is allowed per Local; fresh untimed launches
+are also blocked while it is unresolved. A timed launch is refused while this
+Local retains any untimed Supervisor. Retrying the timed method never reissues
+move-only launch ownership; the ordinary Provider API can still observe an
+existing UID but cannot renew its deadline.
+
+The worker uses nonblocking retained-identity Supervisor operations on each poll,
+with a 50 ms maximum polling interval under continued scheduling and promptly
+returning OS primitives. A first stop request wakes it earlier. Repeated stop
+requests do not enqueue work or create a busy loop. It never acquires caller,
+journal or SQL locks, performs storage I/O, or blocks sending a notification.
+Only the coordinator locks the existing Store for validation/persistence. The
+worker merely retains an Arc of that **same** Store/lock/directory anchor; it
+never reopens the lock. Drop of Local or LocalLaunch requests stop without join.
+The detached worker keeps this anchor and Supervisor until **direct-child reap**;
+persistent errors retain ownership and resources rather than claiming absence.
+Stopped workers do not acquire durable destroy authority on their own.
+
+Timed `destroy` requests stop **before** validation, serialization or fsync, unlike
+the legacy untimed ordering. The existing durable Intent already records the
+possible effect. The coordinator alone persists Destroying, then observes retained
+DirectChildReaped evidence before persisting Absent. Deadline, natural exit and
+Drop alone are only Stopped (or uncertainty), never absence. Journal failure or
+restart still blocks fresh effects with unresolved records, even if cleanup
+happened in the old process. No PIDs are persisted/adopted or recovered by scanning.
+
+`LocalLaunch::termination_state` exposes only local non-durable evidence;
+`instance()` is the original launch snapshot, not live readiness. The cleanup
+miss flag latches conservatively if a poll reaches the cleanup boundary before
+reap has been observed, including a late first observation. Missing the cleanup
+boundary never stops cleanup attempts or turns uncertainty into success.
+
+**This is a 50 ms stop-request polling bound, not an exit deadline or hard real-time
+promise.** Parent death/abort, process-wide suspension, host loss, scheduler
+starvation, kernel stalls and trusted programs escaping their group are outside
+the contract. Instant suspend behavior is platform dependent; there is no
+suspend-resistant containment claim. Threads do not survive parent loss. A trusted
+program can use host/network rights; no sandbox, remote/provider watchdog,
+certificate, served model, canary, Ready, cloud absence or billing proof is added.
+No Phase B Store executor, daemon/CLI integration or paid route is implemented.
+
+Additional tests use controlled synthetic children and private cfg(test) bounded
+channel gates: caller mutex and journal/store stalls; stop/deadline/late spawn;
+reply disconnect; Drop lock retention until reap; natural exit with a controlled
+owned-group member; cleanup miss; no restart adoption; raw-byte digest boundaries;
+fractional anchored conversion, rollback, forward change and overflow. A small
+private worker-engine seam wraps only Supervisor stop/observation and real runtime
+clock/park operations; production still owns the actual Supervisor.
+Deterministic scripts hold uncertainty, simulated kill denial and never-reaped
+states for eight fixed polls beyond cleanup while verifying the worker alone
+retains the exact Store lock. They allow exit only after explicit direct-reaped
+evidence, with no later process action, and exercise a full reply channel.
+These are worker-state/scheduling tests, not injected kernel or real kill-error
+qualification. Existing Supervisor ECHILD/kill-denial/non-reap tests separately
+cover its exclusive-reaper operations; no PID or signalling logic is duplicated.

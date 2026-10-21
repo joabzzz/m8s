@@ -3,6 +3,7 @@
 //! See the crate README for the trusted-executable and exclusive-reaper contract.
 #![cfg(unix)]
 mod storage;
+mod timed;
 use m8s_agent::{
     DeadManSwitch, Effect, Outcome,
     supervisor::{
@@ -17,7 +18,9 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
+pub use timed::{LocalDeadlines, LocalLaunch, LocalStopHandle};
 
 /// Constructor-pinned, nonsecret configuration; never supplied by LaunchSpec.
 /// This is NOT an executable sandbox. Use a trusted local synthetic executable
@@ -29,10 +32,37 @@ pub struct DevelopmentCommand {
 }
 impl DevelopmentCommand {
     pub fn new(program: PathBuf, args: Vec<OsString>) -> Result<Self> {
-        if !program.is_absolute() {
+        use std::os::unix::ffi::OsStrExt;
+        let total = args
+            .iter()
+            .try_fold(program.as_os_str().as_bytes().len(), |n, a| {
+                n.checked_add(a.as_bytes().len())
+            });
+        if !program.is_absolute()
+            || args.len() > 256
+            || total.is_none_or(|n| n > 64 * 1024)
+            || program.as_os_str().as_bytes().contains(&0)
+            || args.iter().any(|a| a.as_bytes().contains(&0))
+        {
             return Err(Error::Invalid);
         }
         Ok(Self { program, args })
+    }
+    /// Versioned raw Unix configuration digest, NOT executable-content identity.
+    pub fn fingerprint(&self) -> [u8; 32] {
+        use std::os::unix::ffi::OsStrExt;
+        let mut hash = Sha256::new();
+        hash.update(b"m8s-local-command-v1\0env-empty\0stdio-null\0group-new\0");
+        let mut field = |bytes: &[u8]| {
+            hash.update((bytes.len() as u64).to_be_bytes());
+            hash.update(bytes);
+        };
+        field(self.program.as_os_str().as_bytes());
+        field(&(self.args.len() as u64).to_be_bytes());
+        for arg in &self.args {
+            field(arg.as_bytes());
+        }
+        hash.finalize().into()
     }
 }
 
@@ -109,9 +139,16 @@ pub struct Local {
     state: State,
     processes: BTreeMap<String, Process>,
     healthy: bool,
+    timed_processes: BTreeMap<String, timed::TimedProcess>,
+    #[cfg(test)]
+    save_barrier: Option<(
+        usize,
+        std::sync::mpsc::SyncSender<()>,
+        std::sync::mpsc::Receiver<()>,
+    )>,
     // Fields drop in declaration order: keep the lock until all supervisors
     // have attempted cleanup and released their exclusive child handles.
-    store: storage::Store,
+    store: Arc<Mutex<storage::Store>>,
 }
 impl Local {
     /// Unix-only, explicit development opt-in. The caller creates a private
@@ -160,18 +197,21 @@ impl Local {
             return Err(Error::Storage);
         }
         let mut local = Self {
-            store,
+            store: Arc::new(Mutex::new(store)),
             command,
             state,
             processes: BTreeMap::new(),
             healthy: true,
+            timed_processes: BTreeMap::new(),
+            #[cfg(test)]
+            save_barrier: None,
         };
         local.save()?;
         Ok(local)
     }
     fn check(&self) -> Result<()> {
         if self.healthy {
-            self.store.validate()
+            self.store.lock().map_err(|_| Error::Storage)?.validate()
         } else {
             Err(Error::Unavailable)
         }
@@ -179,9 +219,20 @@ impl Local {
     // Fail closed after ANY write failure, even if rename succeeded but fsync
     // failed. The in-memory state must never authorize a later launch retry.
     fn save(&mut self) -> Result<()> {
+        #[cfg(test)]
+        if let Some((skip, entered, release)) = self.save_barrier.take() {
+            if skip > 0 {
+                self.save_barrier = Some((skip - 1, entered, release));
+            } else {
+                let _ = entered.try_send(());
+                release
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .map_err(|_| Error::Storage)?;
+            }
+        }
         let result = serde_json::to_vec(&self.state)
             .map_err(|_| Error::Storage)
-            .and_then(|bytes| self.store.save(&bytes));
+            .and_then(|bytes| self.store.lock().map_err(|_| Error::Storage)?.save(&bytes));
         if result.is_err() {
             self.healthy = false;
         }
@@ -195,8 +246,15 @@ impl Local {
         }
         // Missing handles, spawn failures and restarts are uncertainty. No PID
         // is persisted, probed, adopted or signalled from this path.
-        let process = self.processes.get_mut(id).ok_or(Error::Unavailable)?;
-        let exited = process.child_exited().map_err(|_| Error::Unavailable)?;
+        let exited = if let Some(process) = self.timed_processes.get(id) {
+            process.child_exited()?
+        } else {
+            self.processes
+                .get_mut(id)
+                .ok_or(Error::Unavailable)?
+                .child_exited()
+                .map_err(|_| Error::Unavailable)?
+        };
         if exited {
             let record = self.state.records.get_mut(id).ok_or(Error::Unavailable)?;
             if record.status == Status::Destroying {
@@ -214,30 +272,35 @@ impl Local {
     }
 }
 
-/// Zero means unmeasured/unsupported, NOT a measured reliability or bandwidth.
-/// Normal GPU/location policy should reject this CPU-only development offer.
-fn development_offer() -> Offer {
-    Offer {
-        id: "local-cpu-unmeasured".into(),
-        country: None,
-        region: None,
-        inet_down_mbps: 0,
-        gpu_count: 0,
-        vram_bytes_per_gpu: 0,
-        hourly_micro_usd: 0,
-        interruptible: false,
-        reliability_bps: 0,
+impl Local {
+    /// Parent-alive synthetic scheduling only; not Store claim/admission authority.
+    pub fn launch_development_until(
+        &mut self,
+        spec: &LaunchSpec,
+        deadlines: LocalDeadlines,
+    ) -> Result<LocalLaunch> {
+        // Never turn an existing untimed allocation or a retry into fresh ownership.
+        if self
+            .state
+            .records
+            .values()
+            .any(|r| r.instance.node_uid == spec.node_uid)
+        {
+            return Err(Error::Invalid);
+        }
+        let instance = self.launch_inner(&development_offer(), spec, Some(deadlines))?;
+        let process = self
+            .timed_processes
+            .get(&instance.id)
+            .ok_or(Error::Unavailable)?;
+        Ok(process.launch(instance))
     }
-}
-impl Provider for Local {
-    fn id(&self) -> &'static str {
-        "local-development"
-    }
-    fn search(&mut self) -> Result<Vec<Offer>> {
-        self.check()?;
-        Ok(vec![development_offer()])
-    }
-    fn launch(&mut self, offer: &Offer, spec: &LaunchSpec) -> Result<Instance> {
+    fn launch_inner(
+        &mut self,
+        offer: &Offer,
+        spec: &LaunchSpec,
+        deadlines: Option<LocalDeadlines>,
+    ) -> Result<Instance> {
         self.check()?;
         if *offer != development_offer()
             || spec.owner != self.state.owner
@@ -265,11 +328,15 @@ impl Provider for Local {
         }
         // Unresolved orphan uncertainty blocks ALL fresh effects, not merely
         // retries of its own UID. Owned handles may still be read/destroyed.
-        if self
-            .state
-            .records
-            .iter()
-            .any(|(id, r)| r.status != Status::Absent && !self.processes.contains_key(id))
+        if self.state.records.iter().any(|(id, r)| {
+            r.status != Status::Absent
+                && !self.processes.contains_key(id)
+                && !self.timed_processes.contains_key(id)
+        }) {
+            return Err(Error::Unavailable);
+        }
+        if self.timed_processes.values().any(|p| !p.reaped())
+            || (deadlines.is_some() && !self.processes.is_empty())
         {
             return Err(Error::Unavailable);
         }
@@ -293,26 +360,80 @@ impl Provider for Local {
             },
         );
         self.save()?; // durable intent MUST precede the OS effect
-        let dms = DeadManSwitch::new("synthetic-local-supervision".into(), vec![], 0, 1, 1)
-            .map_err(|_| Error::Invalid)?;
-        let process = Process::start(
-            ChildSpec {
-                program: self.command.program.clone(),
-                args: self.command.args.clone(),
-            },
-            &mut LocalOnlyBoot,
-            dms,
-            NoExternalEffects,
-            RetryTeardown::new(1).map_err(|_| Error::Invalid)?,
-        )
-        .map_err(|_| Error::Unavailable)?;
-        self.processes.insert(id.clone(), process);
+        if let Some(deadlines) = deadlines {
+            let (process, started) = timed::TimedProcess::start(
+                ChildSpec {
+                    program: self.command.program.clone(),
+                    args: self.command.args.clone(),
+                },
+                deadlines,
+                Arc::clone(&self.store),
+            )?;
+            self.timed_processes.insert(id.clone(), process);
+            started.recv().map_err(|_| Error::Unavailable)??;
+        } else {
+            let dms = DeadManSwitch::new("synthetic-local-supervision".into(), vec![], 0, 1, 1)
+                .map_err(|_| Error::Invalid)?;
+            let process = Process::start(
+                ChildSpec {
+                    program: self.command.program.clone(),
+                    args: self.command.args.clone(),
+                },
+                &mut LocalOnlyBoot,
+                dms,
+                NoExternalEffects,
+                RetryTeardown::new(1).map_err(|_| Error::Invalid)?,
+            )
+            .map_err(|_| Error::Unavailable)?;
+            self.processes.insert(id.clone(), process);
+        }
         let record = self.state.records.get_mut(&id).ok_or(Error::Unavailable)?;
         record.status = Status::Active;
         record.instance.state = InstanceState::Running; // OS process only, NEVER Ready
         let instance = record.instance.clone();
-        self.save()?;
+        if let Err(error) = self.save() {
+            if let Some(process) = self.timed_processes.get(&id) {
+                process.request_stop();
+            }
+            return Err(error);
+        }
         Ok(instance)
+    }
+}
+
+impl Drop for Local {
+    fn drop(&mut self) {
+        for process in self.timed_processes.values() {
+            process.request_stop();
+        }
+    }
+}
+
+/// Zero means unmeasured/unsupported, NOT a measured reliability or bandwidth.
+/// Normal GPU/location policy should reject this CPU-only development offer.
+fn development_offer() -> Offer {
+    Offer {
+        id: "local-cpu-unmeasured".into(),
+        country: None,
+        region: None,
+        inet_down_mbps: 0,
+        gpu_count: 0,
+        vram_bytes_per_gpu: 0,
+        hourly_micro_usd: 0,
+        interruptible: false,
+        reliability_bps: 0,
+    }
+}
+impl Provider for Local {
+    fn id(&self) -> &'static str {
+        "local-development"
+    }
+    fn search(&mut self) -> Result<Vec<Offer>> {
+        self.check()?;
+        Ok(vec![development_offer()])
+    }
+    fn launch(&mut self, offer: &Offer, spec: &LaunchSpec) -> Result<Instance> {
+        self.launch_inner(offer, spec, None)
     }
     fn describe(&mut self, id: &str) -> Result<Observation> {
         self.observe(id)
@@ -332,16 +453,22 @@ impl Provider for Local {
         Ok(instances)
     }
     fn destroy(&mut self, id: &str) -> Result<()> {
+        if let Some(process) = self.timed_processes.get(id) {
+            process.request_stop(); // no filesystem or caller lock before watchdog notification
+        }
         self.check()?;
         let record = self.state.records.get_mut(id).ok_or(Error::Unavailable)?;
         if record.status == Status::Absent {
             return Ok(());
         }
-        if !self.processes.contains_key(id) {
+        if !self.processes.contains_key(id) && !self.timed_processes.contains_key(id) {
             return Err(Error::Unavailable);
         }
         record.status = Status::Destroying;
-        self.save()?; // also persist destruction intent before its effect
+        self.save()?; // untimed path persists before effect; timed stop was already requested
+        if let Some(process) = self.timed_processes.get(id) {
+            return process.acknowledge_stop();
+        }
         let process = self.processes.get_mut(id).ok_or(Error::Unavailable)?;
         process.shutdown();
         process.tick(0).map_err(|_| Error::Unavailable)?;
