@@ -1,62 +1,68 @@
-# Fixture-only Vast adapter
+# Vast adapter / optional read-only HTTPS
 
-This crate is a **mapping test harness**, not a production provider transport.
-There is no HTTP client, base URL, credential input, default transport, retries,
-or daemon wiring. Construct it only with an injected in-memory FixtureTransport.
-No account or container credentials are required or read.
+Default features remain empty; deterministic fixture mapping still works using
+`FixtureTransport` (a compatibility alias of `Transport`). No core provider deps.
 
-## Fixture provenance and assumptions
+Opt in with `--features readonly-https`. `readonly::ReadonlyHttps::new(supplier)`
+builds a synchronous reqwest 0.13.5 client without obtaining a key or performing
+provider I/O. Supplier is explicitly injected `FnMut() -> Result<SecretValue>`;
+there is no environment/file/default-secret lookup, executable, or CLI. Never
+supply a key in argv, logs, fixture files or a rented host. Build/use on a blocking
+thread, outside an async runtime. No live authorization is implied.
 
-Hand-written synthetic fixtures are based on the supplied desk-research document
-[Spike S1](agor://kb/m8s/research/spike-s1-vast-provider-and-costs.md), fetched by
-that research on 2026-10-20. This implementation made **no provider calls** and did
-not fetch fresh provider docs. Original references recorded by S1:
+Only these exact requests are accepted by `Transport::exchange`:
 
-- [Search offers](https://docs.vast.ai/api-reference/search/search-offers)
-- [Create instance](https://docs.vast.ai/api-reference/instances/create-instance)
-- [Show instances](https://docs.vast.ai/api-reference/instances/show-instances)
-- [Destroy instance](https://docs.vast.ai/cli/reference/destroy-instance)
+| Method | Path | Body |
+|---|---|---|
+| GET | `/api/v0/users/current` | none |
+| POST | `/api/v0/bundles` | exact `readonly::offer_query()` |
+| GET | `/api/v0/instances/{positive-canonical-u64}` | none |
+| GET | `/api/v1/instances` | none |
 
-These are references, not evidence of live compatibility. Bodies and response
-envelopes are deliberately narrow and still require official-schema/live
-verification with Admin before any actual transport is written or enabled.
+Fixed `https://console.vast.ai`, no URL/base overrides, query strings, redirects,
+proxy discovery, retries, credentials in URLs, launch/destroy/payments or arbitrary
+bodies. Unsupported methods/paths/bodies fail BEFORE secret supplier/backend.
+TLS uses explicit rustls AWS-LC crypto provider, static WebPKI roots, normal
+certificate/hostname verification, no key logging. No global crypto-provider
+installation, insecure verifier or environment trust override. Timeout/connect
+bounds 10s; response <=1MiB; JSON content type, identity encoding, unique security
+headers, unique JSON keys and success envelopes enforced. No real TLS handshake
+has been tested; deterministic backend fixtures are not TLS/provider qualification.
 
-## Contract under test
+Authorization HeaderValue is sensitive. Client/request/reply backend structs have
+no Debug/Serialize; transport compile-fail tests prevent Debug/Serialize. Errors
+are opaque `provider unavailable` without raw reqwest/I/O/body/URL causes. Raw
+provider fields are not returned: account outputs balance micro-USD + unknown
+topup, instance outputs ID/structured owner label/status, offers output numeric
+unqualified diagnostics only. Secret reflection in parsed strings/keys is refused.
+SecretValue zeroizes its buffers; reqwest/header internals may copy bytes, so no
+complete process-memory-zeroization guarantee is made.
 
-- Search POST /api/v0/bundles/: explicit verified/rentable/non-external/ondemand,
-  datacenter false for community / true for secure, minimum 1000 Mbps, denylist.
-  Local validation reapplies these filters. Country must be strict ISO alpha-2;
-  all UA excluded because these fixtures lack trustworthy subdivisions.
-- gpu_ram is interpreted conservatively as **decimal MB** from the S1 field
-  description, not inflated to MiB. Exact real unit semantics need verification.
-  inet_down uses Mbps. Capacities/bandwidth round down, micro-USD price rounds up.
-  JSON decimal lexemes are preserved with arbitrary_precision; no f64 math.
-- Create PUT /api/v0/asks/ID/: pinned image syntax, entrypoint args mode,
-  target running, disk GB, cancel_unavail, owner/node/tier label.
-  Reads **new_contract**, never assumes an id field. No env/onstart, secrets,
-  templates, registry login or arbitrary provider knobs accepted.
-- Labels are versioned exact strings m8s:v1:OWNER:UID:TIER with bounded safe
-  components; no prefix-owner matching. Secure is verified datacenter, **not TEE**.
-- Describe uses documented GET /api/v0/instances/ snapshot. Only a fixture with
-  explicit complete_instance_snapshot=true, valid full envelope and no
-  pagination/count/duplicate-id inconsistency may confirm an absent id.
-  HTTP 404, auth errors, outages, malformed bodies and incomplete lists never
-  imply absence. A real transport would need an independently proven complete
-  snapshot contract, not a boolean set blindly on any HTTP 200.
-- Loading/created maps to Starting, never Ready or Gone. Unknown/destroyed status
-  is uncertainty, not absence. Stop/exit remain present. Foreign/malformed labels
-  cannot authorize deletion.
-- Destroy first checks exact owner against the snapshot and only sends DELETE;
-  success is an acknowledgement, **not** absence. Poll describe separately.
-- Repeated owner+node UID in one adapter lifetime is cached; uncertain submission
-  is not retried. Changing its offer/tier is refused. This cache is NOT durable:
-  a future orchestrator must persist intents before launch and adopt labels after
-  restart, and must never reissue an uncertain intent based on an empty snapshot.
+## Deliberate fail-closed gaps
 
-## Not production-ready
+Current official offer response example shows an object while historical fixture
+mapping expects a list. Only bounded explicit lists are supported, NOT guessed
+object wrapping. Offer prices remain unqualified (official units conflict).
+List v1 exposes pagination; this slice does not paginate/qualify completeness.
+**Every reply has complete_instance_snapshot=false**, including empty rows/count0;
+404/error/partial inventory never confirms absence. No volume/storage-cleanup or
+provider watchdog qualification.
 
-Pinned image syntax is not signature verification. This crate does not enforce
-durable spend reservations, real provider-side idempotency, secure bootstrap,
-container identity/IP attestation, self-destruct credentials, or confidentiality.
-It is intentionally absent from m8sd dependencies and the daemon continues to
-refuse any provider id other than mock. There is no stop endpoint.
+Existing `Vast::fixture_only` mapping retains its historical trailing-slash v0
+snapshot and offer-filter assumptions. These are NOT silently rewritten into the
+live routes: unsupported fixture requests fail closed against ReadonlyHttps.
+Therefore this transport is NOT a qualified live `Provider` implementation and
+cannot make existing fixture launch/destroy paths operational. Use its explicit
+read-only request surface only after root's separate authorization/injection review.
+
+Focused checks (jobs1, no provider calls):
+
+```sh
+cargo fmt -p m8s-provider-vast -- --check
+cargo test -p m8s-provider-vast --all-features --locked -j1
+cargo test -p m8s-provider-vast --no-default-features --locked -j1
+cargo clippy -p m8s-provider-vast --all-features --all-targets --locked -j1 -- -D warnings
+```
+
+Official evidence and remaining live gates:
+[Knowledge](agor://kb/m8s/research/metal-0-6-rust-readonly-transport.md).

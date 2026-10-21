@@ -9,3 +9,27 @@ m8s-core.workspace = true
 m8s-provider.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[features]
+default = []
+readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
+
+[dependencies.reqwest]
+version = "=0.13.5"
+default-features = false
+features = ["blocking", "rustls"]
+optional = true
+
+[dependencies.rustls]
+version = "0.23"
+default-features = false
+features = ["std", "tls12", "aws_lc_rs"]
+optional = true
+
+[dependencies.webpki-roots]
+version = "1"
+optional = true
+
+[dependencies.m8s-secrets]
+path = "../m8s-secrets"
+optional = true

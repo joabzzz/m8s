@@ -1,4 +1,5 @@
-//! Fixture-only Vast mapping. No HTTP client, credentials, URL, network, or default transport.
+//! Vast mapping defaults to fixture-only; optional explicit readonly-https transport.
+//! The optional transport cannot launch/destroy and never certifies snapshot completeness.
 //! API field assumptions come from the supplied S1 research; live validation is outstanding.
 use m8s_core::{Instance, InstanceState, Observation, Offer};
 use m8s_provider::{Error, LaunchSpec, Provider, Result};
@@ -26,10 +27,17 @@ pub struct Reply {
     pub body: Vec<u8>,
     pub complete_instance_snapshot: bool,
 }
-pub trait FixtureTransport {
-    /// Must use in-memory/hand-written fixtures only. No retry is performed by the adapter.
+pub trait Transport {
+    /// No retry is performed by the mapping adapter. Production transports must
+    /// independently validate completeness and may refuse unsupported operations.
     fn exchange(&mut self, request: Request) -> Result<Reply>;
 }
+/// Compatibility alias for existing deterministic fixture implementations.
+pub use Transport as FixtureTransport;
+
+#[cfg(feature = "readonly-https")]
+pub mod readonly;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Market {
     Community,
