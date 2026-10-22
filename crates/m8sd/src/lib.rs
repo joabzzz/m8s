@@ -1,4 +1,7 @@
 //! Durable mock-first reconcile. No bootstrap admission or live provider is available.
+#[cfg(all(unix, feature = "local-development"))]
+pub mod local_demo;
+
 use m8s_core::policy::{LifecycleEvidence, may_delete, transition};
 use m8s_core::{GpuNode, InstanceState, Observation, Phase, Timestamp};
 use m8s_provider::{LaunchSpec, Provider};

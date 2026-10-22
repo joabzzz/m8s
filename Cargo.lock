@@ -1941,6 +1941,7 @@ dependencies = [
  "m8s-models",
  "m8s-secrets",
  "m8s-top",
+ "m8sd",
  "nix",
  "serde_json",
  "tempfile",

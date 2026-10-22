@@ -6,6 +6,36 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .skip(1)
         .map(|arg| arg.into_string().map_err(|_| "invalid arguments"))
         .collect::<Result<_, _>>()?;
+    // Preserve whole-argv UTF-8 validation, but own all local-demo flags before
+    // legacy socket/JSON parsing. No daemon, credential or executable discovery.
+    if args.first().is_some_and(|arg| arg == "local-demo") {
+        if args[1..] == ["--help"] {
+            println!(
+                "usage: m8s local-demo --synthetic-accounting --state-dir NEW_CANONICAL_ABSOLUTE_PATH --synthetic-cap-micro-usd 1..1000000 --scenario cancel|deadline"
+            );
+            println!(
+                "Unix only; build with --features local-development (disabled by default). Synthetic accounting is not approval; no model or readiness."
+            );
+            return Ok(());
+        }
+        #[cfg(all(unix, feature = "local-development"))]
+        {
+            let demo_args = args[1..]
+                .iter()
+                .take(17)
+                .map(std::ffi::OsString::from)
+                .collect();
+            let code = m8sd::local_demo::run_cli(demo_args, &mut std::io::stdout().lock());
+            if code != 0 {
+                return Err("local-demo failed; no retry or reset".into());
+            }
+            return Ok(());
+        }
+        #[cfg(not(feature = "local-development"))]
+        return Err("local-demo unavailable: build with --features local-development".into());
+        #[cfg(all(feature = "local-development", not(unix)))]
+        return Err("local-demo unavailable on this platform".into());
+    }
     if args.first().is_some_and(|arg| arg == "plan") {
         return plan::run(&args[1..]).map_err(Into::into);
     }

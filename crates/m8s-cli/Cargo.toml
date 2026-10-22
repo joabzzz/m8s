@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+local-development = ["dep:m8sd", "m8sd/local-development"]
+
 [dependencies]
+m8sd = { path = "../m8sd", optional = true, default-features = false }
 m8s-config = { path = "../m8s-config" }
 m8s-models = { path = "../m8s-models" }
 toml = "=1.1.8"

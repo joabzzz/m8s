@@ -126,3 +126,33 @@ text, input paths, argv and raw parser diagnostics are never echoed. Text and
 and bounded to 64KiB before stdout. JSON failures use fixed opaque categories;
 output I/O failure is nonzero (a broken stream may still receive partial bytes).
 No fingerprint, UID, Offer, claim, launch journal or Ready status is minted.
+
+## Synthetic local lifecycle demo (Unix, opt-in)
+
+Build/run in the workspace, or install with the same default-off feature:
+
+```sh
+cargo install --path crates/m8s-cli --features local-development
+# Provision an owned 0700 parent, outside Git; use its canonical absolute path.
+mkdir -m 700 /private/tmp/my-m8s-demo
+m8s local-demo --synthetic-accounting --state-dir /private/tmp/my-m8s-demo/cancel-new --synthetic-cap-micro-usd 10000 --scenario cancel
+cargo run -p m8s-cli --features local-development -- local-demo --synthetic-accounting --state-dir /private/tmp/my-m8s-demo/deadline-new --synthetic-cap-micro-usd 10000 --scenario deadline
+```
+
+Each state directory must be **new**, under an existing canonical parent (on
+macOS use `/private/tmp`, not the `/tmp` symlink). No reset, repair or rerun:
+choose a fresh directory per invocation. All four flags are required once;
+cap is an integer 1..1000000 micro-USD of **synthetic** accounting, not spend
+authorization. Too-small caps fail before child submission and retain state.
+
+The shared library walkthrough launches only fixed `/bin/sleep 15`, with a
+3-second runtime and 2-second cleanup grace. `cancel` pairs durable cancellation
+with local stop; `deadline` observes the original deadline then explicitly
+cleans up. NDJSON reports `LocalOnlyAbsent`, billing `unknown`, budget
+`Uncertain` and the full reserved hold retained; SQLite and journal are kept.
+Failure is nonzero, never a successful-run claim. Default builds refuse before
+state/child effects; `m8s local-demo --help` explains the opt-in.
+
+This is not production deployment, Admin approval, billing cessation, model
+serving or Ready evidence. No provider, credential/Keychain, daemon or bootstrap
+path is invoked; existing security and runtime gates remain unchanged.
