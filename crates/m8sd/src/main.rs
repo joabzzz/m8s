@@ -22,6 +22,7 @@ const HELP: &str = concat!(
     "Max0 tiers are disabled: no up/positive scale. No automatic startup scaling or reload. Explicit reload-config validates startup-selected paths and retained desired before replacing policy. Restart retains desired; incompatible retained tiers/counts refuse without clamp/reset.\n",
     "Normal Store initialization/migrations still apply. Provider is hardwired Mock; mode mock-only, bootstrap unavailable, no Ready or authorization/deployment claim.\n",
     "Local shutdown commits down, requires confirmed Mock absence, then exits; refusal keeps daemon running with retained state.\n",
+    "reload-config --check preflights startup-selected files and retained desired without applying; later reload may differ.\n",
     "Standalone --help only; no config/state/file effects.\n",
 );
 fn now() -> i64 {
@@ -59,6 +60,55 @@ fn config_status_frame(policy: Option<&mock_config::Policy>) -> Vec<u8> {
     .expect("fixed config-status refusal serializes within frame");
     frame.push(b'\n');
     frame
+}
+fn reload_candidate(
+    options: &mock_config::Options,
+    store: &Store,
+) -> Result<mock_config::Policy, Box<dyn std::error::Error>> {
+    let candidate = options
+        .policy()?
+        .ok_or("configured mock reload unavailable")?;
+    candidate.persisted(&store.tiers()?)?;
+    Ok(candidate)
+}
+fn reload_check_frame(
+    active: Option<&mock_config::Policy>,
+    candidate: Option<&mock_config::Policy>,
+) -> Vec<u8> {
+    let mut r = m8s_api::ReloadCheckResponse {
+        schema: "m8s.reload-check/v1".into(),
+        mode: "mock-only".into(),
+        scope: "mock-control-admission-only".into(),
+        ok: false,
+        error: Some("reload-check-refused".into()),
+        check_only: true,
+        applied: false,
+        later_reload_guaranteed: false,
+        active: vec![],
+        candidate: vec![],
+        bounds_changed: None,
+    };
+    if let (Some(a), Some(c)) = (active, candidate) {
+        r.active = a.snapshot();
+        r.candidate = c.snapshot();
+        r.bounds_changed = Some(r.active != r.candidate);
+        r.ok = true;
+        r.error = None;
+        if let Ok(mut b) = serde_json::to_vec(&r)
+            && b.len() < m8s_api::MAX_FRAME
+        {
+            b.push(b'\n');
+            return b;
+        }
+        r.active.clear();
+        r.candidate.clear();
+        r.bounds_changed = None;
+        r.ok = false;
+        r.error = Some("reload-check-refused".into());
+    }
+    let mut b = serde_json::to_vec(&r).expect("fixed reload-check refusal serializes");
+    b.push(b'\n');
+    b
 }
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
@@ -156,6 +206,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     continue;
                 }
+                let mut reload_check_requested = false;
+                let mut checked_candidate = None;
                 let mut config_status_requested = false;
                 let mut page_request = None;
                 let mut shutdown_requested = false;
@@ -177,12 +229,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         Request::ConfigStatus {} => config_status_requested = true,
                         Request::ReloadConfig {} => {
                             // Reuse ONLY startup-selected paths and actual whole
-                            // validation. No writes/effects; publish once, last.
-                            let candidate = options
-                                .policy()?
-                                .ok_or("configured mock reload unavailable")?;
-                            candidate.persisted(&store.tiers()?)?;
+                            // validation. No Store writes/provider effects; publish once, last.
+                            let candidate = reload_candidate(&options, &store)?;
                             policy = Some(candidate);
+                        }
+                        Request::ReloadConfigCheck {} => {
+                            reload_check_requested = true;
+                            checked_candidate = Some(reload_candidate(&options, &store)?);
                         }
                         Request::Shutdown {} => {
                             shutdown_requested = true;
@@ -194,6 +247,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(())
                 })();
+                if reload_check_requested {
+                    let frame = reload_check_frame(policy.as_ref(), checked_candidate.as_ref());
+                    let _ = stream.write_all(&frame);
+                    continue;
+                }
                 if config_status_requested {
                     let frame = config_status_frame(policy.as_ref());
                     let _ = stream.write_all(&frame);

@@ -701,3 +701,102 @@ fn config_status_is_actual_active_policy_not_files_or_desired() {
     assert!(f.call(Request::Shutdown {}).ok);
     assert!(d.wait().success());
 }
+
+#[test]
+fn check_only_candidate_never_publishes_and_refusals_retain_policy() {
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    let check = || m8s_api::call_reload_check(&f.state().join("control.sock")).unwrap();
+    let initial = check();
+    assert!(initial.ok);
+    assert_eq!(initial.bounds_changed, Some(false));
+    assert!(f.call(up("bounded")).ok);
+    fs::write(f.root.join("config.toml"), CONFIG.replace("max=3", "max=4")).unwrap();
+    let checked = check();
+    assert!(
+        checked.ok && checked.check_only && !checked.applied && !checked.later_reload_guaranteed
+    );
+    assert_eq!(checked.bounds_changed, Some(true));
+    assert_eq!(
+        checked
+            .active
+            .iter()
+            .find(|t| t.id == "bounded")
+            .unwrap()
+            .max,
+        3
+    );
+    assert_eq!(
+        checked
+            .candidate
+            .iter()
+            .find(|t| t.id == "bounded")
+            .unwrap()
+            .max,
+        4
+    );
+    assert!(!f.call(scale("bounded", 4)).ok);
+    assert_eq!(
+        f.call(Request::Status {}).tiers,
+        vec![("bounded".into(), 2)]
+    );
+    assert!(f.call(Request::ReloadConfig {}).ok);
+    assert!(f.call(scale("bounded", 4)).ok);
+    assert_eq!(check().bounds_changed, Some(false));
+    for bad in [
+        "sensitive-invalid".to_string(),
+        CONFIG.replace("max=3", "max=2"),
+        CONFIG.replace("tier.optional", "tier.unsupported.id"),
+    ] {
+        fs::write(f.root.join("config.toml"), bad).unwrap();
+        let r = check();
+        assert!(!r.ok);
+        assert!(r.active.is_empty() && r.candidate.is_empty());
+        assert_eq!(r.error.as_deref(), Some("reload-check-refused"));
+        assert_eq!(
+            f.call(Request::Status {}).tiers,
+            vec![("bounded".into(), 4)]
+        );
+        assert!(f.call(scale("bounded", 4)).ok); // old snapshot, desired4 retained
+    }
+    // Retained zero membership is also checked, never adopted/deleted.
+    assert!(f.call(scale("optional", 0)).ok);
+    let removed = CONFIG
+        .replace(
+            "[tier.optional]\nmodel='example-27b-q4km'\nreplicas={min=0,max=1}\n",
+            "",
+        )
+        .replace("max=3", "max=4");
+    fs::write(f.root.join("config.toml"), removed).unwrap();
+    assert!(!check().ok);
+    fs::write(f.root.join("config.toml"), CONFIG.replace("max=3", "max=4")).unwrap();
+    fs::write(
+        f.root.join("catalog.toml"),
+        CATALOG.replace(
+            "runtime_status = \"untested\"",
+            "runtime_status = \"sensitive\"",
+        ),
+    )
+    .unwrap();
+    assert!(!check().ok);
+    assert!(f.call(scale("bounded", 4)).ok);
+    fs::write(f.root.join("catalog.toml"), CATALOG).unwrap();
+    fs::remove_file(f.root.join("config.toml")).unwrap();
+    assert!(!check().ok);
+    assert!(f.call(scale("bounded", 4)).ok);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+}
+
+#[test]
+fn legacy_check_refuses_without_paths_or_adoption() {
+    let f = Fixture::new();
+    let mut d = f.start(false);
+    fs::remove_file(f.root.join("config.toml")).unwrap();
+    fs::remove_file(f.root.join("catalog.toml")).unwrap();
+    let r = m8s_api::call_reload_check(&f.state().join("control.sock")).unwrap();
+    assert!(!r.ok && r.active.is_empty() && r.candidate.is_empty());
+    assert!(f.call(up("legacy")).ok);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+}

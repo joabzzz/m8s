@@ -524,3 +524,24 @@ clock, live metrics reader, daemon/socket/Store access, provider or effect.
 Enabled is not authorization; metrics authenticity, live currentness and readiness
 are not assessed. A future coordinator must enforce durable stop, current desired,
 authorization, clock, claims, rates and budgets atomically before effects.
+
+### Check a prospective Mock reload without applying
+
+```sh
+m8s --socket /absolute/state/control.sock reload-config --check --json
+m8s reload-config --help
+```
+
+The configured daemon validates its startup-selected files and retained desired
+using the same checks as actual reload; no new paths/overrides/force are accepted.
+Success returns sorted actual active/prospective candidate tier bounds, NOT the
+config/catalog contents. `bounds_changed` compares ONLY membership/min/max,
+not whole-config equality. `check_only=true`, `applied=false` and
+`later_reload_guaranteed=false`: a later reload can fail or observe changed files
+or desired. Invalid inputs/incompatibility and legacy unconfigured daemons refuse
+opaquely, keeping the current policy. `--check` and optional `--json` appear once
+in either order after `reload-config`; standalone help performs no file/socket IO.
+Text and JSON use the same bounded, fully rendered safe projection. Broken output
+is nonzero (partial bytes possible on device failure). No authorization/readiness
+or immutable-filesystem claim: the daemon reads selected files/SQLite state,
+SQLite bookkeeping and independent timer reconciliation are not globally frozen.

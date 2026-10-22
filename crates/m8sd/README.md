@@ -841,3 +841,17 @@ can change after query/restart; no authentication/provenance, globally unique
 version, live policy or runtime/Ready/approval guarantee is implied. The daemon
 timer continues independently. Frames fully serialize within 65536 bytes before
 write; fixed failure response on error, no partial successful frame rendering.
+
+### Reload preflight
+
+`m8s --socket /absolute/state/control.sock reload-config --check [--json]`
+validates the exact startup-selected config/catalog and current retained tiers
+using the same candidate checks as explicit reload, but does **not** replace the
+active policy. Legacy unconfigured daemons refuse. Success reports actual active
+and prospective candidate admission bounds; `bounds_changed` compares ONLY tier
+membership/min/max, not whole configuration equality. `check_only=true`,
+`applied=false`, `later_reload_guaranteed=false`: files and desired may change
+before a later reload. No paths/overrides/force are accepted or returned.
+The handler performs no Store writes, reconciliation or provider calls; ordinary
+SQLite reads may perform bookkeeping and independent timer reconciliation remains
+independent. This is not immutable filesystem inspection, authorization or Ready.
