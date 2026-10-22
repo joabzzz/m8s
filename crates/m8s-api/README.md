@@ -19,3 +19,12 @@ This transport does not add peer authentication, socket path trust or current-st
 authority. Existing daemon checks and the dashboard's stronger path/peer checks
 are separate and unchanged. This change is not a forensic explanation for past
 unrelated transport failures.
+
+## Source components
+
+Public imports remain at the crate root. Private `protocol` holds legacy envelopes
+and request tags; `log_page`, `config_status`, `reload_check`, and `explain` group
+each observation contract with its decoder/client wrapper and contract tests.
+Private `validation` shares existing field checks. Root `read_frame`/`call` retain
+legacy framing/decoding; private `client` still owns the single bounded exchange.
+This organization adds no public module paths or validation/transport authority.
