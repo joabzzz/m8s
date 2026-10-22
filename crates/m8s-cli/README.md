@@ -728,3 +728,16 @@ Refusal, invalid metadata, transport or output failure is static/redacted and
 nonzero; no response error text is printed. Failure can follow a committed manual
 request or partial device output: it does not imply rollback, absence or safe retry.
 Recorded phases/counts are not provider currentness, readiness or authorization.
+
+### Manual acknowledgement checks
+
+Legacy `up` requires the requested tier with positive stored desired in the
+reply; `scale TIER N` requires that exact tier/count (including explicit zero).
+`down` requires all returned desired counts zero; retained nodes are allowed.
+`shutdown` additionally requires no stored node rows. An absent requested tier
+is not an implicit zero. Fitting success text/JSON is unchanged.
+
+A mismatch fails with static `control-outcome-unknown`, with no successful
+snapshot output and no retry. This binds reported stored intent only: it does
+not authenticate the peer or confirm provider absence/convergence. A mutation
+may already have committed before a mismatch, lost reply or output failure.

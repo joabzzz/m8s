@@ -220,7 +220,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err("invalid command; only mock control is available".into()),
     };
     let response = m8s_api::call(&socket, &request).map_err(|_| "control-outcome-unknown")?;
-    control_output::write(&response, json, matches!(request, Request::Logs {})).map_err(Into::into)
+    control_output::write(&response, &request, json).map_err(Into::into)
 }
 
 fn main() {

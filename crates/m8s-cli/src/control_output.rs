@@ -1,5 +1,5 @@
 //! Display-only validation of legacy Mock metadata, never authentication/eligibility.
-use m8s_api::Response;
+use m8s_api::{Request, Response};
 use m8s_core::Phase;
 use std::{collections::BTreeSet, io::Write};
 const UNKNOWN: &str = "control-outcome-unknown";
@@ -48,6 +48,22 @@ fn validate(r: &Response) -> Result<(), &'static str> {
         return Err(UNKNOWN);
     }
     Ok(())
+}
+// These checks bind only the returned stored snapshot to manual intent. They do
+// not authenticate the peer, prove provider convergence, or permit a retry.
+fn acknowledge(r: &Response, request: &Request) -> Result<(), &'static str> {
+    validate(r)?;
+    let consistent = match request {
+        Request::Up { tier } => r.tiers.iter().any(|(id, n)| id == tier && *n > 0),
+        Request::Scale { tier, replicas } => {
+            r.tiers.iter().any(|(id, n)| id == tier && n == replicas)
+        }
+        Request::Down {} => r.tiers.iter().all(|(_, n)| *n == 0),
+        Request::Shutdown {} => r.tiers.iter().all(|(_, n)| *n == 0) && r.nodes.is_empty(),
+        // Read-only commands and reload have no requested desired-state target.
+        _ => true,
+    };
+    if consistent { Ok(()) } else { Err(UNKNOWN) }
 }
 // Preserve printable ASCII verbatim; escape free-field controls before the shared
 // non-ASCII/DEL pass. Fixed layout separators are not remote-controlled.
@@ -112,7 +128,9 @@ fn render(r: &Response, json: bool, logs: bool) -> Result<Vec<u8>, &'static str>
     }
     Ok(bytes)
 }
-pub(super) fn write(r: &Response, json: bool, logs: bool) -> Result<(), &'static str> {
+pub(super) fn write(r: &Response, request: &Request, json: bool) -> Result<(), &'static str> {
+    acknowledge(r, request)?;
+    let logs = matches!(request, Request::Logs {});
     let bytes = render(r, json, logs)?;
     let mut out = std::io::stdout().lock();
     out.write_all(&bytes)

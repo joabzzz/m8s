@@ -81,6 +81,15 @@ fn clean_legacy_text_and_json_are_exact_and_requests_once() {
         vec!["reload-config"],
         vec!["logs"],
     ] {
+        // Successful stop acknowledgements report zero desired; shutdown also
+        // reports no retained node rows. Down itself need not mean absent nodes.
+        let mut r = r.clone();
+        if command == ["down"] || command == ["shutdown"] {
+            r["tiers"] = json!([["a", 0]]);
+        }
+        if command == ["shutdown"] {
+            r["nodes"] = json!([]);
+        }
         let o = serve(&r, &command, true, false);
         assert!(o.status.success());
         assert!(o.stderr.is_empty());
@@ -91,7 +100,13 @@ fn clean_legacy_text_and_json_are_exact_and_requests_once() {
         );
         let o = serve(&r, &command, false, false);
         assert!(o.status.success());
-        let mut expected = "mode: mock-only · secure bootstrap: unavailable\na: desired 1\na node-1 Pending unresolved\n".to_owned();
+        let mut expected = format!(
+            "mode: mock-only · secure bootstrap: unavailable\na: desired {}\n",
+            r["tiers"][0][1]
+        );
+        if command != ["shutdown"] {
+            expected.push_str("a node-1 Pending unresolved\n");
+        }
         if command == ["logs"] {
             expected.push_str("launch queued\n");
         }
@@ -188,4 +203,56 @@ fn expansion_cap_malformed_reply_and_broken_output_are_uncertain() {
         serve(&reply(), &["up", "a"], false, true),
         "control-output-unavailable-outcome-unknown",
     );
+}
+
+#[test]
+fn manual_acknowledgements_must_match_requested_stored_intent() {
+    for json in [true, false] {
+        for command in [
+            vec!["scale", "a", "2"],
+            vec!["scale", "missing", "0"],
+            vec!["up", "missing"],
+            vec!["down"],
+            vec!["shutdown"],
+        ] {
+            refused(
+                serve(&reply(), &command, json, false),
+                "control-outcome-unknown",
+            );
+        }
+        let mut zero = reply();
+        zero["tiers"] = json!([["a", 0]]);
+        refused(
+            serve(&zero, &["up", "a"], json, false),
+            "control-outcome-unknown",
+        );
+        // A destroy acknowledgement/zero desired is not shutdown completion.
+        refused(
+            serve(&zero, &["shutdown"], json, false),
+            "control-outcome-unknown",
+        );
+        assert!(serve(&zero, &["down"], json, false).status.success());
+        assert!(
+            serve(&zero, &["scale", "a", "0"], json, false)
+                .status
+                .success()
+        );
+        // Unmentioned tiers and retained nodes do not constrain positive scale.
+        zero["tiers"] = json!([["other", 4], ["a", 2]]);
+        assert!(
+            serve(&zero, &["scale", "a", "2"], json, false)
+                .status
+                .success()
+        );
+        assert!(serve(&zero, &["up", "a"], json, false).status.success());
+        // Empty stopped snapshots are legitimate, not invented missing intents.
+        zero["tiers"] = json!([]);
+        zero["nodes"] = json!([]);
+        assert!(serve(&zero, &["down"], json, false).status.success());
+        assert!(serve(&zero, &["shutdown"], json, false).status.success());
+        refused(
+            serve(&zero, &["scale", "a", "0"], json, false),
+            "control-outcome-unknown",
+        );
+    }
 }

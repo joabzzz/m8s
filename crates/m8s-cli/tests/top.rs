@@ -191,6 +191,7 @@ fn legacy_commands_and_json_envelope_are_unchanged() {
     let mut legacy = fixture();
     legacy["mode"] = json!("mock-only");
     legacy["nodes"][0]["phase"] = json!("Booting");
+    legacy["tiers"] = json!([["synthetic", 1]]);
     for (args, expected) in [
         (
             vec!["up", "synthetic"],
@@ -204,6 +205,13 @@ fn legacy_commands_and_json_envelope_are_unchanged() {
         (vec!["status"], json!({"command":"status"})),
         (vec!["logs"], json!({"command":"logs"})),
     ] {
+        // Match the manual request's actual stored-intent acknowledgement.
+        let mut legacy = legacy.clone();
+        if args == ["down"] {
+            legacy["tiers"] = json!([["synthetic", 0]]);
+        } else if args == ["scale", "synthetic", "2"] {
+            legacy["tiers"] = json!([["synthetic", 2]]);
+        }
         let output = exchange(expected, response(legacy.clone()), |path| {
             command()
                 .arg("--socket")
