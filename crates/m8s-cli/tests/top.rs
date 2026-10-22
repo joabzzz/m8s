@@ -186,6 +186,11 @@ fn response_errors_are_redacted_not_empty_fleet() {
 }
 #[test]
 fn legacy_commands_and_json_envelope_are_unchanged() {
+    // Legacy positive responses use the accepted Mock contract, not top's
+    // deliberately synthetic Ready projection fixture.
+    let mut legacy = fixture();
+    legacy["mode"] = json!("mock-only");
+    legacy["nodes"][0]["phase"] = json!("Booting");
     for (args, expected) in [
         (
             vec!["up", "synthetic"],
@@ -199,7 +204,7 @@ fn legacy_commands_and_json_envelope_are_unchanged() {
         (vec!["status"], json!({"command":"status"})),
         (vec!["logs"], json!({"command":"logs"})),
     ] {
-        let output = exchange(expected, response(fixture()), |path| {
+        let output = exchange(expected, response(legacy.clone()), |path| {
             command()
                 .arg("--socket")
                 .arg(path)
@@ -210,7 +215,7 @@ fn legacy_commands_and_json_envelope_are_unchanged() {
         });
         assert!(output.status.success());
         let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(value, fixture()); // Raw API envelope, not top projection.
+        assert_eq!(value, legacy); // Raw API envelope, not top projection.
     }
     assert!(
         command()

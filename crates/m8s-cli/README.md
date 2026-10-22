@@ -715,3 +715,16 @@ immutable filesystem inspection/global freeze. Compact JSON for both text/JSON i
 fully rendered/bounded before output, fixed labels/safe IDs/counts only. Broken
 output nonzero; partial device bytes possible. No auth/provider-currentness/Ready
 or execution qualification is claimed. Legacy commands/responses remain unchanged.
+
+Legacy Mock control output is prepared completely before writing (64 KiB including
+newline). Clean ASCII success layout/JSON is unchanged; remote controls, DEL and
+non-ASCII free text are escaped, including bidi characters. The fixed text layout
+retains its middle-dot separator. Only `mock-only` with unavailable bootstrap is
+accepted; a reported Ready phase is refused, not treated as runtime proof. Display
+bounds are 256 unique tiers (Store IDs <=64, desired <=16), 256 unique nodes (UID,
+owner and optional instance ID <=256 bytes), and 200 events <=4096 bytes each.
+These are conservative display bounds, not new Store limits or authentication.
+Refusal, invalid metadata, transport or output failure is static/redacted and
+nonzero; no response error text is printed. Failure can follow a committed manual
+request or partial device output: it does not imply rollback, absence or safe retry.
+Recorded phases/counts are not provider currentness, readiness or authorization.

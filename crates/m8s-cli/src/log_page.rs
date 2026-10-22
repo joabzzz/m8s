@@ -83,19 +83,5 @@ pub(super) fn run(args: &[String]) -> Result<(), &'static str> {
 // Shared safe page projection; caller appends newline.
 pub(super) fn encode(response: &m8s_api::LogPageResponse) -> Result<Vec<u8>, &'static str> {
     let encoded = serde_json::to_string(response).map_err(|_| "log-page-output-unavailable")?;
-    let mut safe = String::new();
-    for c in encoded.chars() {
-        if c.is_ascii() && c != '\u{7f}' {
-            safe.push(c);
-        } else {
-            use std::fmt::Write;
-            for unit in c.encode_utf16(&mut [0; 2]) {
-                write!(safe, "\\u{unit:04x}").map_err(|_| "log-page-output-unavailable")?;
-            }
-        }
-    }
-    if safe.len() >= m8s_api::MAX_FRAME {
-        return Err("log-page-output-unavailable");
-    }
-    Ok(safe.into_bytes())
+    crate::safe_output::ascii(&encoded).map_err(|_| "log-page-output-unavailable")
 }

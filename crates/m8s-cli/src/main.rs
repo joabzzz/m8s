@@ -1,6 +1,7 @@
 mod batch;
 mod config;
 mod config_status;
+mod control_output;
 mod explain;
 mod fit;
 mod init;
@@ -10,6 +11,7 @@ mod models;
 mod plan;
 mod queue;
 mod reload_check;
+mod safe_output;
 mod schedule;
 mod secrets;
 use m8s_api::Request;
@@ -217,43 +219,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "logs" if args.len() == 3 => Request::Logs {},
         _ => return Err("invalid command; only mock control is available".into()),
     };
-    let response = m8s_api::call(&socket, &request)?;
-    if json {
-        println!("{}", serde_json::to_string(&response)?);
-    } else {
-        println!(
-            "mode: {} · secure bootstrap: {}",
-            response.mode, response.secure_bootstrap
-        );
-        for (tier, n) in &response.tiers {
-            println!("{tier}: desired {n}");
-        }
-        for n in &response.nodes {
-            println!(
-                "{} {} {:?} {}",
-                n.tier,
-                n.uid,
-                n.phase,
-                n.instance_id.as_deref().unwrap_or("unresolved")
-            );
-        }
-        if matches!(request, Request::Logs {}) {
-            for e in &response.events {
-                println!("{e}");
-            }
-        }
-        if let Some(error) = &response.error {
-            eprintln!("{error}");
-        }
-    }
-    if !response.ok {
-        std::process::exit(1);
-    }
-    Ok(())
+    let response = m8s_api::call(&socket, &request).map_err(|_| "control-outcome-unknown")?;
+    control_output::write(&response, json, matches!(request, Request::Logs {})).map_err(Into::into)
 }
+
 fn main() {
     if let Err(e) = run() {
-        eprintln!("m8s: {e}");
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr().lock(), "m8s: {e}");
         std::process::exit(1)
     }
 }
