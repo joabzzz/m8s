@@ -8,6 +8,31 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Result<_, _>>()?;
     // Preserve whole-argv UTF-8 validation, but own all local-demo flags before
     // legacy socket/JSON parsing. No daemon, credential or executable discovery.
+    if args.first().is_some_and(|arg| arg == "local-inspect") {
+        if args[1..] == ["--help"] {
+            println!("usage: m8s local-inspect --state-dir CANONICAL_ABSOLUTE_PATH");
+            println!(
+                "Unix only; build with --features local-development (disabled by default). Historical synthetic state; no child or readiness assessment."
+            );
+            return Ok(());
+        }
+        #[cfg(all(unix, feature = "local-development"))]
+        {
+            let inspect_args = args[1..]
+                .iter()
+                .take(3)
+                .map(std::ffi::OsString::from)
+                .collect();
+            if m8sd::local_demo::inspect_cli(inspect_args, &mut std::io::stdout().lock()) != 0 {
+                return Err("local-inspect snapshot unavailable".into());
+            }
+            return Ok(());
+        }
+        #[cfg(not(feature = "local-development"))]
+        return Err("local-inspect unavailable: build with --features local-development".into());
+        #[cfg(all(feature = "local-development", not(unix)))]
+        return Err("local-inspect unavailable on this platform".into());
+    }
     if args.first().is_some_and(|arg| arg == "local-demo") {
         if args[1..] == ["--help"] {
             println!(

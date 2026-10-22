@@ -51,6 +51,54 @@ fn invoke(args: &[OsString]) -> Output {
         .output()
         .unwrap()
 }
+fn inspect(args: &[OsString]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_m8s"))
+        .arg("local-inspect")
+        .args(args)
+        .output()
+        .unwrap()
+}
+fn inspect_args(path: &Path) -> Vec<OsString> {
+    vec!["--state-dir".into(), path.into()]
+}
+#[test]
+fn inspect_help_and_feature_refusal_have_no_effects() {
+    let root = Root::new();
+    let out = inspect(&["--help".into()]);
+    assert!(out.status.success());
+    assert!(
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .contains("--features local-development")
+    );
+    #[cfg(not(all(unix, feature = "local-development")))]
+    {
+        let out = inspect(&inspect_args(&root.state()));
+        assert!(!out.status.success());
+        assert!(out.stdout.is_empty());
+        #[cfg(not(feature = "local-development"))]
+        assert_eq!(
+            out.stderr,
+            b"m8s: local-inspect unavailable: build with --features local-development\n"
+        );
+        #[cfg(all(feature = "local-development", not(unix)))]
+        assert_eq!(
+            out.stderr,
+            b"m8s: local-inspect unavailable on this platform\n"
+        );
+    }
+    assert!(!root.state().exists());
+    root.unchanged();
+}
+#[cfg(unix)]
+#[test]
+fn inspect_non_utf8_is_redacted_even_with_help() {
+    use std::os::unix::ffi::OsStringExt;
+    let out = inspect(&["--help".into(), OsString::from_vec(vec![0xff])]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert_eq!(out.stderr, b"m8s: invalid arguments\n");
+}
 #[test]
 fn help_explains_explicit_opt_in_without_state() {
     let root = Root::new();
@@ -114,6 +162,53 @@ mod enabled {
     fn journal(path: &Path) -> Value {
         serde_json::from_slice(&fs::read(path.join("local-journal/state.json")).unwrap()).unwrap()
     }
+    fn inventory(path: &Path) -> Vec<(PathBuf, u32, Vec<u8>)> {
+        use std::os::unix::fs::MetadataExt;
+        let mut result = Vec::new();
+        for entry in fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            let m = fs::symlink_metadata(&path).unwrap();
+            if m.is_dir() {
+                result.extend(inventory(&path));
+            }
+            result.push((
+                path.clone(),
+                m.mode(),
+                if m.is_file() {
+                    fs::read(path).unwrap()
+                } else {
+                    vec![]
+                },
+            ));
+        }
+        result.sort();
+        result
+    }
+    #[test]
+    fn inspect_missing_and_malformed_arguments_are_opaque_and_do_not_create() {
+        let root = Root::new();
+        let p = root.state();
+        for args in [
+            vec![],
+            vec!["--state-dir".into()],
+            vec!["--state-dir".into(), "relative-sensitive-path".into()],
+            vec![
+                "--state-dir".into(),
+                p.clone().into_os_string(),
+                "--state-dir".into(),
+                p.clone().into_os_string(),
+            ],
+            vec!["--help".into(), "sensitive-unknown".into()],
+            inspect_args(&p),
+        ] {
+            let out = inspect(&args);
+            assert!(!out.status.success());
+            assert!(!String::from_utf8_lossy(&out.stdout).contains("sensitive"));
+            assert!(!String::from_utf8_lossy(&out.stderr).contains(p.to_str().unwrap()));
+            assert!(!p.exists());
+        }
+        root.unchanged();
+    }
     fn lifecycle(scenario: &str) {
         let root = Root::new();
         let path = root.state();
@@ -167,6 +262,29 @@ mod enabled {
             fs::read(path.join("local-journal/state.json")).unwrap(),
             journal_before
         );
+        let before = inventory(&path);
+        let first = inspect(&inspect_args(&path));
+        assert!(first.status.success(), "{first:?}");
+        assert!(first.stderr.is_empty());
+        let v = lines(&first);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0]["version"], "m8s.local-inspect/v1");
+        assert_eq!(v[0]["simulated_hold_micro_usd"], 30);
+        assert_eq!(v[0]["budget_state"], "Uncertain");
+        assert_eq!(v[0]["claim_state"], "consumed");
+        assert_eq!(v[0]["cleanup_required"], true);
+        assert_eq!(v[0]["historical"], true);
+        assert_eq!(v[0]["accounting"], "synthetic-not-approval");
+        assert_eq!(v[0]["billing"], "unknown");
+        assert_eq!(v[0]["readiness"], "not-assessed");
+        assert_eq!(v[0]["child_state"], "not-checked");
+        let second = inspect(&inspect_args(&path));
+        assert!(second.status.success());
+        assert_eq!(first.stdout, second.stdout);
+        assert_eq!(inventory(&path), before);
+        for suffix in ["state.db-wal", "state.db-shm", "state.db-journal"] {
+            assert!(!path.join(suffix).exists());
+        }
         root.unchanged();
     }
     #[test]
@@ -241,6 +359,11 @@ mod enabled {
                 .unwrap()
                 .is_empty()
         );
+        let before = inventory(&root.state());
+        let out = inspect(&inspect_args(&root.state()));
+        assert!(!out.status.success());
+        assert_eq!(lines(&out)[0]["error"], "snapshot-unavailable");
+        assert_eq!(inventory(&root.state()), before);
         root.unchanged();
     }
     #[test]

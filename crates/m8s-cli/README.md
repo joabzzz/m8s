@@ -156,3 +156,53 @@ state/child effects; `m8s local-demo --help` explains the opt-in.
 This is not production deployment, Admin approval, billing cessation, model
 serving or Ready evidence. No provider, credential/Keychain, daemon or bootstrap
 path is invoked; existing security and runtime gates remain unchanged.
+
+## Inspect retained synthetic demo state (Unix, opt-in)
+
+Using the same feature-enabled binary and already-provisioned parent above,
+choose a new state path, run once, then inspect without rerunning the demo:
+
+```sh
+m8s local-demo --synthetic-accounting --state-dir /private/tmp/my-m8s-demo/inspect-new --synthetic-cap-micro-usd 10000 --scenario cancel
+m8s local-inspect --state-dir /private/tmp/my-m8s-demo/inspect-new
+m8s local-inspect --help
+```
+
+`--state-dir CANONICAL_ABSOLUTE_PATH` is required exactly once; no other flags
+except standalone `--help`. Help works without the feature and touches no state.
+Default-off/non-Unix builds refuse inspection before filesystem access.
+
+One bounded JSON line (`m8s.local-inspect/v1`) reports the retained typed
+`Uncertain` budget, full synthetic hold (30 micro-USD), consumed operation and
+`cleanup_required`. It is an **immutable historical snapshot, not live policy**:
+accounting `synthetic-not-approval`, billing `unknown`, readiness `not-assessed`,
+child_state `not-checked`. No journal is opened and no current child absence,
+settlement, refund, billing cessation or readiness is inferred.
+
+Only completed, quiescent records with the fixed synthetic demo owner/context
+are accepted. Missing/incomplete/tiny-cap/corrupt/foreign state is refused with
+an opaque error, never recovered. The directory must be canonical, owned and
+exactly 0700; existing `demo.lock` and `state.db` must be owned regular 0600
+single-link files. Descriptor no-follow/nonblocking opens and retained inode
+anchors are checked before output. The existing lock is held shared,
+nonblocking; an active cooperating demo's exclusive lock causes refusal.
+
+Inspection never creates, migrates, repairs, chmods, removes or fsyncs state,
+opens Store, starts a child or initializes the local provider. SQLite uses an
+explicit percent-encoded `mode=ro&immutable=1` URI with READONLY/URI/NOFOLLOW,
+query-only and untrusted-schema guards. Any existing WAL/SHM/rollback-journal
+path, including a dangling symlink, is refused before and after reading. The
+DB is bounded to 16 MiB; each reservation/operation record to 64 KiB with exactly
+one row required. No untrusted strings, paths or raw database errors are emitted.
+
+Inspection validates public cross-record consistency, not provenance, signatures
+or authorization permissions. Recorded node IDs are bounded metadata shared
+across records; stored fingerprints are neither recomputed nor authenticated,
+and are not emitted. Fabricated consistent same-UID data is not an authenticated
+source. Filesystem ownership/mode checks protect the read boundary, not authority
+to execute or spend.
+
+Advisory locks coordinate cooperating demos; this is not cross-process security
+against an uncooperative same-UID writer or a filesystem/kernel latency bound.
+It does not qualify denied network monitoring, Keychain or production security
+paths; those independent gates remain unchanged.

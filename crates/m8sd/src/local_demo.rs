@@ -517,6 +517,287 @@ pub fn run_cli(args: Vec<OsString>, out: &mut impl Write) -> i32 {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InspectError {
+    Arguments,
+    Busy,
+    Unavailable,
+}
+impl From<Error> for InspectError {
+    fn from(_: Error) -> Self {
+        Self::Unavailable
+    }
+}
+type InspectResult<T> = std::result::Result<T, InspectError>;
+
+// Historical inspection deliberately does not use Store, Local or the journal.
+// Advisory locking coordinates cooperating demos, not hostile same-UID writers.
+struct InspectState {
+    anchor: FreshState,
+    db: File,
+}
+fn inspect_file(path: &Path) -> InspectResult<File> {
+    inspect_open(path, false)
+}
+fn inspect_open(path: &Path, is_directory: bool) -> InspectResult<File> {
+    let flags = libc::O_NOFOLLOW
+        | libc::O_NONBLOCK
+        | libc::O_CLOEXEC
+        | if is_directory { libc::O_DIRECTORY } else { 0 };
+    let f = OpenOptions::new()
+        .read(true)
+        .custom_flags(flags)
+        .open(path)
+        .map_err(|_| InspectError::Unavailable)?;
+    private(&f, is_directory)?;
+    Ok(f)
+}
+impl InspectState {
+    fn open(path: &Path) -> InspectResult<Self> {
+        if fs::canonicalize(path).map_err(|_| InspectError::Unavailable)? != path {
+            return Err(InspectError::Unavailable);
+        }
+        let dir = inspect_open(path, true)?;
+        let lock = inspect_file(&path.join("demo.lock"))?;
+        FileExt::try_lock_shared(&lock).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::WouldBlock {
+                InspectError::Busy
+            } else {
+                InspectError::Unavailable
+            }
+        })?;
+        let db = inspect_file(&path.join("state.db"))?;
+        let state = Self {
+            anchor: FreshState {
+                path: path.into(),
+                lock,
+                dir,
+            },
+            db,
+        };
+        state.recheck()?;
+        Ok(state)
+    }
+    fn recheck(&self) -> InspectResult<()> {
+        private(&self.anchor.dir, true)?;
+        private(&self.anchor.lock, false)?;
+        let current_dir = inspect_open(&self.anchor.path, true)?;
+        let current_lock = inspect_file(&self.anchor.path.join("demo.lock"))?;
+        for (retained, current) in [
+            (&self.anchor.dir, &current_dir),
+            (&self.anchor.lock, &current_lock),
+        ] {
+            let a = retained.metadata().map_err(|_| InspectError::Unavailable)?;
+            let b = current.metadata().map_err(|_| InspectError::Unavailable)?;
+            if (a.dev(), a.ino()) != (b.dev(), b.ino()) {
+                return Err(InspectError::Unavailable);
+            }
+        }
+        if fs::canonicalize(&self.anchor.path).map_err(|_| InspectError::Unavailable)?
+            != self.anchor.path
+        {
+            return Err(InspectError::Unavailable);
+        }
+        private(&self.db, false)?;
+        let current = inspect_file(&self.anchor.path.join("state.db"))?;
+        let a = self.db.metadata().map_err(|_| InspectError::Unavailable)?;
+        let b = current.metadata().map_err(|_| InspectError::Unavailable)?;
+        if (a.dev(), a.ino()) != (b.dev(), b.ino()) || a.len() == 0 || a.len() > 16 * 1024 * 1024 {
+            return Err(InspectError::Unavailable);
+        }
+        for suffix in ["state.db-wal", "state.db-shm", "state.db-journal"] {
+            match fs::symlink_metadata(self.anchor.path.join(suffix)) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+                _ => return Err(InspectError::Unavailable),
+            }
+        }
+        Ok(())
+    }
+}
+fn inspect_connection(path: &Path) -> InspectResult<Connection> {
+    // Encode every path byte, including URI metacharacters; no URI injection.
+    let mut uri = String::from("file:");
+    for byte in path.as_os_str().as_bytes() {
+        use std::fmt::Write;
+        write!(&mut uri, "%{byte:02X}").map_err(|_| InspectError::Unavailable)?;
+    }
+    uri.push_str("?immutable=1&mode=ro");
+    let c = Connection::open_with_flags(
+        uri,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+    )
+    .map_err(|_| InspectError::Unavailable)?;
+    c.execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;")
+        .map_err(|_| InspectError::Unavailable)?;
+    Ok(c)
+}
+fn inspect_record<T: serde::de::DeserializeOwned>(c: &Connection, table: &str) -> InspectResult<T> {
+    // Only internal fixed table names. Bound rows and byte lengths BEFORE decode.
+    let sql = format!(
+        "SELECT CASE WHEN typeof(record)='text' AND length(CAST(record AS BLOB)) BETWEEN 1 AND 65536 THEN record ELSE NULL END FROM {table} LIMIT 2"
+    );
+    let mut stmt = c.prepare(&sql).map_err(|_| InspectError::Unavailable)?;
+    let mut rows = stmt.query([]).map_err(|_| InspectError::Unavailable)?;
+    let raw: String = rows
+        .next()
+        .map_err(|_| InspectError::Unavailable)?
+        .ok_or(InspectError::Unavailable)?
+        .get(0)
+        .map_err(|_| InspectError::Unavailable)?;
+    if rows
+        .next()
+        .map_err(|_| InspectError::Unavailable)?
+        .is_some()
+    {
+        return Err(InspectError::Unavailable);
+    }
+    serde_json::from_str(&raw).map_err(|_| InspectError::Unavailable)
+}
+fn inspect_label(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+}
+fn inspect_snapshot(path: &Path) -> InspectResult<(Value, InspectState)> {
+    use crate::{
+        budget::{BudgetReservation, VolumeBinding},
+        operation::CreateOperation,
+    };
+    let state = InspectState::open(path)?;
+    let c = inspect_connection(&path.join("state.db"))?;
+    let owned: bool = c
+        .query_row(
+            "SELECT count(*)=1 AND min(owner)=? FROM (SELECT owner FROM pool LIMIT 2)",
+            [OWNER],
+            |r| r.get(0),
+        )
+        .map_err(|_| InspectError::Unavailable)?;
+    if !owned {
+        return Err(InspectError::Unavailable);
+    }
+    let b: BudgetReservation = inspect_record(&c, "budget_reservation")?;
+    let op: CreateOperation = inspect_record(&c, "create_operation")?;
+    let run = format!("{LABEL}-run");
+    // Recorded identity is bounded metadata, not a recomputed identity proof.
+    // Check only public cross-record consistency; the stored fingerprint and
+    // private operation budget are not inspection authority.
+    let node = op.intent.node_uid.as_str();
+    if !inspect_label(node) {
+        return Err(InspectError::Unavailable);
+    }
+    let (_, period, request) = fixtures(MAX_CAP, b.reserved_at, node)?;
+    let binding = b.binding.as_ref().ok_or(InspectError::Unavailable)?;
+    if op.uncertainty_observed
+        || b.reserved_at < 0
+        || op.prepared_at < b.reserved_at
+        || op.last_at < op.prepared_at
+        || op
+            .dispatched_at
+            .is_some_and(|at| at < op.prepared_at || at > op.last_at)
+        || op
+            .invocation_started_at
+            .zip(op.dispatched_at)
+            .is_some_and(|(at, start)| at < start || at > op.last_at)
+        || op
+            .cancelled_at
+            .is_some_and(|at| at < op.invocation_started_at.unwrap_or(i64::MAX) || at > op.last_at)
+        || binding.observed_at < op.invocation_started_at.unwrap_or(i64::MAX)
+        || binding.observed_at > op.last_at
+        || b.request != request
+        || b.period != period
+        || b.state != BudgetState::Uncertain
+        || b.reserved_all_in != 30
+        || b.reserved_hourly != 36000
+        || b.settlement.is_some()
+        || b.billing_period.is_some()
+        || binding.owner != OWNER
+        || binding.run_id != run
+        || binding.node_uid != node
+        || !inspect_label(&binding.instance_id)
+        || binding.provenance
+            != "local-development-v1: retained child; local adapter creates no volumes; not cloud proof"
+        || binding.volumes != VolumeBinding::NoneAllocated
+        || binding.status != EvidenceStatus::Complete
+        || op.intent.owner != OWNER
+        || op.intent.run_id != run
+        || op.intent.request_id != REQUEST
+        || op.intent.operation_id != OP
+        || op.dispatched_at.is_none()
+        || op.invocation_started_at.is_none()
+        || !op.cleanup_required
+        || op.result.as_ref() != Some(binding)
+        || !matches!(
+            op.state,
+            CreateState::Cancelled | CreateState::DispatchConsumed
+        )
+        || (op.state == CreateState::Cancelled) != op.cancelled_at.is_some()
+    {
+        return Err(InspectError::Unavailable);
+    }
+    let consistent: bool = c.query_row("SELECT
+        (SELECT count(*)=1 AND min(owner)=?1 AND min(request_id)=?2 AND min(node_uid)=?3 FROM (SELECT owner,request_id,node_uid FROM budget_reservation LIMIT 2)) AND
+        (SELECT count(*)=1 AND min(owner)=?1 AND min(request_id)=?2 AND min(node_uid)=?3 AND min(operation_id)=?4 FROM (SELECT owner,request_id,node_uid,operation_id FROM create_operation LIMIT 2)) AND
+        (SELECT count(*)=1 AND min(uid)=?3 AND min(tier)=?5 AND min(phase)='\"Launching\"' FROM (SELECT uid,tier,phase FROM gpu_node LIMIT 2)) AND
+        (SELECT count(*)=1 AND min(uid)=?3 AND min(tier)=?5 FROM (SELECT uid,tier FROM launch_attempt LIMIT 2))",
+        params![OWNER, REQUEST, node, OP, TIER], |r| r.get(0)).map_err(|_| InspectError::Unavailable)?;
+    if !consistent {
+        return Err(InspectError::Unavailable);
+    }
+    drop(c);
+    state.recheck()?;
+    Ok((
+        json!({"version":"m8s.local-inspect/v1","phase":"snapshot","historical":true,
+        "accounting":"synthetic-not-approval","billing":"unknown","readiness":"not-assessed",
+        "child_state":"not-checked","budget_state":b.state,"simulated_hold_micro_usd":b.reserved_all_in,
+        "reserved_hold_retained":true,"operation_state":op.state,"claim_state":"consumed","cleanup_required":true}),
+        state,
+    ))
+}
+/// Read one completed, quiescent synthetic demo snapshot, without opening Store
+/// or its journal. Arguments exclude the command name; errors never echo input.
+pub fn inspect_cli(args: Vec<OsString>, out: &mut impl Write) -> i32 {
+    if args == [OsString::from("--help")] {
+        return if out.write_all(b"usage: m8s local-inspect --state-dir CANONICAL_ABSOLUTE_PATH\nUnix only; build with --features local-development; historical synthetic state only.\n").is_ok() { 0 } else { 1 };
+    }
+    let parsed = if args.len() == 2 && args[0] == "--state-dir" {
+        args[1].to_str().map(Path::new).filter(|p| path_valid(p))
+    } else {
+        None
+    };
+    let result = parsed
+        .ok_or(InspectError::Arguments)
+        .and_then(inspect_snapshot);
+    match result {
+        Ok((value, state)) => {
+            if state.recheck().is_err() {
+                let _ = event(
+                    out,
+                    json!({"version":"m8s.local-inspect/v1","phase":"failure","error":"snapshot-unavailable"}),
+                );
+                return 1;
+            }
+            if event(out, value).is_ok() { 0 } else { 1 }
+        }
+        Err(e) => {
+            let error = match e {
+                InspectError::Arguments => "invalid-arguments",
+                InspectError::Busy => "state-busy",
+                InspectError::Unavailable => "snapshot-unavailable",
+            };
+            let _ = event(
+                out,
+                json!({"version":"m8s.local-inspect/v1","phase":"failure","error":error}),
+            );
+            1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -823,5 +1104,370 @@ mod tests {
                 .iter()
                 .any(|v| v["phase"] == "error" && v["state_preserved"] == true)
         );
+    }
+}
+
+#[cfg(test)]
+mod inspect_tests {
+    use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let path = std::env::temp_dir().canonicalize().unwrap().join(format!(
+                "m8s-inspect-synthetic-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+            for name in ["demo.lock", "state.db"] {
+                let mut f = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(path.join(name))
+                    .unwrap();
+                f.write_all(b"synthetic-invalid-db").unwrap();
+            }
+            Self(path)
+        }
+        fn refused(&self) {
+            self.refused_error("snapshot-unavailable");
+        }
+        fn refused_error(&self, expected: &str) {
+            let before = inventory(&self.0);
+            let mut out = Vec::new();
+            assert_eq!(
+                inspect_cli(vec!["--state-dir".into(), self.0.clone().into()], &mut out),
+                1
+            );
+            assert_eq!(
+                serde_json::from_slice::<Value>(&out).unwrap()["error"],
+                expected
+            );
+            assert!(!String::from_utf8_lossy(&out).contains(self.0.to_str().unwrap()));
+            assert_eq!(inventory(&self.0), before);
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn inventory(path: &Path) -> Vec<(OsString, u32, u64, Vec<u8>)> {
+        let mut entries = Vec::new();
+        for item in fs::read_dir(path).unwrap() {
+            let item = item.unwrap();
+            let m = item.path().symlink_metadata().unwrap();
+            entries.push((
+                item.file_name(),
+                m.mode(),
+                m.nlink(),
+                if m.is_file() {
+                    fs::read(item.path()).unwrap()
+                } else {
+                    Vec::new()
+                },
+            ));
+        }
+        entries.sort();
+        entries
+    }
+    #[test]
+    fn inspect_corrupt_missing_unsafe_symlink_hardlink_and_sidecars_never_mutate() {
+        let f = Fixture::new();
+        f.refused();
+        for name in ["state.db-wal", "state.db-shm", "state.db-journal"] {
+            symlink("missing-synthetic-target", f.0.join(name)).unwrap();
+            f.refused();
+            fs::remove_file(f.0.join(name)).unwrap();
+            fs::write(f.0.join(name), b"synthetic-sidecar-sentinel").unwrap();
+            f.refused();
+            fs::remove_file(f.0.join(name)).unwrap();
+        }
+        for name in ["state.db", "demo.lock"] {
+            let path = f.0.join(name);
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+            f.refused();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+            fs::rename(&path, f.0.join("retained")).unwrap();
+            symlink("retained", &path).unwrap();
+            f.refused();
+            fs::remove_file(&path).unwrap();
+            fs::hard_link(f.0.join("retained"), &path).unwrap();
+            f.refused();
+            fs::remove_file(&path).unwrap();
+            f.refused();
+            fs::rename(f.0.join("retained"), &path).unwrap();
+        }
+        fs::set_permissions(&f.0, fs::Permissions::from_mode(0o750)).unwrap();
+        f.refused();
+        fs::set_permissions(&f.0, fs::Permissions::from_mode(0o700)).unwrap();
+        let alias = f.0.join("alias");
+        symlink(&f.0, &alias).unwrap();
+        let mut out = Vec::new();
+        assert_eq!(
+            inspect_cli(vec!["--state-dir".into(), alias.into()], &mut out),
+            1
+        );
+    }
+    #[test]
+    fn inspect_active_exclusive_lock_and_anchor_replacement_refuse() {
+        let f = Fixture::new();
+        let lock = inspect_file(&f.0.join("demo.lock")).unwrap();
+        lock.try_lock_exclusive().unwrap();
+        f.refused_error("state-busy");
+        FileExt::unlock(&lock).unwrap();
+        for name in ["state.db", "demo.lock"] {
+            let state = InspectState::open(&f.0).unwrap();
+            fs::rename(f.0.join(name), f.0.join("original")).unwrap();
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(f.0.join(name))
+                .unwrap()
+                .write_all(b"replacement")
+                .unwrap();
+            assert!(state.recheck().is_err());
+            drop(state);
+            fs::remove_file(f.0.join(name)).unwrap();
+            fs::rename(f.0.join("original"), f.0.join(name)).unwrap();
+        }
+        let state = InspectState::open(&f.0).unwrap();
+        let moved = f.0.with_extension("moved");
+        fs::rename(&f.0, &moved).unwrap();
+        fs::DirBuilder::new().mode(0o700).create(&f.0).unwrap();
+        assert!(state.recheck().is_err());
+        fs::remove_dir(&f.0).unwrap();
+        fs::rename(moved, &f.0).unwrap();
+    }
+    #[test]
+    fn inspect_owner_gate_and_bounded_records_refuse_opaque_without_sidecars() {
+        let f = Fixture::new();
+        fs::remove_file(f.0.join("state.db")).unwrap();
+        let c = Connection::open(f.0.join("state.db")).unwrap();
+        c.execute_batch("CREATE TABLE pool(owner TEXT); CREATE TABLE budget_reservation(record TEXT); CREATE TABLE create_operation(record TEXT);").unwrap();
+        c.execute("INSERT INTO pool VALUES (?)", ["foreign-sensitive-owner"])
+            .unwrap();
+        drop(c);
+        fs::set_permissions(f.0.join("state.db"), fs::Permissions::from_mode(0o600)).unwrap();
+        f.refused();
+        let c = Connection::open(f.0.join("state.db")).unwrap();
+        c.execute("UPDATE pool SET owner=?", [OWNER]).unwrap();
+        drop(c);
+        f.refused(); // missing rows
+        for raw in ["{}".to_owned(), "x".repeat(65537)] {
+            let c = Connection::open(f.0.join("state.db")).unwrap();
+            c.execute("DELETE FROM budget_reservation", []).unwrap();
+            c.execute("INSERT INTO budget_reservation VALUES (?)", [&raw])
+                .unwrap();
+            drop(c);
+            f.refused();
+        }
+        let c = Connection::open(f.0.join("state.db")).unwrap();
+        c.execute("INSERT INTO budget_reservation VALUES ('{}')", [])
+            .unwrap();
+        drop(c);
+        f.refused();
+    }
+    #[test]
+    fn inspect_immutable_uri_encodes_metacharacters_and_cannot_write_or_create_sidecars() {
+        let mut f = Fixture::new();
+        let encoded_path = f.0.with_extension("synthetic ?mode=rw#% snow-雪");
+        fs::rename(&f.0, &encoded_path).unwrap();
+        f.0 = encoded_path;
+        fs::remove_file(f.0.join("state.db")).unwrap();
+        let c = Connection::open(f.0.join("state.db")).unwrap();
+        c.execute_batch("CREATE TABLE sentinel(value INTEGER); INSERT INTO sentinel VALUES (7);")
+            .unwrap();
+        drop(c);
+        fs::set_permissions(f.0.join("state.db"), fs::Permissions::from_mode(0o600)).unwrap();
+        let before = inventory(&f.0);
+        let state = InspectState::open(&f.0).unwrap();
+        let c = inspect_connection(&f.0.join("state.db")).unwrap();
+        assert_eq!(
+            c.query_row("SELECT value FROM sentinel", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            7
+        );
+        assert!(c.execute("INSERT INTO sentinel VALUES (8)", []).is_err());
+        drop(c);
+        state.recheck().unwrap();
+        assert_eq!(inventory(&f.0), before);
+    }
+    // Synthetic historical metadata only: no child, Local, Executor or command.
+    fn consistent_fixture() -> Fixture {
+        use crate::{
+            budget::{ResourceBinding, VolumeBinding},
+            operation::CreateIntent,
+        };
+        let f = Fixture::new();
+        let db = f.0.join("state.db");
+        fs::remove_file(&db).unwrap();
+        let store = Store::open(&db, OWNER).unwrap();
+        store.scale(TIER, 1).unwrap();
+        let node = "synthetic-recorded-node"; // deliberately no derived-ID format
+        let (policy, period, request) = fixtures(10000, 100, node).unwrap();
+        let mut b = store
+            .reserve_budget(&policy, &period, &request, 100)
+            .unwrap();
+        let c = Connection::open(&db).unwrap();
+        c.execute(
+            "INSERT INTO gpu_node(uid,tier,phase,created_at) VALUES (?,?,'\"Launching\"',100)",
+            params![node, TIER],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO launch_attempt(uid,tier,at) VALUES (?,?,100)",
+            params![node, TIER],
+        )
+        .unwrap();
+        drop(c);
+        let intent = CreateIntent {
+            owner: OWNER.into(),
+            run_id: format!("{LABEL}-run"),
+            request_id: REQUEST.into(),
+            node_uid: node.into(),
+            operation_id: OP.into(),
+            launch_fingerprint: [0; 32],
+        };
+        // The public prepare result supplies its own private internals; tests
+        // alter only public historical fields, never inspect private payloads.
+        let mut op = store.prepare_create(&intent, 100).unwrap();
+        let binding = ResourceBinding { owner: OWNER.into(), run_id: intent.run_id.clone(),
+            node_uid: node.into(), instance_id: "synthetic-recorded-instance".into(),
+            volumes: VolumeBinding::NoneAllocated,
+            provenance: "local-development-v1: retained child; local adapter creates no volumes; not cloud proof".into(),
+            observed_at: 100, status: EvidenceStatus::Complete };
+        b.state = BudgetState::Uncertain;
+        b.binding = Some(binding.clone());
+        op.state = CreateState::DispatchConsumed;
+        op.dispatched_at = Some(100);
+        op.invocation_started_at = Some(100);
+        op.cleanup_required = true;
+        op.result = Some(binding);
+        drop(store);
+        let c = Connection::open(db).unwrap();
+        c.execute(
+            "UPDATE budget_reservation SET record=?",
+            [serde_json::to_string(&b).unwrap()],
+        )
+        .unwrap();
+        c.execute(
+            "UPDATE create_operation SET record=?",
+            [serde_json::to_string(&op).unwrap()],
+        )
+        .unwrap();
+        drop(c);
+        f
+    }
+    #[test]
+    fn inspect_checks_recorded_uid_consistency_not_fingerprint_authority() {
+        use crate::{budget::BudgetReservation, operation::CreateOperation};
+        let f = consistent_fixture();
+        let read = || {
+            let before = inventory(&f.0);
+            let mut out = Vec::new();
+            assert_eq!(
+                inspect_cli(vec!["--state-dir".into(), f.0.clone().into()], &mut out),
+                0
+            );
+            assert_eq!(inventory(&f.0), before);
+            let v: Value = serde_json::from_slice(&out).unwrap();
+            assert_eq!(v["historical"], true);
+            assert_eq!(v["accounting"], "synthetic-not-approval");
+            assert_eq!(v["readiness"], "not-assessed");
+            assert!(v.get("launch_fingerprint").is_none());
+            out
+        };
+        let original_output = read();
+        let c = Connection::open(f.0.join("state.db")).unwrap();
+        let raw: String = c
+            .query_row("SELECT record FROM create_operation", [], |r| r.get(0))
+            .unwrap();
+        let mut op: CreateOperation = serde_json::from_str(&raw).unwrap();
+        op.intent.launch_fingerprint = [255; 32];
+        c.execute(
+            "UPDATE create_operation SET record=?",
+            [serde_json::to_string(&op).unwrap()],
+        )
+        .unwrap();
+        drop(c);
+        assert_eq!(read(), original_output); // fingerprint is stored, unverified metadata
+        for table in [
+            "budget_reservation",
+            "create_operation",
+            "gpu_node",
+            "launch_attempt",
+        ] {
+            let c = Connection::open(f.0.join("state.db")).unwrap();
+            let column = if table == "gpu_node" || table == "launch_attempt" {
+                "uid"
+            } else {
+                "node_uid"
+            };
+            c.execute(
+                &format!("UPDATE {table} SET {column}='synthetic-mismatch'"),
+                [],
+            )
+            .unwrap();
+            drop(c);
+            f.refused();
+            let c = Connection::open(f.0.join("state.db")).unwrap();
+            c.execute(
+                &format!("UPDATE {table} SET {column}='synthetic-recorded-node'"),
+                [],
+            )
+            .unwrap();
+        }
+        let c = Connection::open(f.0.join("state.db")).unwrap();
+        let raw: String = c
+            .query_row("SELECT record FROM budget_reservation", [], |r| r.get(0))
+            .unwrap();
+        let original: BudgetReservation = serde_json::from_str(&raw).unwrap();
+        for change_request in [true, false] {
+            let mut b = original.clone();
+            if change_request {
+                b.request.node_uid = "synthetic-mismatch".into();
+            } else {
+                b.binding.as_mut().unwrap().node_uid = "synthetic-mismatch".into();
+            }
+            c.execute(
+                "UPDATE budget_reservation SET record=?",
+                [serde_json::to_string(&b).unwrap()],
+            )
+            .unwrap();
+            f.refused();
+        }
+        c.execute("UPDATE budget_reservation SET record=?", [raw])
+            .unwrap();
+        op.intent.node_uid = "synthetic-mismatch".into();
+        c.execute(
+            "UPDATE create_operation SET record=?",
+            [serde_json::to_string(&op).unwrap()],
+        )
+        .unwrap();
+        drop(c);
+        f.refused();
+    }
+    #[test]
+    fn inspect_parser_rejects_non_utf8_and_help_has_no_state_effect() {
+        use std::os::unix::ffi::OsStringExt;
+        let mut out = Vec::new();
+        assert_eq!(
+            inspect_cli(
+                vec!["--state-dir".into(), OsString::from_vec(vec![b'/', 255])],
+                &mut out
+            ),
+            1
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&out).unwrap()["error"],
+            "invalid-arguments"
+        );
+        assert_eq!(inspect_cli(vec!["--help".into()], &mut Vec::new()), 0);
     }
 }
