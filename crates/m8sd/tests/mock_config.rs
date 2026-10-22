@@ -634,3 +634,70 @@ fn failed_full_reload_preserves_old_admission_and_durable_desired() {
     assert!(f.call(Request::Shutdown {}).ok);
     assert!(d.wait().success());
 }
+
+#[test]
+fn config_status_is_actual_active_policy_not_files_or_desired() {
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    let status = || {
+        let response = m8s_api::call_config_status(&f.state().join("control.sock")).unwrap();
+        assert!(response.ok && response.configured);
+        assert_eq!(response.mode, "mock-only");
+        assert_eq!(response.scope, "mock-control-admission-only");
+        assert_eq!(
+            response
+                .tiers
+                .iter()
+                .map(|t| t.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["bounded", "disabled", "optional"]
+        );
+        let wire = serde_json::to_string(&response).unwrap();
+        for marker in [
+            "config.toml",
+            "catalog.toml",
+            "example-27b",
+            OWNER,
+            "source",
+            "schedule",
+            "fingerprint",
+        ] {
+            assert!(!wire.contains(marker));
+        }
+        response.tiers
+    };
+    let initial = status();
+    assert_eq!((initial[0].min, initial[0].max), (2, 3));
+    assert_eq!((initial[1].min, initial[1].max), (0, 0));
+    assert!(f.call(Request::Status {}).tiers.is_empty()); // no invented desired
+    assert!(f.call(up("bounded")).ok);
+    let desired = f.call(Request::Status {}).tiers;
+    fs::write(f.root.join("config.toml"), CONFIG.replace("max=3", "max=4")).unwrap();
+    assert_eq!(status(), initial); // no implicit reload
+    assert!(f.call(Request::ReloadConfig {}).ok);
+    let changed = status();
+    assert_eq!((changed[0].min, changed[0].max), (2, 4));
+    fs::write(f.root.join("config.toml"), "sensitive-invalid-config").unwrap();
+    assert!(!f.call(Request::ReloadConfig {}).ok);
+    fs::remove_file(f.root.join("config.toml")).unwrap();
+    fs::remove_file(f.root.join("catalog.toml")).unwrap();
+    assert_eq!(status(), changed); // status cannot require/reread either file
+    assert_eq!(f.call(Request::Status {}).tiers, desired);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+
+    let f = Fixture::new();
+    let mut d = f.start(false);
+    assert!(f.call(up("legacy-unconfigured")).ok);
+    fs::remove_file(f.root.join("config.toml")).unwrap();
+    fs::remove_file(f.root.join("catalog.toml")).unwrap();
+    let legacy = m8s_api::call_config_status(&f.state().join("control.sock")).unwrap();
+    assert!(legacy.ok && !legacy.configured);
+    assert!(legacy.tiers.is_empty());
+    assert_eq!(
+        f.call(Request::Status {}).tiers,
+        vec![("legacy-unconfigured".into(), 1)]
+    );
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+}

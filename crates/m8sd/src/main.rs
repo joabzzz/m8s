@@ -31,6 +31,35 @@ fn now() -> i64 {
         .as_secs()
         .min(i64::MAX as u64) as i64
 }
+fn config_status_frame(policy: Option<&mock_config::Policy>) -> Vec<u8> {
+    let response = m8s_api::ConfigStatusResponse {
+        ok: true,
+        mode: "mock-only".into(),
+        scope: "mock-control-admission-only".into(),
+        error: None,
+        configured: policy.is_some(),
+        tiers: policy.map_or_else(Vec::new, |p| p.snapshot()),
+    };
+    // Actual validated Policy: <=32 ASCII IDs<=48 and bounds<=16, under 4KiB.
+    // Serialize fully and check newline-inclusive cap BEFORE socket output.
+    if let Ok(mut frame) = serde_json::to_vec(&response)
+        && frame.len() < m8s_api::MAX_FRAME
+    {
+        frame.push(b'\n');
+        return frame;
+    }
+    let mut frame = serde_json::to_vec(&m8s_api::ConfigStatusResponse {
+        ok: false,
+        mode: "mock-only".into(),
+        scope: "mock-control-admission-only".into(),
+        error: Some("config-status-unavailable".into()),
+        configured: false,
+        tiers: vec![],
+    })
+    .expect("fixed config-status refusal serializes within frame");
+    frame.push(b'\n');
+    frame
+}
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() == 1 && args[0] == "--help" {
@@ -127,6 +156,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     continue;
                 }
+                let mut config_status_requested = false;
                 let mut page_request = None;
                 let mut shutdown_requested = false;
                 let mut shutdown_complete = false;
@@ -144,6 +174,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             store.scale(&tier, replicas)?;
                         }
                         Request::Down {} => store.down()?,
+                        Request::ConfigStatus {} => config_status_requested = true,
                         Request::ReloadConfig {} => {
                             // Reuse ONLY startup-selected paths and actual whole
                             // validation. No writes/effects; publish once, last.
@@ -163,6 +194,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(())
                 })();
+                if config_status_requested {
+                    let frame = config_status_frame(policy.as_ref());
+                    let _ = stream.write_all(&frame);
+                    continue;
+                }
                 if let Some((after, limit)) = page_request {
                     let frame = log_page::frame(&store, after, limit);
                     let _ = stream.write_all(&frame);

@@ -16,6 +16,7 @@ pub enum Request {
     Down {},
     Shutdown {},
     ReloadConfig {},
+    ConfigStatus {},
     Status {},
     Logs {},
     LogsPage { after: u64, limit: u32 },
@@ -197,6 +198,90 @@ mod reload_config_tests {
             r#"{"command":"reload_config","config":"sensitive-path"}"#,
             r#"{"command":"reload_config","force":true}"#,
             r#"{"command":"reload_config","command":"status"}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(frame).is_err());
+        }
+    }
+}
+
+/// Active Mock admission bounds only; not desired state or execution authority.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigTierBounds {
+    pub id: String,
+    pub min: u32,
+    pub max: u32,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigStatusResponse {
+    pub ok: bool,
+    pub mode: String,
+    pub scope: String,
+    #[serde(deserialize_with = "config_status_error")]
+    pub error: Option<String>,
+    pub configured: bool,
+    pub tiers: Vec<ConfigTierBounds>,
+}
+fn config_status_error<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(deserializer)
+}
+pub fn call_config_status(path: &Path) -> io::Result<ConfigStatusResponse> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid config status");
+    let mut stream = UnixStream::connect(path)?;
+    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
+    serde_json::to_writer(&mut stream, &Request::ConfigStatus {})?;
+    stream.write_all(b"\n")?;
+    let response: ConfigStatusResponse =
+        serde_json::from_slice(&read_frame(&mut stream)?).map_err(|_| invalid())?;
+    if response.mode != "mock-only"
+        || response.scope != "mock-control-admission-only"
+        || response.tiers.len() > 32
+        || (response.ok
+            && (response.error.is_some() || (response.configured && response.tiers.is_empty())))
+        || (!response.ok
+            && (response.error.is_none() || response.configured || !response.tiers.is_empty()))
+        || (!response.configured && !response.tiers.is_empty())
+    {
+        return Err(invalid());
+    }
+    let mut previous = "";
+    for tier in &response.tiers {
+        if tier.id.is_empty()
+            || tier.id.len() > 48
+            || tier.id.as_str() <= previous
+            || !tier
+                .id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            || tier.min > tier.max
+            || tier.max > 16
+        {
+            return Err(invalid());
+        }
+        previous = &tier.id;
+    }
+    Ok(response)
+}
+#[cfg(test)]
+mod config_status_tests {
+    use super::*;
+    #[test]
+    fn strict_path_free_config_status_tag() {
+        assert_eq!(
+            serde_json::to_string(&Request::ConfigStatus {}).unwrap(),
+            r#"{"command":"config_status"}"#
+        );
+        assert!(matches!(
+            serde_json::from_str::<Request>(r#"{"command":"config_status"}"#),
+            Ok(Request::ConfigStatus {})
+        ));
+        for frame in [
+            r#"{"command":"config_status","path":"sensitive"}"#,
+            r#"{"command":"config_status","command":"status"}"#,
         ] {
             assert!(serde_json::from_str::<Request>(frame).is_err());
         }

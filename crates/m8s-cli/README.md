@@ -449,3 +449,21 @@ compatible restart reads the files normally. Legacy no-config mode refuses, with
 no file discovery. The independent daemon timer still reconciles normally.
 This is hardwired Mock control only, not model activation, provider selection,
 scheduling, Ready, budget/security qualification or authorization.
+
+### Show active Mock admission bounds
+
+```sh
+m8s --socket /absolute/private/state/control.sock config-status --json
+```
+
+Text and JSON use the same safe deterministic projection: configured flag and
+sorted tier ID/min/max, fixed mock-only/admission-only labels, ok/error. This
+queries only the daemon's actual memory, never files or Store: file edits alone
+leave it unchanged, successful reload updates it, refused reload preserves it.
+Use `config validate` for file contents, `status` for desired state. Legacy
+configured=false/empty tiers does not mean desired empty or verified default cap;
+failed empty responses do not establish no policy. No paths/models/owners/free
+config text/fingerprints/credentials or global version appear. No provenance,
+authorization/readiness/live-policy guarantee; the snapshot may change after the
+query or restart. Output is bounded before stdout; broken writes return nonzero
+and may be partial. No file discovery, provider/model activation or inference.

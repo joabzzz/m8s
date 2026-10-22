@@ -819,3 +819,25 @@ model activation or startup scaling. The ordinary reconciliation timer continues
 independently, so this is not a global filesystem/state freeze. Compatible restart
 uses files normally. Mock stays hardwired, bootstrap unavailable/no Ready; reload
 is not provider choice, scheduling/DMS, budget/security or execution approval.
+
+### Inspect the actual active admission snapshot
+
+```sh
+m8s --socket /absolute/private/state/control.sock config-status --json
+```
+
+This separate response reports only the active **in-memory** Mock tier admission
+snapshot: `configured`, sorted tier `id`/`min`/`max`, fixed `mode: mock-only` and
+`scope: mock-control-admission-only`, plus `ok`/`error`. It rereads neither files
+nor Store: deleting/editing files does not alter this view; successful explicit
+reload changes it, refused reload leaves it unchanged. Unlike `config validate`,
+this shows active bounds, not current file contents. No paths, models, owner,
+catalog text, credentials, fingerprint or generation/version identifier appear.
+
+Legacy no-config mode explicitly returns `configured=false` and empty tiers:
+this does **not** mean desired state is empty or verify a default cap. An
+`ok=false` empty response is not evidence of no policy. One serial-loop snapshot
+can change after query/restart; no authentication/provenance, globally unique
+version, live policy or runtime/Ready/approval guarantee is implied. The daemon
+timer continues independently. Frames fully serialize within 65536 bytes before
+write; fixed failure response on error, no partial successful frame rendering.

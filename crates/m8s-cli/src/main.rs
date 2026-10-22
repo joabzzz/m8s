@@ -1,4 +1,5 @@
 mod config;
+mod config_status;
 mod fit;
 mod log_page;
 mod models;
@@ -16,6 +17,7 @@ const HELP: &str = concat!(
     "  local-inspect --help                    Unix, local-development default OFF; historical only\n",
     "  secrets --help                          Explicit local storage; Keychain default fails closed\n",
     "  --socket PATH up TIER|down|shutdown|reload-config|status|logs|scale TIER N [--json]  Mock-only control\n",
+    "  config-status --help                   Active Mock admission snapshot, not desired state\n",
     "  logs --help                            One-shot durable history paging, Mock-only\n",
     "  top --socket PATH [--once] [--json]      Read-only daemon dashboard\n",
     "No model download, provider approval or runtime/security qualification is implied.\n",
@@ -32,6 +34,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .write_all(HELP.as_bytes())
             .map_err(|_| "help-output-unavailable")?;
         return Ok(());
+    }
+    if args.first().is_some_and(|arg| arg == "config-status")
+        || (args.first().is_some_and(|a| a == "--socket")
+            && args.get(2).is_some_and(|a| a == "config-status"))
+    {
+        return config_status::run(&args).map_err(Into::into);
     }
     if args == ["logs", "--help"]
         || (args.first().is_some_and(|a| a == "--socket")

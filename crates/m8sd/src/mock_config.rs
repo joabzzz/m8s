@@ -120,6 +120,17 @@ impl Policy {
         let &(min, _) = self.tiers.get(tier).ok_or(Error::Admission)?;
         self.scale(tier, min.max(1))
     }
+    /// Projection of this actual in-memory snapshot, no file or Store reads.
+    pub fn snapshot(&self) -> Vec<m8s_api::ConfigTierBounds> {
+        self.tiers
+            .iter()
+            .map(|(id, &(min, max))| m8s_api::ConfigTierBounds {
+                id: id.clone(),
+                min,
+                max,
+            })
+            .collect()
+    }
     pub fn persisted(&self, tiers: &[(String, u32)]) -> Result<(), Error> {
         for (tier, desired) in tiers {
             self.scale(tier, *desired).map_err(|_| Error::Persisted)?;
@@ -178,5 +189,28 @@ mod tests {
                 .persisted(&[("positive".into(), 0), ("disabled".into(), 0)])
                 .is_ok()
         );
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    #[test]
+    fn maximum_safe_snapshot_stays_below_four_kibibytes() {
+        let policy = Policy {
+            tiers: (0..32).map(|n| (format!("{n:048}"), (16, 16))).collect(),
+        };
+        let response = m8s_api::ConfigStatusResponse {
+            ok: true,
+            mode: "mock-only".into(),
+            scope: "mock-control-admission-only".into(),
+            error: None,
+            configured: true,
+            tiers: policy.snapshot(),
+        };
+        let bytes = serde_json::to_vec(&response).unwrap();
+        assert_eq!(response.tiers.len(), 32);
+        assert!(bytes.len() + 1 < 4096);
+        assert!(response.tiers.windows(2).all(|w| w[0].id < w[1].id));
     }
 }
