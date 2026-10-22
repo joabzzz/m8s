@@ -217,7 +217,8 @@ absolute catalog path (replace `/absolute/workspace/m8s` below with your checkou
 m8s models --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml list
 m8s models --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml show example-27b-q4km --json
 m8s models --help
-# Use a catalog ID in your configuration, then validate the intended tier:
+# Use a catalog ID in your configuration, validate all intent, then inspect a tier:
+m8s config validate --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml --json
 m8s plan --local-development --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml --tier small --json
 ```
 
@@ -261,3 +262,48 @@ categories on stderr. Existing whole-argv non-UTF8 refusal remains the generic
 catalog free text are never echoed. Broken output is nonzero; a failed stream
 can still receive partial bytes. Model metadata does not change plan's existing
 intent-only, non-executable contract or any runtime/security gates.
+
+## Validate the whole configuration (default-available)
+
+```text
+m8s config validate --config ABSOLUTE_CONFIG --catalog ABSOLUTE_CATALOG [--json]
+m8s config --help
+m8s config validate --help
+```
+
+No selected tier or feature flag is required. The command reuses the same bounded
+catalog loader and actual configuration validation path as `plan`, with trusted
+`ValidationLimits::default()`. Every tier, fallback/reference and catalog profile
+is validated, including ones you do not plan to use. No file/default/env discovery.
+`validate` is required once; `--config`, `--catalog` and optional `--json` may appear
+anywhere after `config`, once each. Both paths must be explicit and absolute.
+Only the two standalone help forms above bypass parsing/filesystem access.
+Unknown/duplicate/missing arguments, `--tier`, execution/approval and socket flags
+are rejected, never reinterpreted as another workflow.
+
+`m8s.config-validation/v1` reports sorted tier IDs/model references, tier count,
+whole-catalog model count and distinct referenced-model count. Configured budget
+ceilings are descriptions, separately labeled from the default conservative
+validation envelope actually used; neither is approval, available balance,
+reservation or spend evidence. Exit 0 means **whole configuration intent validated,
+not authorized or executable**. Local CPU/unmeasured still cannot satisfy the
+configured GPU/provider requirements. Authorization remains `not_checked`, billing
+`unknown`, readiness `not_assessed`, requirements `not_verified`, local execution
+and inference serving false. No current runtime, fit, cost or Ready claim.
+
+Text has a fixed intent-only header followed by the same JSON projection as
+`--json`. No raw configuration, owner/schedule text, catalog source/license/quant,
+paths or parser/error chains are returned. Both inputs retain existing Unix
+regular-file, final-component no-follow/nonblocking and 65536-byte/cap+1 read
+limits; ancestors and concurrent regular-file edits remain caller-trusted, not a
+hostile-filesystem snapshot guarantee. Non-Unix loading fails closed; help works.
+No writes, import, state/Store, provider/child/socket/terminal, credentials or model
+download occurs.
+
+Output is fully rendered and bounded to 65536 bytes before stdout. JSON failures
+use fixed `invalid-config-arguments`, `invalid-config-catalog`,
+`invalid-config-document` or `config-output-unavailable` categories; text failures
+use those categories on stderr. Existing whole-argv non-UTF8 refusal remains
+`invalid arguments` without JSON. Broken output is nonzero and may leave partial
+bytes. This command does not change plan's selected-tier diagnostics, budget
+validation rules, deployment gates or any existing runtime/security behavior.

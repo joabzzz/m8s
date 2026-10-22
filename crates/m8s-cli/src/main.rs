@@ -1,3 +1,4 @@
+mod config;
 mod models;
 mod plan;
 mod secrets;
@@ -6,6 +7,7 @@ const HELP: &str = concat!(
     "m8s command guide\n",
     "  models --catalog ABS list [--json]       Catalog-declared metadata only\n",
     "  models --catalog ABS show ID [--json]    One catalog profile, not runtime verification\n",
+    "  config validate --help                  Whole configuration intent, not authorization\n",
     "  plan --help                             Effect-free intent, not authorization\n",
     "  local-demo --help                       Unix, local-development default OFF; synthetic only\n",
     "  local-inspect --help                    Unix, local-development default OFF; historical only\n",
@@ -26,6 +28,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .write_all(HELP.as_bytes())
             .map_err(|_| "help-output-unavailable")?;
         return Ok(());
+    }
+    if args.first().is_some_and(|arg| arg == "config") {
+        return config::run(&args[1..]).map_err(Into::into);
     }
     if args.first().is_some_and(|arg| arg == "models") {
         return models::run(&args[1..]).map_err(Into::into);
