@@ -2,6 +2,7 @@
 //! This library seam is unwired to the agent binary. The trusted coordinator must
 //! obtain a real TLS bundle, bind its actual local endpoint/key and current policy,
 //! and retain control/DMS plus scoped destruction. No owner key is loaded here.
+mod preflight;
 use crate::supervisor::ChildSpec;
 use m8s_bootstrap::mp001::Mp001CertificateVerifier;
 use m8s_bootstrap::transport::ReceivedBundle;
@@ -20,6 +21,8 @@ use std::{
 pub enum Error {
     #[error("node launch policy refused")]
     Policy,
+    #[error("native node identity unavailable or mismatched")]
+    NativeId,
     #[error("node certificate refused")]
     Certificate,
     #[error("node material unavailable; partial private artifacts may remain")]

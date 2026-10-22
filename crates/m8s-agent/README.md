@@ -229,3 +229,73 @@ policy. Empty config is an explicit received input, not an invented live profile
 Pure owned-file/command tests do not run mesh, Docker, iroh or a model and do not
 qualify authentication, inference, destruction, or billing. The public launch
 path still requires an independently qualified gate and bounded teardown driver.
+
+### Native public-ID preflight (still not admission)
+
+`NodeMaterial::check_native_node_id(verifier, now, timeout)` executes the exact
+selected mesh binary once as `auth node-id --key-path FILE --json`. Native mesh
+owns key decoding; this adapter never parses a key or enables identity `host-io`.
+The explicit timeout must be positive and at most60 seconds. One absolute deadline
+covers preparation, capture and successful process exit; no retries. Spawn, kernel
+scheduling and final direct-child kill/reap cannot be synchronously preempted.
+Only256 stdout bytes are retained, stderr/stdin are null, environment is cleared
+apart from fresh HOME and the two analytics opt-outs. Strict JSON requires exactly
+one `node_id` field with lowercase64-hex matching the staged endpoint. Extra,
+duplicate, malformed, oversized, mismatched or unsuccessful output refuses with a
+fixed error. Retained anchors/canonical certificate are checked before and after.
+Timeout/error kills and reaps only the retained direct child; no PID adoption or
+process-group signaling. No key/public output/error chain is logged.
+
+Success is a point-in-time native public-ID observation, **not an admission
+permit**, TLS receipt, ongoing file integrity guarantee or proof of native
+certificate enforcement. The existing BootGate remains mandatory. In particular,
+this adapter does not fix native unsigned fallback, grant signing policy, wire a
+secure node binary or authorize launch. Tests run only fresh fake programs and
+synthetic key placeholders, never mesh or real keys.
+
+### Container launch/request/stop integration contract
+
+The accepted native source is `cecee5d23e33d2626a0bf4624bfa71dc1615d167`.
+Its `mesh/deploy/docker/Dockerfile.client` is explicitly **not a worker image**;
+`APP_MODE=worker` refuses, and its console mode's `--client --auto` is unsuitable.
+A full Linux product needs both the backend-neutral release host and matching
+native runtime. The actual source entrypoints are `just release-host-build` and
+`just release-runtime-build cpu x86_64-unknown-linux-gnu` (or the explicitly
+selected compatible architecture/backend); `just release-build` composes the
+native/Skippy/host products. The native packager produces `dist/native-runtimes`
+artifacts with `manifest.json`, shared libraries, licenses and archive checksums.
+Host/runtime release and ABI must match; a client executable alone is insufficient.
+These are source-derived build interfaces, **not executed/qualified build commands
+in this environment**. No image digest, GPU compatibility or model is invented.
+
+The coherent qualification sequence is:
+
+1. Explicitly select reviewed Linux host/runtime artifacts, pinned base image and
+   separately approved local GGUF; package both host and runtime without baking
+   keys, join tokens or owner material into an image. Native runtime installation
+   supports explicit `runtime install ID --bundle-dir DIR --cache-dir DIR`; any
+   eventual image build must disallow network fallback and verify its actual
+   host/runtime contract rather than downloading a recommended runtime.
+2. Create fresh owned container state with dedicated private tmpfs material and a
+   read-only model mount, no host networking/privileged mode or host owner-key
+   mount. Obtain the actual node endpoint, direct sealed bootstrap and one-use
+   Store burn; stage protected material. Run native public-ID preflight and
+   establish native fail-closed certificate enforcement before BootGate approval.
+3. Supervise actual mesh `serve` with the staged enforcing flags, retain
+   authenticated heartbeat/DMS and exact scoped teardown. Verify the served
+   identity/model and an owner-routed request, not merely an HTTP200 or process
+   startup. `m8s prototype request --local-qualification` is a bounded HTTP leg;
+   its output explicitly does not attest mesh identity or owner routing.
+4. Stop the exact owned container/child, verify owned runtime termination and
+   material teardown separately. Container stopped is not provider destroyed;
+   any paid lifecycle still needs its independently authorized destroy/absence
+   evidence and budget/watchdog prerequisites. Uncertainty must not trigger a
+   fresh launch or be reported as absence.
+
+Remaining integration prerequisites are concrete: the secure agent binary is
+still unwired; native invalid-certificate fallback must be made fail closed for
+this composition; actual direct TLS/bootstrap/canary must run on a permitted
+runner; and approved matching Linux runtime/model/image artifacts are required.
+No Docker build/run/pull, mesh endpoint, model inference or teardown qualification
+has been performed by these source/pure-fixture checks. This contract deliberately
+does not offer an executable insecure fallback container entrypoint.

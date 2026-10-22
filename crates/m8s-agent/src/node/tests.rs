@@ -299,3 +299,74 @@ fn explicit_fresh_dms_must_fit_received_ttl_and_certificate_without_defaults() {
         assert!(m.check_dms(&d, 20).is_err());
     }
 }
+
+// Only owned fake programs run here; never mesh, a real key, or an endpoint.
+fn fake_native(script: &str) -> (Fixture, NodeMaterial) {
+    let f = Fixture::new();
+    fs::write(f.0.join("mesh"), script).unwrap();
+    let material =
+        NodeMaterial::stage_with(&f.root(), bundle(b""), f.launch(), &Checker::accept(), 20)
+            .unwrap();
+    (f, material)
+}
+#[test]
+fn native_public_id_exact_command_and_environment_then_immediate_exit() {
+    let script = format!(
+        "#!/bin/sh\n[ \"$#\" = 5 ] && [ \"$1\" = auth ] && [ \"$2\" = node-id ] && [ \"$3\" = --key-path ] && [ \"$5\" = --json ] || exit 2\n[ -f \"$4\" ] && [ -d \"$HOME\" ] && [ \"$MESH_LLM_ANALYTICS\" = 0 ] && [ \"$DO_NOT_TRACK\" = 1 ] && [ -z \"$MESH_LLM_NODE_KEY_PATH\" ] || exit 3\nprintf '%s\\n' '{{\"node_id\":\"{}\"}}'\n",
+        "02".repeat(32)
+    );
+    let (_f, material) = fake_native(&script);
+    material
+        .native_id(std::time::Instant::now() + std::time::Duration::from_secs(2))
+        .unwrap();
+}
+#[test]
+fn native_public_id_refuses_mismatch_unknown_duplicate_partial_and_failed_exit() {
+    for body in [
+        format!("printf '%s' '{{\"node_id\":\"{}\"}}'", "03".repeat(32)),
+        format!(
+            "printf '%s' '{{\"node_id\":\"{}\",\"extra\":0}}'",
+            "02".repeat(32)
+        ),
+        format!(
+            "printf '%s' '{{\"node_id\":\"{}\",\"node_id\":\"{}\"}}'",
+            "02".repeat(32),
+            "02".repeat(32)
+        ),
+        "printf '%s' '{'".into(),
+        format!(
+            "printf '%s' '{{\"node_id\":\"{}\"}}'; exit 1",
+            "02".repeat(32)
+        ),
+        "printf '%s' 'hostile-private-marker'".into(),
+    ] {
+        let (_f, material) = fake_native(&format!("#!/bin/sh\n{body}\n"));
+        let error = material
+            .native_id(std::time::Instant::now() + std::time::Duration::from_secs(2))
+            .unwrap_err();
+        assert!(matches!(error, Error::NativeId));
+        assert_eq!(
+            error.to_string(),
+            "native node identity unavailable or mismatched"
+        );
+    }
+}
+#[test]
+fn native_capture_and_process_exit_share_one_finite_deadline() {
+    for body in [
+        "while :; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done".to_string(),
+        "exec /bin/sleep 2".to_string(),
+        format!(
+            "printf '%s' '{{\"node_id\":\"{}\"}}'; exec 1>&-; exec /bin/sleep 2",
+            "02".repeat(32)
+        ),
+    ] {
+        let (_f, material) = fake_native(&format!("#!/bin/sh\n{body}\n"));
+        let start = std::time::Instant::now();
+        assert!(matches!(
+            material.native_id(start + std::time::Duration::from_millis(50)),
+            Err(Error::NativeId)
+        ));
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+    }
+}
