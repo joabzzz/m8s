@@ -351,3 +351,7 @@ pub use transport::{AuthenticatedControlSession, ControlPolicy, VerifiedHeartbea
 
 mod redemption;
 pub use redemption::{NonceConsumer, ValidatedRedemption, redeem_with};
+
+/// Bounded canonical public verification; no signer or live policy propagation.
+#[cfg(feature = "mp001-certificates")]
+pub mod mp001;

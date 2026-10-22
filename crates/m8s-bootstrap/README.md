@@ -148,3 +148,112 @@ trust a public key supplied inside an untrusted certificate. Production signer
 implementation belongs behind the existing injection boundary on the owner host;
 only signatures/certs leave it. Current test-only Ed25519 authority is real crypto
 but deliberately NOT an MP-001 certificate or admission-readiness claim.
+
+## Default-OFF canonical `mp001-certificates`
+
+This feature exposes `mp001::{Mp001TrustPin, Mp001CertificateVerifier}`.
+Construct a pin from a trusted owner iroh EndpointId and separately provisioned
+mesh signing public key [u8;32]; it validates the key and derives the owner ID
+using the canonical library. Certificate fields cannot establish trust.
+Construct a verifier with that pin and an owned canonical TrustStore. Fields
+are private, immutable and non-Deserialize. Existing CertificateVerifier returns
+only Result<()>, never admission/session/origin/Ready evidence.
+
+The trust store is a bounded snapshot, **not live revocation authority or a
+currentness proof**. Trusted orchestration must construct a fresh verifier from
+current policy for EVERY redemption/startup attempt. No propagation or daemon
+wiring is implemented. Unsupported trust version is refused. Each list <=256;
+owner IDs are exact lowercase64hex, node IDs64hex, cert IDs1..128UTF8 bytes,
+all retained display labels/reasons <=256UTF8 bytes. The pin is allowlisted
+(within the same256 bound); canonical Allowlist verification always preserves
+owner/cert/node revocations, regardless of the supplied policy enum.
+
+JSON is nonempty and <=128KiB before parsing, with private strict DTOs rejecting
+duplicates, unknown top/nested fields, wrong types and trailing data. Certificate
+IDs1..128UTF8 bytes; owner ID exact canonical lowercase64hex; public keys/node IDs
+64hex and signature128hex, decoded byte semantics (ASCII hex case permitted);
+optional label/hostname <=256UTF8 bytes. This is a bounded canonical subset,
+not a new encoder. All failures are opaque Error::Certificate, without input or
+parse-error chains. Canonical signature verification binds all signed fields.
+
+Expected owner endpoint/key/derived owner ID/node must match exactly. Expected
+seconds must be nonnegative, checked u64*1000, expires>issued, with exact
+millisecond equality (no rounding/rebase/saturation). The trait reads real
+SystemTime and enforces issued<=now<expires. No public clock override exists.
+Accepted expired static canonical vectors prove real crypto only through private
+unit-test timing; the real trait correctly rejects them. No host signer or
+fixture encoder is invoked.
+
+The portable vendor snapshot is the full accepted identity package c2190fdd,
+NOT a verification-only crate. Existing broader crypto/signing source is included
+unchanged; no authority/key access is wired. See vendor/mesh-llm-identity/UPSTREAM.md
+and SHA256SUMS. It is explicitly workspace-excluded, with default-features=false
+and no host-io forwarding. Root lock integration/full checks remain primary-owned.
+Exact-time machine signer, TLS/Store integration, current-policy provenance,
+served model/canary and Ready gates remain separate and incomplete. Existing
+Keychain failed qualification/defaultOFF and endpoint PASS at cc08962a are not
+changed or rerun by this source milestone.
+
+### Primary-reviewed current-time public fixtures (synthetic TEST DATA)
+
+The existing test file embeds three EXACT fixed public certificate JSON constants,
+including each original trailing newline. No extra fixture file, signer, encoder
+or capture source is imported. Primary approved consumption after reading the
+capture diff/metadata and independently checking18/18 public hashes:
+[reviewed capture](agor://kb/document/01a160ea-273a-7685-8f4b-5c11b428bde1).
+
+Source accepted commit: c2190fdd6bc4f9100ac5029621622341c3e8c8e6.
+Capture was one temporary inline cfg(test) function beside the canonical tests in
+an isolated external TESTCOPY, calling the existing PRIVATE canonical_claim_bytes
+and canonical owner_id_from_verifying_key; no encoder duplication/public signing
+hook/host signer/vendor edit. Fixed PUBLIC synthetic in-memory seed [7;32],
+node[0x42;32], version1, label Some("synthetic-only"), hostname None for all.
+Public key ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c;
+derived owner fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889.
+IDs are m8s-synthetic-public-{long-window|future|millisecond-remainder}-v1.
+
+|Constant|Issued / expires (exact milliseconds)|Exact JSON SHA256|
+|---|---|---|
+|LONG_WINDOW_JSON|1577836800000 / 4102444800000|5594d0ca6b4c6af64ff3f89414ca9dc0c710d45e666f95c20cc0f19a4a2d4f88|
+|FUTURE_JSON|4102444800000 / 4102531200000|a3979316e53a105f5cecfbecf7924e777bb9323a52e42a8c88113c5713c3ea45|
+|REMAINDER_JSON|1577836800001 / 4102444800000|cc81f9d23007237496ef3b4b91ad7cc39c865b7f20f819045eb5af1c70ef3dc5|
+
+**2020..2100 is an ABSURD SYNTHETIC TEST lifetime, NOT production issuance policy,
+authorization, backdating permission or a lifetime-gate relaxation.**
+Tests assert real UTC2020-01-01<=now<2100-01-01, with clear failure outside that
+support interval, never skip/clock override. The long-window cert verifies via
+actual canonical Allowlist AND real CertificateVerifier::verify; uppercase
+key/signature hex also succeeds (node42hex has no case-varying letters).
+Future and +1ms remainder are separately signed canonical-base positives at
+real now but adapter negatives, isolating strict future/exact-time binding.
+Existing expired-vector/private-clock boundary tests remain unchanged.
+
+Capture provenance files under /private/tmp/m8s-mp001-fixture-capture are review
+evidence only, NEVER build/runtime paths:
+- capture.patch SHA256 f13f76d98d510e66c75f097789944c0eee2fd1634ab181c72831dd363703f620.
+- RECIPE.md SHA256 07c1460a8474972dde7b8cb9744f02adeed6491e7a7b97ee207a6f82946925f3.
+- public/SHA256SUMS SHA256 de6e23d1c0bed660fc454e958fc2c1323d585740b362f3b8c16aca14781cb2bb
+  covers18 public files (canonical binary/hex, JSON/signature, claims/control
+  metadata, public key/ownerID and index). Rechecked18/18 before consumption.
+- baseline-source.sha256 SHA256 4d2ff52354238cd81a6da161c187cb6f696cc929de0770c3a7ec0210cf8be833.
+- Accepted original node_certificate.rs SHA256 0c872bbb0294837b428a6bee924a2d548cca9c95b8ebad052844ec0a3945e1eb;
+  temporary TESTCOPY SHA256 e7017e7082bd5010d8e73308f2f3919fa54181c8af51a525422a2a0527cfc0c9.
+- Accepted capture Cargo.lock SHA256 45ef597032fa72257da8142c832d043ec878ee1531130da6467826a80043cecf.
+- compiled-packages.txt SHA256 6b29dfda4729a332a4d14dbe9cfcaebd102e1fe00137171827eeaaeef7131c86;
+  includes ed25519-dalek3.0.0,sha2=0.11.0. Capture rustc1.98.0
+  (88d9e12ae178fab0fb5cc050a94da85685d449ea),cargo1.98.0,aarch64-apple-darwin.
+- capture.log SHA256 d1dc8165656671e2e0af6928acd7296d6977563b345752d63843c4d82f0079a5:
+  first/only capture1PASS,17filtered; each cert canonical Allowlist Verified
+  at issued+1000ms and3000ms before issuance, Expired at exact expiry.
+- Reviewed public-only archive SHA256 9af276dc014fb1d3775335d3ede541be9b03c4243b374f2173b884e4b6268d08.
+  Archive/provenance are not production authority or source acceptance.
+
+Capture recipe (already executed by authorized fixture owner, NOT by this adapter):
+fresh no-hardlinks clone detached at accepted commit, only temporary capture.patch
+in testcopy; own registry-only cache, empty HOME, inherited environment cleared;
+existing preinstalled1.98 toolchain, empty RUSTC_WRAPPER and system cc linker.
+From the testcopy, cargo test -p mesh-llm-identity --lib --no-default-features
+--locked --offline -j1 node_certificate::tests::m8s_synthetic_public_fixture_capture
+-- --exact --nocapture. Do NOT rerun capture without separate permission.
+The adapter tests consume only approved public outputs, never seed/signing APIs.
+No production API/source/dependency/vendor changes accompany these fixture tests.
