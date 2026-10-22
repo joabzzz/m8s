@@ -615,3 +615,31 @@ strings. Broken stdout is nonzero (partial device bytes possible). These are NOT
 current open/closed state, paired intervals, conflict resolution, desired replica
 targets, execution, authorization or live firing policy. No daemon/Store/provider,
 realclock, filesystem writes or schedule activation occurs.
+
+### Create a fresh Mock starter workspace (Unix)
+
+```sh
+m8s init --mock --directory /absolute/existing/private-parent/new-workspace --json
+```
+
+`--mock` and an explicit absolute `--directory` are mandatory once; `--json` optional
+once, any flag order. `m8s init --help` performs no filesystem work. No recursive
+parent creation, default discovery, overwrite/adoption, force/reset, chmod,
+rollback/deletion or automatic retry. ANY existing final entry refuses, even an
+empty directory. Parent must exist, be canonical/current-user-owned and not
+group/other writable; ancestors (max128) must be root/current-user owned, non-writable
+except root-owned sticky temporary ancestors. No dot/dotdot/symlink aliases.
+Descriptor/inode checks detect replacement but are NOT hostile-same-UID confinement.
+
+Creates0700 final directory,0600 `m8s.toml`, `catalog.toml`, static `README.md`, and
+EMPTY0700 `state/`. Config/catalog bytes are exact shipped public examples, validated
+with actual default limits before writes. Generated README gives manual launch
+and control commands from workspace cwd using quoted `"$PWD"` paths, never
+interpolated user paths. No Store/journal/schema/lock/daemon/credential/model/provider
+creation. Mock-only simulation, no inference/Ready/approval/GPU qualification;
+schedule/queue previews are not automation; local-demo remains separate/default OFF.
+
+Text/JSON print the same fixed bounded relative inventory, never the selected path.
+Creation is not transactional: errors may leave owned partial artifacts. Broken
+stdout can occur AFTER complete creation; nonzero does not mean no files/effects.
+Inspect deliberately rather than blindly retrying, adopting or deleting state.

@@ -1,6 +1,7 @@
 mod config;
 mod config_status;
 mod fit;
+mod init;
 mod log_follow;
 mod log_page;
 mod models;
@@ -12,6 +13,7 @@ mod secrets;
 use m8s_api::Request;
 const HELP: &str = concat!(
     "m8s command guide\n",
+    "  init --mock --directory ABS [--json]     Fresh Unix Mock starter files only\n",
     "  models --catalog ABS list [--json]       Catalog-declared metadata only\n",
     "  models --catalog ABS show ID [--json]    One catalog profile, not runtime verification\n",
     "  models fit --help                       Offline capacity estimate, not a live offer\n",
@@ -41,6 +43,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .write_all(HELP.as_bytes())
             .map_err(|_| "help-output-unavailable")?;
         return Ok(());
+    }
+    if args.first().is_some_and(|a| a == "init") {
+        return init::run(&args[1..]).map_err(Into::into);
     }
     if args.first().is_some_and(|a| a == "reload-config")
         || (args.first().is_some_and(|a| a == "--socket")
