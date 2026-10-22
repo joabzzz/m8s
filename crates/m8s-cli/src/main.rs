@@ -14,7 +14,7 @@ const HELP: &str = concat!(
     "  local-demo --help                       Unix, local-development default OFF; synthetic only\n",
     "  local-inspect --help                    Unix, local-development default OFF; historical only\n",
     "  secrets --help                          Explicit local storage; Keychain default fails closed\n",
-    "  --socket PATH up TIER|down|status|logs|scale TIER N [--json]  Mock-only control\n",
+    "  --socket PATH up TIER|down|shutdown|status|logs|scale TIER N [--json]  Mock-only control\n",
     "  top --socket PATH [--once] [--json]      Read-only daemon dashboard\n",
     "No model download, provider approval or runtime/security qualification is implied.\n",
 );
@@ -133,7 +133,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     if args.len() < 3 || args[0] != "--socket" {
         return Err(
-            "usage: m8s --socket PATH <up TIER|down|status|logs|scale TIER N|top [--once] [--timeout-ms 1..10000]> [--json]; m8s secrets --help; m8s plan --help".into(),
+            "usage: m8s --socket PATH <up TIER|down|shutdown|status|logs|scale TIER N|top [--once] [--timeout-ms 1..10000]> [--json]; m8s secrets --help; m8s plan --help".into(),
         );
     }
     let socket = std::path::PathBuf::from(&args[1]);
@@ -146,6 +146,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             replicas: args[4].parse()?,
         },
         "down" if args.len() == 3 => Request::Down {},
+        "shutdown" if args.len() == 3 => Request::Shutdown {},
         "status" if args.len() == 3 => Request::Status {},
         "logs" if args.len() == 3 => Request::Logs {},
         _ => return Err("invalid command; only mock control is available".into()),

@@ -745,3 +745,19 @@ replica/stop/restart semantics and non-authorization boundaries. Only standalone
 `--help` bypasses parsing and all filesystem/config/state effects; combinations
 with state/config arguments refuse. Broken help output returns a static error
 and nonzero exit. Existing Store initialization/migration behavior is unchanged.
+
+### Explicit Mock shutdown
+
+`m8s --socket /absolute/private/state/control.sock shutdown --json` first commits
+`down` (all desired replicas zero), then uses at most two ordinary reconcile
+passes. Success requires fresh exact-owner Mock inventory empty, no retained node
+rows and all desired counts zero; destroy acknowledgement alone is insufficient.
+On refusal the daemon stays running; any committed stop intent remains durable
+for ordinary reconciliation. A failed database write cannot establish that intent. `down` alone does **not** exit the daemon.
+
+After success the response is best-effort and the daemon exits normally; a lost
+response cannot undo committed stop intent. Restart with compatible configuration
+retains zero, with no automatic scaling. The stale socket path may remain; normal
+startup handles it. No state/history reset or filesystem cleanup is performed.
+This confirms only hardwired Mock absence, not real-provider absence, Ready,
+security qualification, budget settlement or deployment authorization.

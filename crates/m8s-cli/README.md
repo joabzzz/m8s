@@ -391,3 +391,17 @@ socket/opening Mock. Configuration is a startup snapshot, not live reload. See
 including disabled tiers, Store-compatible IDs and existing initialization rules.
 The provider remains hardwired Mock, mode mock-only, bootstrap unavailable: no
 Ready/model execution, scheduling, approval, live budget or security proof.
+
+### Stop the Mock daemon
+
+```sh
+m8s --socket /absolute/private/state/control.sock shutdown --json
+```
+
+Unlike `down` (which keeps the daemon running), `shutdown` commits desired zero,
+then exits normally only after bounded ordinary reconciliation confirms exact-owner
+Mock inventory and retained node rows empty. A refusal keeps the daemon running; committed stop intent remains durable
+(a failed database write cannot establish it). A lost response does not undo that intent; restart with
+compatible configuration preserves zero. The socket path may remain. This is
+hardwired Mock lifecycle control, not real-provider absence, settlement, Ready or
+authorization. Existing socket trust/permission assumptions are unchanged.

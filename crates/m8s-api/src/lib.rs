@@ -14,6 +14,7 @@ pub enum Request {
     Up { tier: String },
     Scale { tier: String, replicas: u32 },
     Down {},
+    Shutdown {},
     Status {},
     Logs {},
 }
@@ -74,6 +75,28 @@ mod tests {
             assert!(read_frame(&mut reader).is_err());
             drop(reader);
             thread.join().unwrap();
+        }
+    }
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+    #[test]
+    fn shutdown_tag_is_additive_and_strict() {
+        assert_eq!(
+            serde_json::to_string(&Request::Shutdown {}).unwrap(),
+            r#"{"command":"shutdown"}"#
+        );
+        assert!(matches!(
+            serde_json::from_str::<Request>(r#"{"command":"shutdown"}"#),
+            Ok(Request::Shutdown {})
+        ));
+        for frame in [
+            r#"{"command":"shutdown","tier":"test"}"#,
+            r#"{"command":"shutdown","force":true}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(frame).is_err());
         }
     }
 }

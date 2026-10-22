@@ -1,4 +1,5 @@
 mod mock_config;
+mod mock_shutdown;
 use fs2::FileExt;
 use m8s_api::{Request, Response};
 use m8s_provider::Mock;
@@ -19,6 +20,7 @@ const HELP: &str = concat!(
     "Configured up selects max(1,min), within max; positive scale must be within min..max. Known-tier scale0 and emergency down remain allowed even min>0.\n",
     "Max0 tiers are disabled: no up/positive scale. No automatic startup scaling or live reload. Restart retains desired; incompatible retained tiers/counts refuse without clamp/reset.\n",
     "Normal Store initialization/migrations still apply. Provider is hardwired Mock; mode mock-only, bootstrap unavailable, no Ready or authorization/deployment claim.\n",
+    "Local shutdown commits down, requires confirmed Mock absence, then exits; refusal keeps daemon running with retained state.\n",
     "Standalone --help only; no config/state/file effects.\n",
 );
 fn now() -> i64 {
@@ -124,6 +126,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     continue;
                 }
+                let mut shutdown_requested = false;
+                let mut shutdown_complete = false;
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
                     let frame = m8s_api::read_frame(&mut stream)?;
                     match serde_json::from_slice::<Request>(&frame)? {
@@ -138,24 +142,59 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             store.scale(&tier, replicas)?;
                         }
                         Request::Down {} => store.down()?,
+                        Request::Shutdown {} => {
+                            shutdown_requested = true;
+                            mock_shutdown::shutdown(&mut store, &mut provider, now())?;
+                            shutdown_complete = true;
+                        }
                         Request::Status {} | Request::Logs {} => {}
                     }
                     Ok(())
                 })();
-                let response = Response {
-                    ok: result.is_ok(),
-                    mode: "mock-only".into(),
-                    nodes: store.nodes()?,
-                    tiers: store.tiers()?,
-                    events: store.logs()?,
-                    error: result.err().map(|_| "control request refused".into()),
-                    secure_bootstrap: "unavailable; nodes cannot become Ready".into(),
+                let snapshot = (|| -> m8sd::Result<Response> {
+                    Ok(Response {
+                        ok: result.is_ok(),
+                        mode: "mock-only".into(),
+                        nodes: store.nodes()?,
+                        tiers: store.tiers()?,
+                        events: store.logs()?,
+                        error: result.err().map(|_| "control request refused".into()),
+                        secure_bootstrap: "unavailable; nodes cannot become Ready".into(),
+                    })
+                })();
+                let response = match snapshot {
+                    Ok(response) => response,
+                    Err(_) if shutdown_requested => {
+                        // Failed observation is uncertainty, never an empty
+                        // successful status or grounds to exit after an ACK.
+                        shutdown_complete = false;
+                        Response {
+                            ok: false,
+                            mode: "mock-only".into(),
+                            nodes: vec![],
+                            tiers: vec![],
+                            events: vec![],
+                            error: Some(
+                                concat!(
+                                    "mock shutdown refused; snapshot unavailable; ",
+                                    "empty fields are not absence"
+                                )
+                                .into(),
+                            ),
+                            secure_bootstrap: "unavailable; nodes cannot become Ready".into(),
+                        }
+                    }
+                    Err(error) => return Err(error.into()),
                 };
-                // A disconnected client cannot terminate the daemon.
+                // Shutdown is already durable/confirmed. A disconnected client
+                // cannot undo it; all other request disconnect behavior is unchanged.
                 let _ = (|| -> std::io::Result<()> {
                     serde_json::to_writer(&mut stream, &response)?;
                     stream.write_all(b"\n")
                 })();
+                if shutdown_complete {
+                    return Ok(()); // Drop listener, Store and process lock; no unlink/reset.
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(50))

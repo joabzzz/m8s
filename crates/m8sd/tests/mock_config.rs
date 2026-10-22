@@ -424,3 +424,85 @@ fn help_broken_stdout_is_nonzero_with_static_error() {
     assert!(!out.status.success());
     assert_eq!(out.stderr, b"m8sd: daemon-help-output-unavailable\n");
 }
+
+#[test]
+fn empty_shutdown_exits_normally_but_down_does_not() {
+    let f = Fixture::new();
+    let mut d = f.start(false);
+    assert!(f.call(Request::Down {}).ok);
+    assert!(d.child().try_wait().unwrap().is_none());
+    assert!(f.call(Request::Status {}).ok);
+    let response = f.call(Request::Shutdown {});
+    assert!(response.ok);
+    assert!(response.nodes.is_empty());
+    assert!(response.tiers.iter().all(|(_, n)| *n == 0));
+    assert!(d.wait().success());
+    assert!(f.state().join("control.sock").exists());
+}
+
+fn wait_for_mock_nodes(f: &Fixture) {
+    let deadline = Instant::now() + Duration::from_secs(6);
+    loop {
+        if !f.call(Request::Status {}).nodes.is_empty() {
+            return;
+        }
+        assert!(Instant::now() < deadline, "mock creation deadline exceeded");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn assert_stopped_and_restart_zero(f: &Fixture) {
+    use m8s_provider::Provider;
+    let mut provider =
+        m8s_provider::Mock::persistent(f.state().join("mock-provider.json")).unwrap();
+    assert!(provider.list_owned(OWNER).unwrap().is_empty());
+    let (tiers, nodes, events) = f.store_snapshot();
+    assert_eq!(tiers, vec![("bounded".into(), 0)]);
+    assert_eq!(nodes, b"[]");
+    assert!(
+        events
+            .iter()
+            .any(|e| e.contains("provider confirmed absence"))
+    );
+    let mut restarted = f.start(true);
+    let response = f.call(Request::Status {});
+    assert_eq!(response.tiers, tiers);
+    assert!(response.nodes.is_empty());
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(restarted.wait().success());
+}
+
+#[test]
+fn active_shutdown_confirms_mock_absence_and_restart_retains_zero() {
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    assert!(f.call(up("bounded")).ok);
+    wait_for_mock_nodes(&f);
+    let response = f.call(Request::Shutdown {});
+    assert!(response.ok);
+    assert!(response.nodes.is_empty());
+    assert_eq!(response.tiers, vec![("bounded".into(), 0)]);
+    assert!(d.wait().success());
+    assert_stopped_and_restart_zero(&f);
+}
+
+#[test]
+fn disconnected_response_reader_cannot_undo_committed_shutdown() {
+    use std::{io::Write, net::Shutdown, os::unix::net::UnixStream};
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    assert!(f.call(up("bounded")).ok);
+    wait_for_mock_nodes(&f);
+    let mut stream = UnixStream::connect(f.state().join("control.sock")).unwrap();
+    stream
+        .set_write_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    // Close the response side, while retaining the request connection until
+    // normal exit. Unlike a pre-accept full close, request delivery is explicit.
+    stream.shutdown(Shutdown::Read).unwrap();
+    serde_json::to_writer(&mut stream, &Request::Shutdown {}).unwrap();
+    stream.write_all(b"\n").unwrap();
+    assert!(d.wait().success());
+    drop(stream);
+    assert_stopped_and_restart_zero(&f);
+}
