@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Regression for check argv/failfast selection; NEVER runs real Cargo or tests."""
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parent.parent
+CHECK = ROOT / "scripts/check"
+EXCLUDED = (
+    "quit_key_restores_synthetic_terminal",
+    "ctrl_c_key_restores_synthetic_terminal",
+    "sigterm_restores_synthetic_terminal",
+    "sigint_restores_synthetic_terminal",
+)
+FMT = ["fmt", "--all", "--", "--check"]
+TEST = ["test", "--workspace", "--all-features", "--locked", "-j", "2"]
+LINT = ["clippy", "--workspace", "--all-features", "--all-targets", "--locked", "-j", "2", "--", "-D", "warnings"]
+NOTICE = (
+    "check profile: no-pty (test selection only; NOT an unfiltered full test run)\n"
+    "Excluded: " + ", ".join(EXCLUDED) + "\n"
+).encode()
+ERROR = b"check: invalid arguments; expected no flags, --no-pty or --help\n"
+HELP = (
+    "usage: scripts/check [--no-pty | --help]\n"
+    "Default: standard checks. --no-pty excludes four known synthetic PTY cleanup tests.\n"
+    "Test selection only, not sandbox/access authorization; maintain exclusions as tests evolve.\n"
+).encode()
+
+
+def validate_inventory(source):
+    # This intentionally narrow source guard covers this current four-test file,
+    # not arbitrary future operational tests/macros/files or access permissions.
+    names = re.findall(r"(?m)^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\(", source)
+    assert len(names) == 4 and set(names) == set(EXCLUDED), "PTY exclusion names drifted; review profile"
+    assert source.count("#[test]") == 4, "PTY test inventory drifted; review profile"
+
+
+def main():
+    if not __debug__:
+        raise SystemExit("check profiles: optimized Python disables assertions; refused")
+    if len(sys.argv) != 1:
+        raise SystemExit("usage: python3 scripts/test-check-profiles")
+    source = (ROOT / "crates/m8s-top/tests/terminal_cleanup.rs").read_text()
+    validate_inventory(source)
+    for changed in (
+        source + "\n#[test]\nfn additional_operational_case() {}\n",
+        source.replace(EXCLUDED[0], "renamed_operational_case"),
+        source.replace("#[test]", "", 1),
+    ):
+        try:
+            validate_inventory(changed)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("drift guard failed to reject synthetic source change")
+    with tempfile.TemporaryDirectory(prefix="m8s-check-profiles-") as raw:
+        root = Path(raw)
+        binary = root / "bin"
+        binary.mkdir()
+        recorder = root / "record.py"
+        recorder.write_text(
+            "import json, os, sys\n"
+            "with open(os.environ['CHECK_PROFILE_LOG'], 'a') as out:\n"
+            "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+            "if sys.argv[1] == os.environ['CHECK_PROFILE_FAIL_STAGE']:\n"
+            "    sys.exit(int(os.environ['CHECK_PROFILE_FAIL_CODE']))\n"
+        )
+        fake = binary / "cargo"
+        fake.write_text(
+            '#!/bin/sh\nexec "$CHECK_PROFILE_PYTHON" "$CHECK_PROFILE_RECORDER" "$@"\n'
+        )
+        fake.chmod(0o700)  # only this newly owned synthetic executable
+        log = root / "argv.jsonl"
+        count = 0
+
+        def invoke(args, fail_stage="", fail_code=0):
+            nonlocal count
+            count += 1
+            log.write_text("")
+            # PATH contains ONLY our fake Cargo. Absolute /bin/sh and Python
+            # paths are retained explicitly; no real compiler can be resolved.
+            env = {
+                "PATH": str(binary),
+                "CHECK_PROFILE_PYTHON": sys.executable,
+                "CHECK_PROFILE_RECORDER": str(recorder),
+                "CHECK_PROFILE_LOG": str(log),
+                "CHECK_PROFILE_FAIL_STAGE": fail_stage,
+                "CHECK_PROFILE_FAIL_CODE": str(fail_code),
+            }
+            result = subprocess.run(
+                ["/bin/sh", str(CHECK), *args], cwd=root, env=env,
+                capture_output=True, timeout=5, check=False,
+            )
+            assert len(result.stdout) <= 4096 and len(result.stderr) <= 4096, "unbounded profile output"
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            return result, calls
+
+        for no_pty in (False, True):
+            args = ["--no-pty"] if no_pty else []
+            test = TEST + ["--"] + [part for name in EXCLUDED for part in ("--skip", name)] if no_pty else TEST
+            expected = [FMT, test, LINT]
+            result, calls = invoke(args)
+            assert result.returncode == 0 and calls == expected, "check command argv changed"
+            assert result.stdout == (NOTICE if no_pty else b"") and not result.stderr, "profile notice changed"
+            for index, stage in enumerate(("fmt", "test", "clippy")):
+                code = 71 + index
+                result, calls = invoke(args, stage, code)
+                assert result.returncode == code, "stage failure code not propagated"
+                assert calls == expected[:index + 1], "later stage ran after failure"
+                assert result.stdout == (NOTICE if no_pty else b"") and not result.stderr, "failure output changed"
+
+        result, calls = invoke(["--help"])
+        assert result.returncode == 0 and not calls, "help invoked Cargo"
+        assert result.stdout == HELP and not result.stderr, "help output changed"
+        for args in (
+            ["--unknown-sensitive\x1b[31m"], [""], ["--no-pty=1"],
+            ["--no-pty", "--no-pty"], ["--help", "--help"],
+            ["--no-pty", "--help"], ["--help", "--no-pty"],
+            ["--no-pty", "extra-sensitive"],
+        ):
+            result, calls = invoke(args)
+            assert result.returncode == 2 and not calls, "invalid args invoked Cargo"
+            assert not result.stdout and result.stderr == ERROR, "invalid args were not static/redacted"
+        print(f"check profiles: PASS ({count} fake-Cargo cases; 4-name drift guard + 3 drift cases; no real Cargo)")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        # Never dump subprocess argv, source data, environment or tracebacks.
+        print("check profiles: FAIL; inspect argv/profile/fail-fast/drift checks", file=sys.stderr)
+        raise SystemExit(1) from None

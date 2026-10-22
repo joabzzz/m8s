@@ -15,6 +15,20 @@ cargo build --workspace --locked -j 2
 ./scripts/mock-e2e                 # daemon + Unix socket + CLI, mock resources
 ```
 
+For explicitly non-PTY selection, use `./scripts/check --no-pty`: the same fmt,
+workspace/all-feature/locked tests and strict all-target Clippy (two jobs), but
+with exactly four current synthetic PTY cleanup names excluded. Its notice marks
+this as filtered, **not** an unfiltered full pass. No flags preserves the standard
+profile unchanged; `--help` is effect-free. This is test selection, not sandbox or
+access authorization: ignored operational tests remain ignored, and new
+operational tests require profile review/maintenance. It is not a universal
+future capability guarantee. The regression below guards the inventory against
+the current `crates/m8s-top/tests/terminal_cleanup.rs` four names.
+
+Run `python3 scripts/test-check-profiles` to check argv, selection and fail-fast
+behavior using only an owned fake Cargo on controlled PATH; it never runs real
+Cargo/compiler/tests/PTY. This lightweight regression is separate from checks.
+
 ## Try the mock
 
 Choose a short, private state-directory path (Unix sockets have length limits).
