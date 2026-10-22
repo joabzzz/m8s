@@ -1,3 +1,4 @@
+mod log_page;
 mod mock_config;
 mod mock_shutdown;
 use fs2::FileExt;
@@ -126,6 +127,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     continue;
                 }
+                let mut page_request = None;
                 let mut shutdown_requested = false;
                 let mut shutdown_complete = false;
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
@@ -147,10 +149,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             mock_shutdown::shutdown(&mut store, &mut provider, now())?;
                             shutdown_complete = true;
                         }
+                        Request::LogsPage { after, limit } => page_request = Some((after, limit)),
                         Request::Status {} | Request::Logs {} => {}
                     }
                     Ok(())
                 })();
+                if let Some((after, limit)) = page_request {
+                    let frame = log_page::frame(&store, after, limit);
+                    let _ = stream.write_all(&frame);
+                    continue;
+                }
                 let snapshot = (|| -> m8sd::Result<Response> {
                     Ok(Response {
                         ok: result.is_ok(),

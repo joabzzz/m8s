@@ -147,6 +147,29 @@ impl Store {
         Ok(s.query_map([], |r| r.get(0))?
             .collect::<std::result::Result<_, _>>()?)
     }
+    /// Read one SELECT snapshot of this state's history. No continuity across
+    /// databases, current-clock, event-loss or later-change inclusion guarantee.
+    pub fn log_page(&self, after: u64, limit: u32) -> Result<(Vec<m8s_api::LogEvent>, bool)> {
+        let after = i64::try_from(after).map_err(|_| Error::Invalid)?;
+        if !(1..=200).contains(&limit) {
+            return Err(Error::Invalid);
+        }
+        // Reject oversized/non-text messages before materializing their contents.
+        // The extra row is checked too; no truncation/omission advances a cursor.
+        let mut query = self.conn.prepare("SELECT seq,at,CASE WHEN typeof(message)='text' AND length(CAST(message AS BLOB))<=4096 THEN message ELSE NULL END FROM event WHERE seq>? ORDER BY seq ASC LIMIT ?")?;
+        let mut records = query
+            .query_map(params![after, i64::from(limit) + 1], |row| {
+                Ok(m8s_api::LogEvent {
+                    seq: row.get(0)?,
+                    at: row.get(1)?,
+                    message: row.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let has_more = records.len() > limit as usize;
+        records.truncate(limit as usize);
+        Ok((records, has_more))
+    }
     pub fn tiers(&self) -> Result<Vec<(String, u32)>> {
         let mut s = self
             .conn

@@ -405,3 +405,29 @@ Mock inventory and retained node rows empty. A refusal keeps the daemon running;
 compatible configuration preserves zero. The socket path may remain. This is
 hardwired Mock lifecycle control, not real-provider absence, settlement, Ready or
 authorization. Existing socket trust/permission assumptions are unchanged.
+
+### Page retained local history
+
+```sh
+m8s logs --help
+m8s --socket /absolute/private/state/control.sock logs --after 0 --limit 50 --json
+# Use next_cursor from a successful response for the next explicit request.
+```
+
+Paging flags are both mandatory, once each, in either order **after logs**;
+`--json` may appear once among them. Cursor is ASCII decimal 0..i64::MAX, limit
+1..200. Legacy `logs [--json]` still returns its existing tail. Pages use a
+separate typed response with ascending `seq`, recorded/injected `at`, `message`,
+`next_cursor` and `has_more` (one SQLite limit+1 query snapshot). Text and JSON use
+the same escaped ASCII JSON projection: event text is never raw terminal control
+output. Invalid/oversized pages refuse without truncating/advancing a cursor.
+Frames, including newline, are capped at 65536 bytes; rendering completes before
+stdout, but broken stdout can partially write and returns nonzero.
+
+This is one-shot read-only paging, not follow/poll, inference or secret transport.
+This is not immutable filesystem inspection: ordinary SQLite WAL reader marks
+may change, and the daemon timer can reconcile independently. Cursors apply only to this
+state's retained history, not authenticated cross-DB/global continuity, current
+clock, real-time delivery or proof of no lost events. `ok=false` empty records are
+**not** evidence of no history; an empty successful page only describes that
+query snapshot. Model/runtime/readiness/authorization are not assessed.

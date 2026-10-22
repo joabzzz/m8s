@@ -761,3 +761,33 @@ retains zero, with no automatic scaling. The stale socket path may remain; norma
 startup handles it. No state/history reset or filesystem cleanup is performed.
 This confirms only hardwired Mock absence, not real-provider absence, Ready,
 security qualification, budget settlement or deployment authorization.
+
+### One-shot durable history pages
+
+```sh
+m8s --socket /absolute/private/state/control.sock logs --after 0 --limit 50 --json
+```
+
+Both flags are required once: cursor is ASCII decimal 0..i64::MAX; limit is
+1..200. The separate `logs_page` response has `records` (`seq`, injected `at`,
+`message`), `next_cursor` (last returned sequence, or original cursor if empty),
+and `has_more` from one ascending SQLite SELECT with limit+1. Request the next
+page explicitly; this is not follow/poll. Legacy `logs [--json]` tail and its
+Response shape remain unchanged. Paging issues only SELECT, never mutating event
+or control rows. This is not immutable filesystem inspection: ordinary WAL
+reader bookkeeping may update shared memory, and the daemon reconciliation timer
+continues independently.
+
+Only this state's retained history scopes a cursor: no cross-database identity,
+global continuity, current-clock, real-time or no-event-loss guarantee. Successful
+empty pages mean no later retained events at that query snapshot, not no history;
+`ok=false` empty records establish nothing about history. Later changes are not
+included in that snapshot. There is no inference/secret transport or readiness/
+authorization claim: mode is `mock-only`, inference `not-carried`.
+
+Messages over 4096 UTF-8 bytes or malformed persisted values refuse the page;
+nothing is silently truncated/omitted while advancing the cursor. The entire
+newline response must fit 65536 bytes before any success bytes are written;
+otherwise a fixed failed-page response is sent. Client text uses an escaped JSON
+projection, not raw event/control text. Broken output may still partially write
+and returns nonzero; no delivery/exactly-once claim is made.
