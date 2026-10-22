@@ -206,3 +206,58 @@ Advisory locks coordinate cooperating demos; this is not cross-process security
 against an uncooperative same-UID writer or a filesystem/kernel latency bound.
 It does not qualify denied network monitoring, Keychain or production security
 paths; those independent gates remain unchanged.
+
+## Browse model catalog metadata (default-available)
+
+`m8s --help` lists the command groups and their gates. Catalog browsing needs no
+feature flag, daemon, terminal, provider or credential. Supply your own explicit
+absolute catalog path (replace `/absolute/workspace/m8s` below with your checkout):
+
+```sh
+m8s models --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml list
+m8s models --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml show example-27b-q4km --json
+m8s models --help
+# Use a catalog ID in your configuration, then validate the intended tier:
+m8s plan --local-development --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml --tier small --json
+```
+
+Grammar: `models --catalog ABS list [--json]` or
+`models --catalog ABS show ID [--json]`. The two flags may appear anywhere after
+`models`, once each; command and optional ID remain in that positional order.
+`--catalog` is mandatory, with no path/env discovery. Standalone `--help` is
+filesystem-effect-free; combining it with other arguments fails. IDs use the
+catalog's bounded lowercase ASCII identifier grammar. Unknown IDs, duplicates,
+unknown flags, extra/missing values and non-UTF8 arguments fail opaquely.
+
+List is sorted by ID, regardless of input order. Show returns one row in the
+same projection. Text has a fixed explanatory header followed by formatted
+JSON; `--json` emits only the `m8s.model-catalog/v1` projection. Both report exact
+integer `params_billions`, `weights_bytes`, `runtime_overhead_bytes_per_replica`,
+`kv_bytes_per_1024_tokens` and `max_context_tokens`, plus
+`declared_license_class` and `declared_runtime_status`. Source URI, free-form
+license and quantization text are deliberately omitted, including private or
+terminal-control content they might contain.
+
+The **entire catalog** is validated using the configuration validator's shared
+metadata rules before list or lookup, including profiles unused by the selected
+ID. Validation is not source verification, license permission, runtime
+qualification or approval. Even a catalog-declared `certified` status remains
+only a declaration: `catalog_metadata_only=true`, runtime verification
+`not-performed`, deployment and approval `not-assessed`. There is no automatic
+selection, fit recommendation, pricing, download, model execution or Ready claim.
+
+Unix: the existing plan/catalog loader opens only a regular file with
+final-component no-follow/nonblocking checks, at most 65536 bytes, and reads
+at most cap+1 bytes before UTF-8/TOML parsing. Ancestors are trusted; concurrent
+regular-file editing and filesystem/kernel latency are not bounded security
+claims. Non-Unix catalog loading fails closed; help still works. No writes,
+repair, Store, credential, source fetch or subprocess dispatch occurs.
+
+Output is fully rendered and bounded to 256 KiB before stdout. JSON failures
+use fixed opaque categories (`invalid-models-arguments`, `invalid-models-catalog`,
+`unknown-model-id`, `models-output-unavailable`); text failures use the same
+categories on stderr. Existing whole-argv non-UTF8 refusal remains the generic
+`invalid arguments`, with no JSON output. Paths, argv, raw TOML/parser errors and
+catalog free text are never echoed. Broken output is nonzero; a failed stream
+can still receive partial bytes. Model metadata does not change plan's existing
+intent-only, non-executable contract or any runtime/security gates.

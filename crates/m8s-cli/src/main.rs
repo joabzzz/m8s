@@ -1,11 +1,35 @@
+mod models;
 mod plan;
 mod secrets;
 use m8s_api::Request;
+const HELP: &str = concat!(
+    "m8s command guide\n",
+    "  models --catalog ABS list [--json]       Catalog-declared metadata only\n",
+    "  models --catalog ABS show ID [--json]    One catalog profile, not runtime verification\n",
+    "  plan --help                             Effect-free intent, not authorization\n",
+    "  local-demo --help                       Unix, local-development default OFF; synthetic only\n",
+    "  local-inspect --help                    Unix, local-development default OFF; historical only\n",
+    "  secrets --help                          Explicit local storage; Keychain default fails closed\n",
+    "  --socket PATH up TIER|down|status|logs|scale TIER N [--json]  Mock-only control\n",
+    "  top --socket PATH [--once] [--json]      Read-only daemon dashboard\n",
+    "No model download, provider approval or runtime/security qualification is implied.\n",
+);
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<String> = std::env::args_os()
         .skip(1)
         .map(|arg| arg.into_string().map_err(|_| "invalid arguments"))
         .collect::<Result<_, _>>()?;
+    if args == ["--help"] {
+        use std::io::Write;
+        std::io::stdout()
+            .lock()
+            .write_all(HELP.as_bytes())
+            .map_err(|_| "help-output-unavailable")?;
+        return Ok(());
+    }
+    if args.first().is_some_and(|arg| arg == "models") {
+        return models::run(&args[1..]).map_err(Into::into);
+    }
     // Preserve whole-argv UTF-8 validation, but own all local-demo flags before
     // legacy socket/JSON parsing. No daemon, credential or executable discovery.
     if args.first().is_some_and(|arg| arg == "local-inspect") {

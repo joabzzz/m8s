@@ -400,21 +400,12 @@ impl Queue<'_> {
     }
 }
 
-fn validate(doc: &Document, catalog: &ModelCatalog, limits: &ValidationLimits) -> Result<()> {
-    ensure(doc.schema == 1 && !doc.tier.is_empty() && doc.tier.len() <= MAX_TIERS)?;
-    let budget = &doc.budget;
-    ensure(limits.maximum_instance_hourly_micro_usd <= limits.maximum_total_hourly_micro_usd)?;
-    ensure(
-        budget.monthly_micro_usd <= limits.maximum_monthly_micro_usd
-            && budget.max_total_hourly_micro_usd <= limits.maximum_total_hourly_micro_usd
-            && budget.max_instance_hourly_micro_usd <= limits.maximum_instance_hourly_micro_usd
-            && budget.max_instance_hourly_micro_usd <= budget.max_total_hourly_micro_usd,
-    )?;
-    ensure(duration(&doc.dead_mans_switch.max_lifetime)? >= duration(&doc.dead_mans_switch.ttl)?)?;
-    ensure((1000..=1_000_000).contains(&doc.policy.minimum_down_mbps))?;
-    if let Some(owner) = &doc.owner {
-        ensure(owner.timezone.len() <= 64 && owner.timezone.parse::<chrono_tz::Tz>().is_ok())?;
-    }
+/// Validates catalog metadata only; not source, license, runtime or deployment
+/// approval. Pure: no files, downloads, provider access or model selection.
+pub fn validate_catalog(catalog: &ModelCatalog) -> Result<()> {
+    catalog_ids(catalog).map(|_| ())
+}
+fn catalog_ids(catalog: &ModelCatalog) -> Result<BTreeSet<&str>> {
     if catalog.models.is_empty() || catalog.models.len() > MAX_MODELS {
         return Err(Error::Catalog);
     }
@@ -449,6 +440,25 @@ fn validate(doc: &Document, catalog: &ModelCatalog, limits: &ValidationLimits) -
             return Err(Error::Catalog);
         }
     }
+    Ok(models)
+}
+
+fn validate(doc: &Document, catalog: &ModelCatalog, limits: &ValidationLimits) -> Result<()> {
+    ensure(doc.schema == 1 && !doc.tier.is_empty() && doc.tier.len() <= MAX_TIERS)?;
+    let budget = &doc.budget;
+    ensure(limits.maximum_instance_hourly_micro_usd <= limits.maximum_total_hourly_micro_usd)?;
+    ensure(
+        budget.monthly_micro_usd <= limits.maximum_monthly_micro_usd
+            && budget.max_total_hourly_micro_usd <= limits.maximum_total_hourly_micro_usd
+            && budget.max_instance_hourly_micro_usd <= limits.maximum_instance_hourly_micro_usd
+            && budget.max_instance_hourly_micro_usd <= budget.max_total_hourly_micro_usd,
+    )?;
+    ensure(duration(&doc.dead_mans_switch.max_lifetime)? >= duration(&doc.dead_mans_switch.ttl)?)?;
+    ensure((1000..=1_000_000).contains(&doc.policy.minimum_down_mbps))?;
+    if let Some(owner) = &doc.owner {
+        ensure(owner.timezone.len() <= 64 && owner.timezone.parse::<chrono_tz::Tz>().is_ok())?;
+    }
+    let models = catalog_ids(catalog)?;
     for (name, tier) in &doc.tier {
         ensure(id(name, 48) && id(&tier.model, 96) && models.contains(tier.model.as_str()))?;
         ensure(
@@ -629,4 +639,72 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>> {
 #[cfg(not(unix))]
 fn read_bounded(_: &Path) -> Result<Vec<u8>> {
     Err(Error::UnsafePath)
+}
+
+#[cfg(test)]
+mod catalog_validation_tests {
+    use super::*;
+    fn catalog() -> ModelCatalog {
+        toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap()
+    }
+    #[test]
+    fn public_catalog_validation_reuses_global_metadata_rules() {
+        let good = catalog();
+        assert_eq!(validate_catalog(&good), Ok(()));
+        let mutations: &[fn(&mut m8s_models::ModelProfile)] = &[
+            |m| m.id = "Invalid".into(),
+            |m| m.weights_bytes = 0,
+            |m| {
+                m.weights_bytes = u64::MAX;
+                m.runtime_overhead_bytes_per_replica = 1;
+            },
+            |m| m.kv_bytes_per_1024_tokens = 0,
+            |m| m.max_context_tokens = 0,
+            |m| m.params_billions = 0,
+            |m| m.source.clear(),
+            |m| m.source = "x".repeat(2049),
+            |m| m.source = "synthetic\nsource".into(),
+            |m| m.quant.clear(),
+            |m| m.quant = "x".repeat(65),
+            |m| m.license.clear(),
+            |m| m.license = "x".repeat(129),
+            |m| m.license_class = "invalid".into(),
+            |m| m.runtime_status = "invalid".into(),
+        ];
+        for change in mutations {
+            let mut bad = good.clone();
+            change(&mut bad.models[1]);
+            assert_eq!(validate_catalog(&bad), Err(Error::Catalog));
+        }
+        let mut bad = good.clone();
+        bad.models[1].id = bad.models[0].id.clone();
+        assert_eq!(validate_catalog(&bad), Err(Error::Catalog));
+        assert_eq!(
+            validate_catalog(&ModelCatalog { models: vec![] }),
+            Err(Error::Catalog)
+        );
+        let too_many = ModelCatalog {
+            models: (0..=MAX_MODELS)
+                .map(|i| {
+                    let mut model = good.models[0].clone();
+                    model.id = format!("model-{i}");
+                    model
+                })
+                .collect(),
+        };
+        assert_eq!(validate_catalog(&too_many), Err(Error::Catalog));
+    }
+    #[test]
+    fn config_still_rejects_invalid_unselected_catalog_profile() {
+        let mut models = catalog();
+        let mut unused = models.models[0].clone();
+        unused.id = "unused-profile".into();
+        unused.weights_bytes = 0;
+        models.models.push(unused);
+        assert_eq!(validate_catalog(&models), Err(Error::Catalog));
+        assert!(matches!(
+            Config::parse(EXAMPLE.as_bytes(), &models, &ValidationLimits::default()),
+            Err(Error::Catalog)
+        ));
+    }
 }

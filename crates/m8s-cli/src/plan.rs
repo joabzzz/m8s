@@ -85,31 +85,8 @@ impl Options {
     }
 }
 
-#[cfg(unix)]
 fn load_catalog(path: &std::path::Path) -> Result<ModelCatalog, Error> {
-    use std::{io::Read, os::unix::fs::OpenOptionsExt};
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
-        .map_err(|_| Error::Catalog)?;
-    let metadata = file.metadata().map_err(|_| Error::Catalog)?;
-    if !metadata.is_file() || metadata.len() > CAP as u64 {
-        return Err(Error::Catalog);
-    }
-    let mut bytes = Vec::new();
-    file.take(CAP as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| Error::Catalog)?;
-    if bytes.len() > CAP {
-        return Err(Error::Catalog);
-    }
-    let text = std::str::from_utf8(&bytes).map_err(|_| Error::Catalog)?;
-    toml::from_str(text).map_err(|_| Error::Catalog)
-}
-#[cfg(not(unix))]
-fn load_catalog(_: &std::path::Path) -> Result<ModelCatalog, Error> {
-    Err(Error::Catalog)
+    super::models::load_catalog(path).map_err(|()| Error::Catalog)
 }
 
 // Borrowed immutable validated views: not a Deserialize-able plan or authority.
