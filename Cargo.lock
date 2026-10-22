@@ -1910,8 +1910,10 @@ name = "m8s-api"
 version = "0.1.0"
 dependencies = [
  "m8s-core",
+ "nix",
  "serde",
  "serde_json",
+ "socket2 0.6.5",
 ]
 
 [[package]]

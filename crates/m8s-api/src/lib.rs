@@ -1,11 +1,11 @@
 //! Local, control-only newline JSON protocol (v1). Never carries inference or secret values.
+mod client;
 use m8s_core::GpuNode;
 use serde::{Deserialize, Serialize};
 use std::{
-    io::{self, BufRead, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read},
     os::unix::net::UnixStream,
     path::Path,
-    time::Duration,
 };
 pub const MAX_FRAME: usize = 65536;
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -44,18 +44,15 @@ pub fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
     Ok(frame)
 }
 pub fn call(path: &Path, request: &Request) -> io::Result<Response> {
-    let mut stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
-    serde_json::to_writer(&mut stream, request)?;
-    stream.write_all(b"\n")?;
-    let frame = read_frame(&mut stream)?;
-    Ok(serde_json::from_slice(&frame)?)
+    let frame = client::exchange(path, request)?;
+    serde_json::from_slice(&frame)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid control response"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     #[test]
     fn unknown_fields_and_commands_fail_closed() {
         for frame in [
@@ -130,13 +127,11 @@ pub fn call_log_page(path: &Path, after: u64, limit: u32) -> io::Result<LogPageR
     if after > i64::MAX as u64 || !(1..=200).contains(&limit) {
         return Err(invalid());
     }
-    let mut stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
-    serde_json::to_writer(&mut stream, &Request::LogsPage { after, limit })?;
-    stream.write_all(b"\n")?;
-    let response: LogPageResponse =
-        serde_json::from_slice(&read_frame(&mut stream)?).map_err(|_| invalid())?;
+    let response: LogPageResponse = serde_json::from_slice(&client::exchange(
+        path,
+        &Request::LogsPage { after, limit },
+    )?)
+    .map_err(|_| invalid())?;
     if response.mode != "mock-only"
         || response.inference != "not-carried"
         || response.records.len() > limit as usize
@@ -230,12 +225,7 @@ fn config_status_error<'de, D: serde::Deserializer<'de>>(
     Option::<String>::deserialize(deserializer)
 }
 pub fn call_config_status(path: &Path) -> io::Result<ConfigStatusResponse> {
-    let mut stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
-    serde_json::to_writer(&mut stream, &Request::ConfigStatus {})?;
-    stream.write_all(b"\n")?;
-    decode_config_status(&read_frame(&mut stream)?)
+    decode_config_status(&client::exchange(path, &Request::ConfigStatus {})?)
 }
 /// Pure bounded decoder shared by clients with independently checked transport.
 pub fn decode_config_status(frame: &[u8]) -> io::Result<ConfigStatusResponse> {
@@ -362,12 +352,7 @@ pub fn decode_reload_check(frame: &[u8]) -> io::Result<ReloadCheckResponse> {
     Ok(r)
 }
 pub fn call_reload_check(path: &Path) -> io::Result<ReloadCheckResponse> {
-    let mut stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
-    serde_json::to_writer(&mut stream, &Request::ReloadConfigCheck {})?;
-    stream.write_all(b"\n")?;
-    decode_reload_check(&read_frame(&mut stream)?)
+    decode_reload_check(&client::exchange(path, &Request::ReloadConfigCheck {})?)
 }
 
 #[cfg(test)]
