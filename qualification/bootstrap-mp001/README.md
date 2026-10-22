@@ -1,12 +1,25 @@
 # Composed MP-001 bootstrap qualification — Stage A
 
-**SOURCE/COMPILE ONLY. Runtime cases: NOT EXECUTED.** This standalone package is
-excluded from the 13-member root workspace and owns its lockfile. There is one
-ignored current-thread Tokio test, `composed_bootstrap`. Normal root checks do
-not include it. Do not invoke its ignored body or a capability probe in Stage A.
-Stage B requires a **separate explicit primary instruction after frozen source
-acceptance**, in a permitted usable runtime context. No fallback or automatic
-follow-on. Previous Gate 2 Admin PASS covers only cc08962a, not this source.
+**Harness-only diagnostic revision; ignored runtime NOT EXECUTED again.** The
+[first Stage B attempt](agor://kb/document/01a1617e-de61-73d7-8027-68a8fb120565)
+failed at endpoint bind with the old opaque phase; actual cause remains **UNKNOWN**.
+Its original log/hash/evidence is preserved. The one-shot authority is consumed:
+no automatic retry, fallback, probe or permission/security expansion is authorized.
+
+The bind failure now fails with a REDACTED fixed stage label from locked iroh
+1.3's typed `BindError`, a static IO-kind category and optional typed raw OS-error
+integer. Source inspection is bounded to four nodes; absent/deeper/unknown IO is
+reported unavailable, never inferred. No underlying Display/Debug, message,
+metadata, address, path, key or config is emitted. Future narrowly authorized
+output is diagnostic information, **not proof of the past cause or a runtime fix**.
+Other `need()` redaction and all runtime lifecycle/case bodies are unchanged.
+
+This standalone package remains excluded from the 13-member root workspace and
+owns its lockfile. Four normal pure `bind_diagnostic_` tests exercise typed errors,
+redaction, source depth and descriptor formatting without endpoint, mesh key,
+Store or platform operations. One current-thread Tokio test, `composed_bootstrap`,
+remains ignored. Root checks do not include this package. Previous Gate 2 Admin
+PASS covers only cc08962a, not this composition.
 
 Design: [bounded composition](agor://kb/document/01a16108-e37d-75cf-8223-ea95551f59bc).
 Base: 14ff55348bf5b5559e6214f09c2d26a34736c58b.
@@ -38,7 +51,7 @@ committed relative path dependencies only. No external checkout build authority.
   certificate, node, join/config/settings checks. Confirmation occurs only after
   BOTH actual server delivery and client success, then asserts persisted Delivered.
 
-## Sequential source cases — all NOT EXECUTED
+## Sequential source cases — protocol groups NOT REACHED in the first attempt
 
 1. Genuine positive TLS + SQL + canonical crypto; replay after actual Store close
    and reopen refuses before another signer invocation and preserves history.
@@ -76,9 +89,12 @@ No child/PID/group/watchdog, capability probe, netmon bypass or permission chang
 Success explicitly closes endpoints. Panic/timeout drops futures/endpoints and
 preserves uncertainty; there is no automatic reset/delete/retry. Private fixture
 root (`m8s-composed-bootstrap-*` in OS temp) is kept immediately, on success too,
-for later explicitly authorized inspection. No fixture has been created in Stage A.
+for later explicitly authorized inspection. Stage A created no fixture; the first
+Stage B attempt kept an artifact root before bind failed. Its contents/state
+remain uninspected.
 No raw nonce/join/config/key/request/certificate dumps or Debug logging; failures
-use fixed nonsecret phases. Host-io compilation does not execute a host signer,
+use fixed nonsecret phases or the typed REDACTED bind descriptor. Host-io
+compilation does not execute a host signer,
 key loader, Keychain or any legacy host tests. Keychain remains default OFF after
 its single failed qualification; no gate is lifted here.
 
@@ -91,6 +107,7 @@ provider/network-service/runtime calls. Dependency build scripts are compilation
 not execution of the ignored body. Root Cargo.lock must remain byte-identical.
 
 ```sh
+cargo test --manifest-path qualification/bootstrap-mp001/Cargo.toml --locked -j1 --test composed_bootstrap -- bind_diagnostic_ --test-threads=1
 cargo test --manifest-path qualification/bootstrap-mp001/Cargo.toml --locked -j1 --test composed_bootstrap --no-run
 cargo test --manifest-path qualification/bootstrap-mp001/Cargo.toml --locked -j1 --test composed_bootstrap -- --list
 cargo test --manifest-path qualification/bootstrap-mp001/Cargo.toml --locked -j1 --test composed_bootstrap -- --list --ignored
@@ -98,6 +115,8 @@ cargo clippy --manifest-path qualification/bootstrap-mp001/Cargo.toml --locked -
 cargo fmt --manifest-path qualification/bootstrap-mp001/Cargo.toml --package m8s-bootstrap-mp001-qualification -- --check
 ```
 
+The execution command explicitly filters ONLY the normal pure diagnostic tests.
+Neither it nor the compile/list commands invoke the ignored runtime body.
 Both listing commands use `--list`; the latter filters listing ONLY, never calls
 an ignored body. Do not omit `--list`. Root default/all-feature current-host
 metadata and inverse graphs must show 13 members, harness exclusion and no
@@ -105,6 +124,5 @@ identity host-io. Harness metadata intentionally shows host-io. The standalone
 lock includes optional/platform host packages; locked does NOT mean compiled.
 Primary owns full root `scripts/check` AFTER freeze; worker does not run/compete
 with it. Source is paused UNCOMMITTED for independent review and primary checks.
-Exact command outcomes, lock/graph review, frozen ten-file SHA inventory and
-known failures are recorded in the accompanying Knowledge evidence, not runtime
-qualification claims.
+Exact two-file freeze hashes, focused command outcomes and limitations are
+recorded in the accompanying diagnostic Knowledge evidence, not runtime claims.

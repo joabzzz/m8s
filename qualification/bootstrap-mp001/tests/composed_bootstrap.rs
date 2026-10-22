@@ -1,6 +1,9 @@
 //! Stage A compiles/lists this source ONLY. Endpoint execution needs separate approval.
 //! Synthetic launch SQL is not provider/budget/approval/effect evidence.
-use iroh::{Endpoint, EndpointAddr, SecretKey, endpoint::presets};
+use iroh::{
+    Endpoint, EndpointAddr, SecretKey,
+    endpoint::{BindError, presets},
+};
 use m8s_bootstrap::{
     mp001::{Mp001CertificateVerifier, Mp001TrustPin},
     transport::*,
@@ -39,6 +42,216 @@ fn need<T, E>(result: std::result::Result<T, E>, phase: &'static str) -> T {
         Err(_) => panic!("{phase}"),
     }
 }
+// Only typed categories and integers may escape this classifier. Never format an
+// underlying error, its metadata, or a source (even for an unknown future variant).
+struct BindDiagnostic {
+    stage: &'static str,
+    io_kind: &'static str,
+    raw_os_error: Option<i32>,
+}
+impl std::fmt::Display for BindDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "endpoint unavailable; REDACTED stage={} io_kind={} raw_os_error=",
+            self.stage, self.io_kind
+        )?;
+        match self.raw_os_error {
+            Some(code) => write!(f, "{code}"),
+            None => f.write_str("none"),
+        }?;
+        f.write_str("; no retry or fallback")
+    }
+}
+// At most four nodes, including the supplied root; cycles also terminate.
+fn bind_io_source<'a>(
+    mut error: &'a (dyn std::error::Error + 'static),
+) -> Option<&'a std::io::Error> {
+    for _ in 0..4 {
+        if let Some(io) = error.downcast_ref::<std::io::Error>() {
+            return Some(io);
+        }
+        error = error.source()?;
+    }
+    None
+}
+fn bind_diagnostic(error: &BindError) -> BindDiagnostic {
+    let (stage, io) = match error {
+        BindError::Sockets { source, .. } => ("sockets", Some(source)),
+        BindError::CreateQuicEndpoint { source, .. } => ("quic_endpoint", Some(source)),
+        // AnyError's std source skips its wrapped root; check its typed
+        // downcast too, so a directly wrapped IO error is not lost.
+        BindError::CreateNetmonMonitor { source, .. } => (
+            "netmon_monitor",
+            source
+                .downcast_ref::<std::io::Error>()
+                .or_else(|| bind_io_source(source)),
+        ),
+        BindError::InvalidTransportConfig { .. } => ("transport_config", None),
+        BindError::InvalidCaRootConfig { source, .. } => ("ca_root_config", Some(source)),
+        BindError::AddressLookup { source, .. } => ("address_lookup", bind_io_source(source)),
+        BindError::TlsConfigError { source, .. } => ("tls_config", bind_io_source(source)),
+        BindError::InvalidCryptoProvider { .. } => ("crypto_provider", None),
+        _ => ("unknown", None),
+    };
+    let io_kind = match io.map(std::io::Error::kind) {
+        None => "unavailable",
+        Some(std::io::ErrorKind::PermissionDenied) => "permission_denied",
+        Some(std::io::ErrorKind::AddrInUse) => "address_in_use",
+        Some(std::io::ErrorKind::AddrNotAvailable) => "address_not_available",
+        Some(std::io::ErrorKind::InvalidInput) => "invalid_input",
+        Some(std::io::ErrorKind::Unsupported) => "unsupported",
+        Some(std::io::ErrorKind::Other) => "other",
+        Some(_) => "other_kind",
+    };
+    BindDiagnostic {
+        stage,
+        io_kind,
+        raw_os_error: io.and_then(std::io::Error::raw_os_error),
+    }
+}
+fn need_endpoint(result: std::result::Result<Endpoint, BindError>) -> Endpoint {
+    match result {
+        Ok(endpoint) => endpoint,
+        Err(error) => panic!("{}", bind_diagnostic(&error)),
+    }
+}
+
+#[test]
+fn bind_diagnostic_known_variants() {
+    use std::io::{Error as IoError, ErrorKind};
+    let errors = [
+        (
+            BindError::Sockets {
+                source: IoError::new(ErrorKind::AddrInUse, "SECRET_MARKER"),
+                meta: Default::default(),
+            },
+            "sockets",
+        ),
+        (
+            BindError::CreateQuicEndpoint {
+                source: IoError::new(ErrorKind::AddrInUse, "SECRET_MARKER"),
+                meta: Default::default(),
+            },
+            "quic_endpoint",
+        ),
+        (
+            BindError::InvalidCaRootConfig {
+                source: IoError::new(ErrorKind::AddrInUse, "SECRET_MARKER"),
+                meta: Default::default(),
+            },
+            "ca_root_config",
+        ),
+    ];
+    for (error, stage) in errors {
+        let diagnostic = bind_diagnostic(&error);
+        assert_eq!(diagnostic.stage, stage);
+        assert_eq!(diagnostic.io_kind, "address_in_use");
+        assert_eq!(diagnostic.raw_os_error, None);
+        assert!(!diagnostic.to_string().contains("SECRET_MARKER"));
+    }
+    // Pure construction: no syscall, no interpretation of this synthetic code.
+    let io = IoError::from_raw_os_error(12345);
+    let diagnostic = bind_diagnostic(&BindError::Sockets {
+        source: io,
+        meta: Default::default(),
+    });
+    assert_eq!(diagnostic.raw_os_error, Some(12345));
+}
+
+#[test]
+fn bind_diagnostic_absent_io() {
+    for (error, stage) in [
+        (
+            BindError::InvalidTransportConfig {
+                meta: Default::default(),
+            },
+            "transport_config",
+        ),
+        (
+            BindError::InvalidCryptoProvider {
+                meta: Default::default(),
+            },
+            "crypto_provider",
+        ),
+        (
+            BindError::CreateNetmonMonitor {
+                source: "SECRET_MARKER".into(),
+                meta: Default::default(),
+            },
+            "netmon_monitor",
+        ),
+    ] {
+        let diagnostic = bind_diagnostic(&error);
+        assert_eq!(diagnostic.stage, stage);
+        assert_eq!(diagnostic.io_kind, "unavailable");
+        assert_eq!(diagnostic.raw_os_error, None);
+        assert!(!diagnostic.to_string().contains("SECRET_MARKER"));
+    }
+    // BindError is non_exhaustive: future variants cannot be constructed here.
+    // The classifier's wildcard deliberately reports unknown with no IO claim.
+}
+
+#[test]
+fn bind_diagnostic_nested_io_and_depth() {
+    #[derive(Debug)]
+    struct Layer(Box<dyn std::error::Error + Send + Sync>);
+    impl std::fmt::Display for Layer {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("SECRET_MARKER")
+        }
+    }
+    impl std::error::Error for Layer {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(self.0.as_ref())
+        }
+    }
+    for (layers, expected) in [
+        (0, "permission_denied"),
+        (3, "permission_denied"),
+        (4, "unavailable"),
+    ] {
+        let mut source: Box<dyn std::error::Error + Send + Sync> = Box::new(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "SECRET_MARKER",
+        ));
+        for _ in 0..layers {
+            source = Box::new(Layer(source));
+        }
+        let error = BindError::CreateNetmonMonitor {
+            source: source.into(),
+            meta: Default::default(),
+        };
+        let diagnostic = bind_diagnostic(&error);
+        assert_eq!(diagnostic.stage, "netmon_monitor");
+        assert_eq!(diagnostic.io_kind, expected);
+        assert_eq!(diagnostic.raw_os_error, None);
+        assert!(!diagnostic.to_string().contains("SECRET_MARKER"));
+    }
+}
+
+#[test]
+fn bind_diagnostic_descriptor_format() {
+    let diagnostic = BindDiagnostic {
+        stage: "sockets",
+        io_kind: "other_kind",
+        raw_os_error: Some(-12345),
+    };
+    assert_eq!(
+        diagnostic.to_string(),
+        "endpoint unavailable; REDACTED stage=sockets io_kind=other_kind raw_os_error=-12345; no retry or fallback"
+    );
+    let diagnostic = BindDiagnostic {
+        stage: "unknown",
+        io_kind: "unavailable",
+        raw_os_error: None,
+    };
+    assert_eq!(
+        diagnostic.to_string(),
+        "endpoint unavailable; REDACTED stage=unknown io_kind=unavailable raw_os_error=none; no retry or fallback"
+    );
+}
+
 fn now() -> i64 {
     need(
         i64::try_from(need(SystemTime::now().duration_since(UNIX_EPOCH), "clock").as_secs()),
@@ -82,7 +295,7 @@ fn address(endpoint: &Endpoint) -> EndpointAddr {
     EndpointAddr::new(endpoint.id()).with_ip_addr(sockets[0])
 }
 async fn endpoint(seed: u8) -> Endpoint {
-    need(
+    need_endpoint(
         need(
             Endpoint::builder(presets::Minimal)
                 .secret_key(SecretKey::from_bytes(&[seed; 32]))
@@ -95,7 +308,6 @@ async fn endpoint(seed: u8) -> Endpoint {
         .alpns(vec![BOOT_ALPN.to_vec(), CONTROL_ALPN.to_vec()])
         .bind()
         .await,
-        "endpoint unavailable; no retry or fallback",
     )
 }
 struct Pair {
