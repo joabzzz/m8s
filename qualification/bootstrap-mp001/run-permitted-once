@@ -1,0 +1,49 @@
+#!/bin/sh
+# Operator-only synthetic transport qualification. Never run this in the denied managed runtime.
+set -eu
+if [ "$#" -eq 1 ] && [ "$1" = --help ]; then
+    printf '%s\n' 'usage: run-permitted-once --run-once-in-permitted-terminal' 'Requires an ordinary permitted macOS Terminal; no credentials, permission changes, retries or real provider effects.' 'One attempt is durably claimed under bundles; leave all evidence and marker intact on failure.'
+    exit 0
+fi
+if [ "$#" -ne 1 ] || [ "$1" != --run-once-in-permitted-terminal ]; then
+    printf '%s\n' 'operator qualification: explicit one-run argument required' >&2
+    exit 2
+fi
+ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
+cd "$ROOT"
+# Rebuilding or changing any dependency source requires primary to refresh this packet.
+if ! /usr/bin/git diff --quiet 7cfbf2f086e4feff8d888cea4f199245ba0cf2ab -- Cargo.toml Cargo.lock crates/m8sd crates/m8s-bootstrap crates/m8s-api crates/m8s-core crates/m8s-provider crates/m8s-config crates/m8s-models crates/m8s-secrets vendor; then
+    printf '%s\n' 'operator qualification: source guard changed; stop, do not rebuild or bypass' >&2
+    exit 1
+fi
+check_hash() {
+    actual=$(/usr/bin/shasum -a 256 "$1")
+    actual=${actual%% *}
+    [ "$actual" = "$2" ] || { printf '%s\n' 'operator qualification: artifact guard changed; stopped before execution' >&2; exit 1; }
+}
+check_hash "qualification/bootstrap-mp001/Cargo.toml" "30c514eaaf65679b7a853d7f79681c8ec56716bdeb372d1609b542963d51adc6"
+check_hash "qualification/bootstrap-mp001/Cargo.lock" "1d73674abdbead6c1c3c69283b1c647fdf0d4ce20a12a3bb9e602508493a2f42"
+check_hash "qualification/bootstrap-mp001/tests/composed_bootstrap.rs" "a89871c1f90d32225c8773abd5da8a980f00172387a405121496344bdcb4af02"
+check_hash "/private/tmp/mp017-primary-target/debug/deps/composed_bootstrap-39233a8da7dcea14" "2c3f12fd1a03da06cf28934baf1064baf8764219ac39079ac55ae8acf36b5594"
+umask 077
+RUN_DIR=$(/usr/bin/mktemp -d /private/tmp/m8s-prototype-secure-operator.XXXXXX)
+mkdir "$RUN_DIR/artifacts" "$RUN_DIR/home"
+# Noclobber claims this one operator invocation before any endpoint operation.
+if ! (set -C; printf '%s\n' "$RUN_DIR" > bundles/prototype-secure-operator-once.attempt) 2>/dev/null; then
+    printf '%s\n' 'operator qualification: attempt already claimed or cannot be claimed; no retry' >&2
+    exit 1
+fi
+printf '%s\n' 'scope=synthetic-composed-bootstrap-only' 'permission_changes=none' > "$RUN_DIR/receipt.txt"
+/usr/bin/sw_vers >> "$RUN_DIR/receipt.txt"
+/usr/bin/uname -m >> "$RUN_DIR/receipt.txt"
+/bin/date -u >> "$RUN_DIR/receipt.txt"
+set +e
+/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$RUN_DIR/home" TMPDIR="$RUN_DIR/artifacts" /private/tmp/mp017-primary-target/debug/deps/composed_bootstrap-39233a8da7dcea14 --ignored --exact composed_bootstrap --test-threads=1 --nocapture > "$RUN_DIR/test.log" 2>&1
+code=$?
+set -e
+printf 'exit_code=%s\n' "$code" >> "$RUN_DIR/receipt.txt"
+/bin/date -u >> "$RUN_DIR/receipt.txt"
+/usr/bin/shasum -a 256 "$RUN_DIR/test.log" >> "$RUN_DIR/receipt.txt"
+printf 'Operator result: exit %s; retained evidence %s\n' "$code" "$RUN_DIR"
+# Failure does not establish absence/no mutation. Never clean, retry or reset here.
+exit "$code"

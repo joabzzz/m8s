@@ -126,3 +126,30 @@ Primary owns full root `scripts/check` AFTER freeze; worker does not run/compete
 with it. Source is paused UNCOMMITTED for independent review and primary checks.
 Exact two-file freeze hashes, focused command outcomes and limitations are
 recorded in the accompanying diagnostic Knowledge evidence, not runtime claims.
+
+
+## Prototype operator qualification (ordinary permitted Terminal only)
+
+The managed runtime already denied netmon initialization. **Do not execute this
+packet there or change permissions/disable monitoring.** In a known-permitted
+normal macOS Terminal on this machine, the exact one-shot command is:
+
+```sh
+/private/tmp/m8s-root-integration.VSK0VT/qualification/bootstrap-mp001/run-permitted-once --run-once-in-permitted-terminal
+```
+
+The wrapper verifies the accepted dependency-source base, qualification
+manifest/lock/test and already-compiled binary hashes before any endpoint call.
+It creates a private evidence root and exclusively claims one invocation in
+ignored `bundles/prototype-secure-operator-once.attempt`; it never clears that
+marker, retries, rebuilds, resets state, reads real keys or changes policy.
+Return the printed evidence path and exit code, not environment or credential
+values. Failure preserves all artifacts and may follow synthetic durable effects.
+A pass qualifies this synthetic composed transport packet only—not an actual
+container/model inference, real owner issuance profile, provider cleanup or
+paid launch. New prototype dependency-source changes require a refreshed packet.
+
+Preparation compiled only (`--no-run`); no ignored body was executed here.
+The updated standalone lock preserves every original registry package
+version/checksum and adds only the dependencies required by accepted local
+control/config changes. Source/compile status is separate from runtime status.
