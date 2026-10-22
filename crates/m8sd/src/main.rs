@@ -1,3 +1,4 @@
+mod control_io;
 mod log_page;
 mod mock_config;
 mod mock_shutdown;
@@ -224,23 +225,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             last = Instant::now();
         }
         match listener.accept() {
-            Ok((mut stream, _)) => {
-                // On macOS a peer that disconnects immediately can make socket
-                // option setup fail with EINVAL. That is a client failure, not
-                // grounds to stop reconciliation for every other local client.
-                // BSD may inherit O_NONBLOCK from the listener. A client can
-                // validate its peer before writing; do not treat that normal
-                // pause as an empty/failed request. Per-client I/O stays bounded.
-                if stream.set_nonblocking(false).is_err()
-                    || stream
-                        .set_read_timeout(Some(Duration::from_secs(2)))
-                        .is_err()
-                    || stream
-                        .set_write_timeout(Some(Duration::from_secs(2)))
-                        .is_err()
-                {
+            Ok((stream, _)) => {
+                let deadline = Instant::now() + Duration::from_secs(2);
+                // One accepted-client transport budget, shared by reads/writes.
+                // Setup failure drops only this client, never the daemon.
+                let Ok(mut stream) = control_io::ControlIo::new(stream, deadline) else {
                     continue;
-                }
+                };
                 let mut explain_requested = false;
                 let mut explanation = None;
                 let mut reload_check_requested = false;
@@ -250,7 +241,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let mut shutdown_requested = false;
                 let mut shutdown_complete = false;
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
-                    let frame = m8s_api::read_frame(&mut stream)?;
+                    let frame = stream.read_frame()?;
                     match serde_json::from_slice::<Request>(&frame)? {
                         Request::Up { tier } => {
                             let replicas = policy.as_ref().map_or(Ok(1), |p| p.up(&tier))?;

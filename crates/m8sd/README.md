@@ -884,3 +884,12 @@ Private `manual` holds the existing atomic batch method/tests; private
 remain associated methods on `m8sd::Store`. Root Store initialization, legacy
 scale/down, reconcile and shared launch-rate gate remain unchanged. This split
 adds no public modules, field visibility, constructors or execution authority.
+
+Each accepted control connection has one absolute two-second I/O budget shared
+across request reads and response writes. Private nonblocking/poll transport does
+not renew it per byte or use socket read/write timeout options. Buffered complete
+first frames still work after peer close; partial EOF/oversized frames refuse.
+This limits transport waiting, not SQL, reconciliation, serialization or OS
+scheduling. A failed/timed-out reply can follow committed intent: no rollback or
+safe retry is implied. Confirmed shutdown still exits even if its reply fails.
+No peer authentication or filesystem trust policy is added by this deadline.

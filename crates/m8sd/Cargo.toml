@@ -25,6 +25,7 @@ m8s-bootstrap = { path = "../m8s-bootstrap" }
 zeroize.workspace = true
 
 libc = "0.2"
+nix = { version = "0.29", default-features = false, features = ["poll"] }
 
 [[example]]
 name = "local-lifecycle-demo"
