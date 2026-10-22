@@ -169,3 +169,63 @@ receipt/consumption. Existing bootstrap supported-runner TLS fixtures remain
 explicitly ignored, with actual execution blocked here by AF_ROUTE netmon EPERM.
 No retry/bypass was attempted. Real client/admission, certificate qualification,
 served model and owner-routed canary remain required; this bridge claims no Ready.
+
+## Default-off sealed node material handoff
+
+`--features sealed-node` adds a **library integration seam**, not a runnable
+production node mode. The binary remains the existing local exerciser; its secure
+path still refuses. No new listener, signer, key loader, provider driver, download,
+Docker invocation or automatically approving BootGate is supplied.
+
+`node::NodeMaterial::stage` consumes received bootstrap bytes plus explicit trusted
+`MeshLaunch` inputs. Production accepts only the existing concrete canonical
+`Mp001CertificateVerifier`, checks owner/node/validity/model/TTL binding, and
+rechecks before returning. It does not prove that the publicly constructible
+ReceivedBundle came from TLS. The coordinator must use the real redemption path
+and existing authoritative Store burn, never a second ledger or fabricated bundle.
+The generic verifier seam is private and used by synthetic file tests only.
+
+Staging requires a fresh final directory under a canonical owned0700 parent;
+existing paths are refused, never adopted/repaired/chmodded. Retained no-follow,
+nonblock descriptors check ancestor ownership/write safety, exact private modes,
+ACL absence (using the existing borrowed-FD checker), file type/link/inode/size
+before/after fixed child creation and before sensitive bytes. Files are
+`join-token`, `node-ownership.json`, `runtime.toml`, all0600 in0700. Any late
+failure may leave partial private artifacts; no rollback, delete or wipe is
+implied. Drop closes anchors, does not unlink. These checks are not malicious
+same-UID confinement, encryption, or proof the backing mount is tmpfs. The real
+container coordinator must provide a dedicated tmpfs and its qualified wipe path.
+
+The already-created explicit **node** key is retained/checked as a private file,
+not decoded, generated or treated as an owner key here. A canonical native-key
+endpoint match is still a mandatory BootGate prerequisite. The accepted mesh
+source has two important semantics: `--owner-required` demands an OWNER keystore,
+so is deliberately absent; a bad pre-signed certificate can warn and start
+Unsigned. Therefore `--node-ownership` alone is not a fail-closed admission proof.
+The coordinator must establish the real native key/endpoint before approving
+startup, and still verify actual served identity/model and owner-routed response.
+No Ready assertion is produced by staging or spawning.
+
+`Supervisor::start_mesh` consumes and retains the material while using the same
+owned process-group cleanup engine, existing BootGate, and fixed node heartbeat
+binding. It rechecks canonical certificate/files and fresh DMS timing; explicit
+TTL must match the bundle and hard lifetime must fit certificate remaining time.
+It does not infer a DMS ACL from a wire identity: the coordinator installs the
+actual received ACL in current control policy and its trusted DMS configuration.
+Real verified heartbeat evidence retains all existing live policy checks.
+
+The command uses actual accepted mesh flags: `serve --gguf`, protected join/cert
+files, explicit config, `--trust-policy allowlist --trust-owner`, headless and
+no default plugin installation. No owner-key/local-model-only/client/auto/publish
+flag, public listener widening or raw token/config/key bytes enter argv/env.
+Environment is cleared, then ONLY fresh HOME, explicit node-key path and the
+source-supported analytics opt-outs MESH_LLM_ANALYTICS=0/DO_NOT_TRACK=1 set;
+stdin/stdout/stderr are null, as for existing supervision. Native runtime/backend
+packaging and actual secure entrypoint are still required. Opaque config is
+retained, but **nonempty config refuses launch** until its native policy mapping
+is implemented; it is never silently ignored or allowed to override trust/key
+policy. Empty config is an explicit received input, not an invented live profile.
+
+Pure owned-file/command tests do not run mesh, Docker, iroh or a model and do not
+qualify authentication, inference, destruction, or billing. The public launch
+path still requires an independently qualified gate and bounded teardown driver.

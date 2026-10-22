@@ -1901,6 +1901,8 @@ dependencies = [
  "libc",
  "m8s-bootstrap",
  "m8s-core",
+ "m8s-secrets",
+ "nix",
  "signal-hook",
  "thiserror 2.0.21",
 ]

@@ -4,6 +4,8 @@
 use m8s_core::Timestamp;
 #[cfg(feature = "authenticated-control")]
 pub mod control;
+#[cfg(all(unix, feature = "sealed-node"))]
+pub mod node;
 pub mod supervisor;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effect {

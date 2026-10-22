@@ -179,6 +179,8 @@ pub struct Supervisor<D: TeardownDriver> {
     #[cfg(feature = "authenticated-control")]
     control_binding: crate::control::ControlBinding,
     process: Box<dyn ProcessOps>,
+    #[cfg(all(unix, feature = "sealed-node"))]
+    _node_material: Option<crate::node::NodeMaterial>,
     group_signalled: bool,
     stopping: bool,
     reaped: bool,
@@ -208,6 +210,14 @@ impl<D: TeardownDriver> Supervisor<D> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        Self::spawn_command(command, dms, driver, retry)
+    }
+    fn spawn_command(
+        mut command: Command,
+        dms: DeadManSwitch,
+        driver: D,
+        retry: RetryTeardown,
+    ) -> io::Result<Self> {
         #[cfg(unix)]
         command.process_group(0);
         #[cfg(not(unix))]
@@ -217,6 +227,8 @@ impl<D: TeardownDriver> Supervisor<D> {
             #[cfg(feature = "authenticated-control")]
             control_binding: crate::control::ControlBinding::default(),
             process: Box::new(LocalProcess { child }),
+            #[cfg(all(unix, feature = "sealed-node"))]
+            _node_material: None,
             group_signalled: false,
             stopping: false,
             reaped: false,
@@ -226,6 +238,38 @@ impl<D: TeardownDriver> Supervisor<D> {
             retry,
             state: TeardownState::Running,
         })
+    }
+    /// Consume staged files while retaining the existing BootGate and pinned
+    /// heartbeat semantics. No standalone binary route or default admission.
+    #[cfg(all(unix, feature = "sealed-node"))]
+    pub fn start_mesh(
+        material: crate::node::NodeMaterial,
+        gate: &mut impl BootGate,
+        dms: DeadManSwitch,
+        driver: D,
+        retry: RetryTeardown,
+        verifier: &m8s_bootstrap::mp001::Mp001CertificateVerifier,
+        now: Timestamp,
+    ) -> io::Result<Self> {
+        material
+            .recheck(verifier, now)
+            .and_then(|()| material.check_dms(&dms, now))
+            .map_err(|_| io::Error::other("node material or policy unavailable"))?;
+        let mut command = material
+            .command()
+            .map_err(|_| io::Error::other("node launch policy unavailable"))?;
+        if !gate.authorize() {
+            return Err(io::Error::other("secure bootstrap unavailable or rejected"));
+        }
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let node = material.node();
+        let mut supervisor = Self::spawn_command(command, dms, driver, retry)?;
+        supervisor.control_binding = crate::control::ControlBinding::pinned(node);
+        supervisor._node_material = Some(material);
+        Ok(supervisor)
     }
     /// Pins this supervisor's local TLS node from trusted owner/boot configuration.
     /// This configuration is NOT evidence that bootstrap/admission succeeded.
@@ -451,6 +495,8 @@ mod nonblocking_tests {
             #[cfg(feature = "authenticated-control")]
             control_binding: crate::control::ControlBinding::default(),
             process: Box::new(SyntheticProcess(ops)),
+            #[cfg(all(unix, feature = "sealed-node"))]
+            _node_material: None,
             group_signalled: false,
             stopping: false,
             reaped: false,
