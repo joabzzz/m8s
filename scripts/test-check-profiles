@@ -15,6 +15,16 @@ EXCLUDED = (
     "sigterm_restores_synthetic_terminal",
     "sigint_restores_synthetic_terminal",
 )
+ACL_EXCLUDED = (
+    "extended_acl_cannot_bypass_private_mode_bits",
+    "extended_acl_on_lock_or_directory_is_rejected_before_load",
+    "extended_acl_on_private_directory_database_or_sidecar_is_refused",
+)
+ACL_SOURCES = (
+    "crates/m8s-secrets/src/backend_tests.rs",
+    "crates/m8s-secrets/src/keyring_lock_tests.rs",
+    "crates/m8sd/src/private.rs",
+)
 FMT = ["fmt", "--all", "--", "--check"]
 TEST = ["test", "--workspace", "--all-features", "--locked", "-j", "2"]
 LINT = ["clippy", "--workspace", "--all-features", "--all-targets", "--locked", "-j", "2", "--", "-D", "warnings"]
@@ -22,11 +32,16 @@ NOTICE = (
     "check profile: no-pty (test selection only; NOT an unfiltered full test run)\n"
     "Excluded: " + ", ".join(EXCLUDED) + "\n"
 ).encode()
-ERROR = b"check: invalid arguments; expected no flags, --no-pty or --help\n"
+ACL_NOTICE = (
+    "check profile: no-acl-mutation (test selection only; NOT an unfiltered full test run or ACL qualification)\n"
+    "Excluded: " + ", ".join(ACL_EXCLUDED) + "\n"
+).encode()
+ERROR = b"check: invalid arguments; expected optional --no-pty and --no-acl-mutation, or standalone --help\n"
 HELP = (
-    "usage: scripts/check [--no-pty | --help]\n"
+    "usage: scripts/check [--no-pty] [--no-acl-mutation] | scripts/check --help\n"
     "Default: standard checks. --no-pty excludes four known synthetic PTY cleanup tests.\n"
-    "Test selection only, not sandbox/access authorization; maintain exclusions as tests evolve.\n"
+    "--no-acl-mutation excludes three known synthetic ACL-mutating tests; flags may be combined.\n"
+    "Test selection only, not sandbox/access authorization or ACL qualification; maintain exclusions as tests evolve.\n"
 ).encode()
 
 
@@ -36,6 +51,23 @@ def validate_inventory(source):
     names = re.findall(r"(?m)^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\(", source)
     assert len(names) == 4 and set(names) == set(EXCLUDED), "PTY exclusion names drifted; review profile"
     assert source.count("#[test]") == 4, "PTY test inventory drifted; review profile"
+
+
+def validate_acl_inventory(sources):
+    # Narrow guard for these named files and their current ACL fixture markers,
+    # not a Rust parser or universal detector of future operational side effects.
+    names = []
+    for source in sources:
+        functions = list(re.finditer(r"(?m)^\s*fn\s+(\w+)\s*\(", source))
+        for index, function in enumerate(functions):
+            end = functions[index + 1].start() if index + 1 < len(functions) else len(source)
+            body = source[function.end():end]
+            name = function.group(1)
+            if name.startswith("extended_acl_") or '"/bin/chmod"' in body:
+                assert re.search(r"#\[test\]\s*$", source[:function.start()]), "ACL test attribute drifted"
+                assert '"/bin/chmod"' in body and '"+a"' in body, "ACL fixture marker drifted"
+                names.append(name)
+    assert len(names) == 3 and set(names) == set(ACL_EXCLUDED), "ACL exclusion names drifted; review profile"
 
 
 def main():
@@ -56,6 +88,26 @@ def main():
             pass
         else:
             raise AssertionError("drift guard failed to reject synthetic source change")
+    acl_sources = [(ROOT / path).read_text() for path in ACL_SOURCES]
+    validate_acl_inventory(acl_sources)
+    acl_drift_cases = 0
+    for index, source in enumerate(acl_sources):
+        marker = source.index("fn " + ACL_EXCLUDED[index])
+        attribute = source.rfind("#[test]", 0, marker)
+        for changed in (
+            source + '\n#[test]\nfn extended_acl_additional_case() { Command::new("/bin/chmod").arg("+a"); }\n',
+            source.replace(ACL_EXCLUDED[index], "renamed_acl_case"),
+            source[:attribute] + source[attribute:].replace("#[test]", "", 1),
+            source.replace('"/bin/chmod"', '"removed-marker"'),
+        ):
+            mutated = list(acl_sources)
+            mutated[index] = changed
+            try:
+                validate_acl_inventory(mutated)
+            except AssertionError:
+                acl_drift_cases += 1
+            else:
+                raise AssertionError("ACL drift guard failed to reject synthetic source change")
     with tempfile.TemporaryDirectory(prefix="m8s-check-profiles-") as raw:
         root = Path(raw)
         binary = root / "bin"
@@ -98,19 +150,25 @@ def main():
             calls = [json.loads(line) for line in log.read_text().splitlines()]
             return result, calls
 
-        for no_pty in (False, True):
-            args = ["--no-pty"] if no_pty else []
-            test = TEST + ["--"] + [part for name in EXCLUDED for part in ("--skip", name)] if no_pty else TEST
+        for args, no_pty, no_acl in (
+            ([], False, False), (["--no-pty"], True, False),
+            (["--no-acl-mutation"], False, True),
+            (["--no-pty", "--no-acl-mutation"], True, True),
+            (["--no-acl-mutation", "--no-pty"], True, True),
+        ):
+            excluded = (EXCLUDED if no_pty else ()) + (ACL_EXCLUDED if no_acl else ())
+            test = TEST + ["--"] + [part for name in excluded for part in ("--skip", name)] if excluded else TEST
+            notice = (NOTICE if no_pty else b"") + (ACL_NOTICE if no_acl else b"")
             expected = [FMT, test, LINT]
             result, calls = invoke(args)
             assert result.returncode == 0 and calls == expected, "check command argv changed"
-            assert result.stdout == (NOTICE if no_pty else b"") and not result.stderr, "profile notice changed"
+            assert result.stdout == notice and not result.stderr, "profile notice changed"
             for index, stage in enumerate(("fmt", "test", "clippy")):
                 code = 71 + index
                 result, calls = invoke(args, stage, code)
                 assert result.returncode == code, "stage failure code not propagated"
                 assert calls == expected[:index + 1], "later stage ran after failure"
-                assert result.stdout == (NOTICE if no_pty else b"") and not result.stderr, "failure output changed"
+                assert result.stdout == notice and not result.stderr, "failure output changed"
 
         result, calls = invoke(["--help"])
         assert result.returncode == 0 and not calls, "help invoked Cargo"
@@ -119,12 +177,18 @@ def main():
             ["--unknown-sensitive\x1b[31m"], [""], ["--no-pty=1"],
             ["--no-pty", "--no-pty"], ["--help", "--help"],
             ["--no-pty", "--help"], ["--help", "--no-pty"],
-            ["--no-pty", "extra-sensitive"],
+            ["--no-pty", "extra-sensitive"], ["--no-acl-mutation=1"],
+            ["--no-acl-mutation", "--no-acl-mutation"],
+            ["--no-acl-mutation", "--help"], ["--help", "--no-acl-mutation"],
+            ["--no-pty", "--no-acl-mutation", "--no-pty"],
+            ["--no-acl-mutation", "--no-pty", "--no-acl-mutation"],
+            ["--no-pty", "--no-acl-mutation", "--help"],
+            ["--no-pty", "--no-acl-mutation", "extra-sensitive"],
         ):
             result, calls = invoke(args)
             assert result.returncode == 2 and not calls, "invalid args invoked Cargo"
             assert not result.stdout and result.stderr == ERROR, "invalid args were not static/redacted"
-        print(f"check profiles: PASS ({count} fake-Cargo cases; 4-name drift guard + 3 drift cases; no real Cargo)")
+        print(f"check profiles: PASS ({count} fake-Cargo cases; 4-name PTY + 3-name ACL drift guards; {3 + acl_drift_cases} drift cases; no real Cargo)")
 
 
 if __name__ == "__main__":

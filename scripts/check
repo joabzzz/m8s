@@ -1,30 +1,41 @@
 #!/bin/sh
 set -eu
-profile=standard
-case "$#" in
-    0) ;;
-    1)
-        case "$1" in
-            --no-pty) profile=no-pty ;;
-            --help)
-                printf '%s\n' 'usage: scripts/check [--no-pty | --help]' 'Default: standard checks. --no-pty excludes four known synthetic PTY cleanup tests.' 'Test selection only, not sandbox/access authorization; maintain exclusions as tests evolve.'
-                exit 0
-                ;;
-            *) printf '%s\n' 'check: invalid arguments; expected no flags, --no-pty or --help' >&2; exit 2 ;;
-        esac
-        ;;
-    *) printf '%s\n' 'check: invalid arguments; expected no flags, --no-pty or --help' >&2; exit 2 ;;
-esac
-if [ "$profile" = no-pty ]; then
-    printf '%s\n' 'check profile: no-pty (test selection only; NOT an unfiltered full test run)' 'Excluded: quit_key_restores_synthetic_terminal, ctrl_c_key_restores_synthetic_terminal, sigterm_restores_synthetic_terminal, sigint_restores_synthetic_terminal'
+no_pty=false
+no_acl=false
+invalid_arguments() {
+    printf '%s\n' 'check: invalid arguments; expected optional --no-pty and --no-acl-mutation, or standalone --help' >&2
+    exit 2
+}
+if [ "$#" -eq 1 ] && [ "$1" = --help ]; then
+    printf '%s\n' 'usage: scripts/check [--no-pty] [--no-acl-mutation] | scripts/check --help' 'Default: standard checks. --no-pty excludes four known synthetic PTY cleanup tests.' '--no-acl-mutation excludes three known synthetic ACL-mutating tests; flags may be combined.' 'Test selection only, not sandbox/access authorization or ACL qualification; maintain exclusions as tests evolve.'
+    exit 0
 fi
-cargo fmt --all -- --check
-if [ "$profile" = no-pty ]; then
-    cargo test --workspace --all-features --locked -j 2 -- \
+for flag in "$@"; do
+    case "$flag" in
+        --no-pty) [ "$no_pty" = false ] || invalid_arguments; no_pty=true ;;
+        --no-acl-mutation) [ "$no_acl" = false ] || invalid_arguments; no_acl=true ;;
+        *) invalid_arguments ;;
+    esac
+done
+set --
+if [ "$no_pty" = true ]; then
+    printf '%s\n' 'check profile: no-pty (test selection only; NOT an unfiltered full test run)' 'Excluded: quit_key_restores_synthetic_terminal, ctrl_c_key_restores_synthetic_terminal, sigterm_restores_synthetic_terminal, sigint_restores_synthetic_terminal'
+    set -- "$@" \
         --skip quit_key_restores_synthetic_terminal \
         --skip ctrl_c_key_restores_synthetic_terminal \
         --skip sigterm_restores_synthetic_terminal \
         --skip sigint_restores_synthetic_terminal
+fi
+if [ "$no_acl" = true ]; then
+    printf '%s\n' 'check profile: no-acl-mutation (test selection only; NOT an unfiltered full test run or ACL qualification)' 'Excluded: extended_acl_cannot_bypass_private_mode_bits, extended_acl_on_lock_or_directory_is_rejected_before_load, extended_acl_on_private_directory_database_or_sidecar_is_refused'
+    set -- "$@" \
+        --skip extended_acl_cannot_bypass_private_mode_bits \
+        --skip extended_acl_on_lock_or_directory_is_rejected_before_load \
+        --skip extended_acl_on_private_directory_database_or_sidecar_is_refused
+fi
+cargo fmt --all -- --check
+if [ "$#" -gt 0 ]; then
+    cargo test --workspace --all-features --locked -j 2 -- "$@"
 else
     cargo test --workspace --all-features --locked -j 2
 fi

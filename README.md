@@ -25,9 +25,18 @@ operational tests require profile review/maintenance. It is not a universal
 future capability guarantee. The regression below guards the inventory against
 the current `crates/m8s-top/tests/terminal_cleanup.rs` four names.
 
+Use `./scripts/check --no-acl-mutation` to exclude only the three current synthetic
+ACL-mutating tests in `m8s-secrets` backend/keyring-lock tests and `m8sd` private
+filesystem tests. Combine both flags in either order to exclude exactly seven
+names: `./scripts/check --no-pty --no-acl-mutation`. Duplicates are refused. The
+same fmt/lint and test options remain; notices identify each exclusion set.
+This does **not** qualify ACL behavior or authorize OS access. The regression
+also guards those three fixtures using their current names/test/ACL source
+markers in the named files, not a universal scan for future side effects.
+
 Run `python3 scripts/test-check-profiles` to check argv, selection and fail-fast
 behavior using only an owned fake Cargo on controlled PATH; it never runs real
-Cargo/compiler/tests/PTY. This lightweight regression is separate from checks.
+Cargo/compiler/tests/PTY/ACL mutation. This lightweight regression is separate from checks.
 
 ## Try the mock
 
