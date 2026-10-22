@@ -2,7 +2,9 @@
 //! This library seam is unwired to the agent binary. The trusted coordinator must
 //! obtain a real TLS bundle, bind its actual local endpoint/key and current policy,
 //! and retain control/DMS plus scoped destruction. No owner key is loaded here.
+pub mod container;
 mod preflight;
+mod process;
 use crate::supervisor::ChildSpec;
 use m8s_bootstrap::mp001::Mp001CertificateVerifier;
 use m8s_bootstrap::transport::ReceivedBundle;

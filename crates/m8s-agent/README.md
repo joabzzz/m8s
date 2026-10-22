@@ -174,8 +174,9 @@ served model and owner-routed canary remain required; this bridge claims no Read
 
 `--features sealed-node` adds a **library integration seam**, not a runnable
 production node mode. The binary remains the existing local exerciser; its secure
-path still refuses. No new listener, signer, key loader, provider driver, download,
-Docker invocation or automatically approving BootGate is supplied.
+path still refuses. No new listener, signer, key loader, provider driver, download
+or automatically approving BootGate is supplied. The explicit container backend
+below is separate from staging; no Docker invocation happens on import/default use.
 
 `node::NodeMaterial::stage` consumes received bootstrap bytes plus explicit trusted
 `MeshLaunch` inputs. Production accepts only the existing concrete canonical
@@ -261,8 +262,8 @@ Its `mesh/deploy/docker/Dockerfile.client` is explicitly **not a worker image**;
 A full Linux product needs both the backend-neutral release host and matching
 native runtime. The actual source entrypoints are `just release-host-build` and
 `just release-runtime-build cpu x86_64-unknown-linux-gnu` (or the explicitly
-selected compatible architecture/backend); `just release-build` composes the
-native/Skippy/host products. The native packager produces `dist/native-runtimes`
+selected compatible architecture/backend); `just release-build` builds the
+native/Skippy/host components (product-manifest composition is a separate step). The native packager produces `dist/native-runtimes`
 artifacts with `manifest.json`, shared libraries, licenses and archive checksums.
 Host/runtime release and ABI must match; a client executable alone is insufficient.
 These are source-derived build interfaces, **not executed/qualified build commands
@@ -278,8 +279,9 @@ The coherent qualification sequence is:
    host/runtime contract rather than downloading a recommended runtime.
 2. Create fresh owned container state with dedicated private tmpfs material and a
    read-only model mount, no host networking/privileged mode or host owner-key
-   mount. Obtain the actual node endpoint, direct sealed bootstrap and one-use
-   Store burn; stage protected material. Run native public-ID preflight and
+   mount. Obtain the actual node endpoint, create the stopped container to obtain
+   its actual ID, then direct sealed bootstrap and one-use Store burn bound to
+   that ID; stage protected material. Run native public-ID preflight and
    establish native fail-closed certificate enforcement before BootGate approval.
 3. Supervise actual mesh `serve` with the staged enforcing flags, retain
    authenticated heartbeat/DMS and exact scoped teardown. Verify the served
@@ -299,3 +301,83 @@ runner; and approved matching Linux runtime/model/image artifacts are required.
 No Docker build/run/pull, mesh endpoint, model inference or teardown qualification
 has been performed by these source/pure-fixture checks. This contract deliberately
 does not offer an executable insecure fallback container entrypoint.
+
+### Implemented owned-container executor (unwired)
+
+`node::container::ContainerSession` now implements actual Docker CLI
+create/start/inspect/exec/stop/remove plumbing, not a plan/argv-only preview.
+It starts **nothing by default**. Explicit trusted local create_stopped_for_qualification
+creates only a stopped container and records its actual ID BEFORE bootstrap.
+created_container_id() supplies plain observed metadata for the coordinator's
+actual-ID-bound authoritative Store/direct TLS redemption; it is not provider
+confirmation or admission. seal() stages received material only afterwards.
+Public start refuses unsealed state and requires canonical certificate, fresh
+DMS-bound checks and current external BootGate approval. No approving gate, CLI
+launch route, new signer or production secure agent entrypoint is provided. The gate must qualify
+**the selected immutable image**, including native hard refusal of invalid
+certificates. The accepted native source's unsigned fallback is NOT qualified.
+The adapter must not be used with that behavior just because staging succeeded.
+DMS here is a checked prerequisite, not a background loop: the qualified coordinator
+must actually retain/drive authenticated heartbeat, hard lifetime and scoped
+cleanup/watchdog. No container-side DMS or owner canary is silently substituted.
+
+Inputs explicitly select the local Docker executable/socket, preinstalled
+`repository@sha256:...` image, fresh32-hex run ID, local GGUF and private UTF-8
+prompt, token limit and request/command/stop bounds. No Docker context/environment
+discovery, pulls, builds, models or credentials are supplied. Private run
+material is mounted read-only; key/model are separate read-only mounts. Writable
+HOME is a bounded private tmpfs; rootfs is read-only, capabilities dropped and
+no-new-privileges enabled. The host Docker socket is never mounted. No published
+port, listen-all, host network, privileged mode or raw secret argv is used.
+The trusted selected local daemon is not newly authenticated by these checks;
+path/inode checks are not confinement against malicious same-UID/root races.
+
+A fixed0600 intent record precedes create. Exact returned64-hex ID plus observed
+run/node labels, name and immutable image fence subsequent actions; no adoption
+by name or automatic create/start retry. A protected created-ID record precedes
+bootstrap/seal/start. This order avoids the impossible cycle of requiring a
+container-ID-bound bundle before creating that container. These files are custody
+metadata, **not an authoritative Store launch claim/paid ledger or universal
+crash-durability proof**. Each intent/created-ID/start-attempt record completes
+write_all, file sync_all and containing-directory sync_all before its protected
+transition. Intent also syncs the existing parent of the newly created run
+directory before Docker create. Failed intent write/sync prevents Docker create;
+failed created-ID sync never exposes Created; failed start-attempt sync prevents
+start and retains uncertainty/artifacts. No rollback, unlink, adoption or retry
+is introduced. These calls are nonpreemptive and provide the filesystem's fsync
+contract only, not a guarantee against every power/device/filesystem failure. Real composition must still use
+existing durable launch/operation authority before effects. Failed create returns
+CreateUncertain with retained material; missing ID cannot authorize destructive
+commands. Start/reply/inspect uncertainty remains explicit. Teardown depends only
+on retained Docker/socket identity and exact observed container ownership, not survival of join/model/prompt files, so failed bootstrap
+or missing material cannot prevent emergency stop. Drop never calls
+Docker or deletes material; the coordinator retains cleanup custody.
+
+`request()` executes the existing `m8s prototype request` CLI **inside** the exact
+observed-running container, to its own127.0.0.1 HTTP endpoint, avoiding listener
+widening. Strict bounded projection decoding returns LocalCompletion metadata
+only; it must retain not-verified identity/owner-routing and not-assessed
+readiness labels. This is not an authenticated owner-routed canary. Every Docker
+call uses the shared finite direct-child capture engine/one absolute command
+deadline; output<=16KiB, no retries. There is no whole-lifecycle deadline claim.
+Failed replies can follow committed effects. Teardown observes matching ownership,
+stops if running, rechecks stopped, removes exact ID, then requires a successful
+fresh all-container query with that full ID absent. Stop/rm acknowledgment or an
+error alone is never absence. RemovedObserved means only this Docker observation,
+not provider destruction, inference success, tmpfs erasure or host-material wipe.
+After a lost remove reply, explicit observe_removed() can resolve the retained ID
+with one fresh read-only query, without reissuing destruction or adopting a name.
+
+`deploy/container/Dockerfile` is an actual **packaging recipe**, not a tested or
+security-qualified serving image. It consumes only an explicitly reviewed Linux
+base, selected Linux `cli/m8s`/`cli/m8s-agent` binaries, and a native-owner-composed
+`product/` tree. The source's `cargo xtool product compose --bundle ... --host ...
+--runtime ... --version ... --backend ...` owns its product-manifest; do not hand
+encode that format. `product/mesh-llm`, product-manifest and native-runtimes stay
+adjacent at `/opt/mesh`; the explicit native bundle environment selects them.
+No network install step is included. Default entrypoint is the current agent,
+which fails closed without its explicit local exerciser mode; the recipe does
+NOT select that mode. The executor's native entrypoint override is permissible
+only after the separate qualified-image gate above. No such gate is wired here.
+No image build/run, real model request, TLS/owner canary or container removal has
+been runtime-qualified. Fake owned executable tests are not those results.
