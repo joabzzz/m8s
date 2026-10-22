@@ -1,0 +1,60 @@
+# Full Linux product; CPU default or explicitly selected CUDA runtime.
+# No default bases, downloads, model weights, keys, endpoint tests or auto-admission.
+# The builder must already hold reviewed toolchains and all pinned dependency caches.
+ARG BUILDER_BASE
+ARG RUNTIME_BASE
+FROM ${BUILDER_BASE} AS mesh-build
+ARG NATIVE_BACKEND=cpu
+ARG MESH_SOURCE_SHA256
+ARG BUILDER_BASE
+ARG RUNTIME_BASE
+COPY artifacts.py /checks/artifacts.py
+COPY mesh-source.tar /inputs/mesh-source.tar
+RUN --network=none python3 /checks/artifacts.py check-base "${BUILDER_BASE}" \
+    && python3 /checks/artifacts.py check-base "${RUNTIME_BASE}"
+RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh
+WORKDIR /src/mesh
+ENV CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1
+# Native owner builds the embedded runtime, host, console, licenses and ABI
+# manifest; its own dependency/compose verification remains authoritative.
+RUN --network=none case "${NATIVE_BACKEND}" in \
+    cpu) just bundle /out/mesh-bundle.tar.gz ;; \
+    cuda) just release-build-cuda \
+        && version="$(target/release/mesh-llm --version | awk '{print $NF}')" \
+        && just release-bundle "v${version#v}" /out/release cuda x86_64 \
+        && count=0 \
+        && for archive in /out/release/mesh-llm-*.tar.gz; do \
+            case "$archive" in /out/release/mesh-llm-v*) continue ;; esac; \
+            test -f "$archive" || exit 1; \
+            cp "$archive" /out/mesh-bundle.tar.gz; count=$((count + 1)); \
+        done \
+        && test "$count" -eq 1 ;; \
+    *) exit 1 ;; \
+    esac
+RUN --network=none mkdir /out/product && tar -xzf /out/mesh-bundle.tar.gz -C /out/product \
+    && python3 /checks/artifacts.py check-native /out/product/mesh-bundle/mesh-llm
+
+FROM ${BUILDER_BASE} AS m8s-build
+ARG M8S_SOURCE_SHA256
+COPY artifacts.py /checks/artifacts.py
+COPY m8s-source.tar /inputs/m8s-source.tar
+RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
+WORKDIR /src/m8s
+ENV CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1
+RUN --network=none cargo build --release --locked --offline -j1 -p m8s-cli -p m8s-agent --features m8s-agent/sealed-node,m8s-cli/prototype-container
+
+FROM ${RUNTIME_BASE}
+COPY --from=mesh-build /out/product/mesh-bundle/ /opt/mesh/
+COPY --from=m8s-build --chmod=0555 /src/m8s/target/release/m8s /usr/local/bin/m8s
+COPY --from=m8s-build --chmod=0555 /src/m8s/target/release/m8s-agent /usr/local/bin/m8s-agent
+COPY artifacts.py /usr/local/lib/m8s/artifacts.py
+# Public expected metadata only. The operator-selected GGUF stays a readonly mount.
+COPY model-artifact.json /etc/m8s/model-artifact.json
+ENV MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR=/opt/mesh/native-runtimes \
+    MESH_LLM_ANALYTICS=0 DO_NOT_TRACK=1
+USER 65532:65532
+# Refuse unsupported binaries in their final runtime environment as well.
+RUN --network=none python3 /usr/local/lib/m8s/artifacts.py check-contract /etc/m8s/model-artifact.json \
+    && python3 /usr/local/lib/m8s/artifacts.py check-native /opt/mesh/mesh-llm
+# Secure binary route is still unwired: retain the existing fail-closed agent.
+ENTRYPOINT ["/usr/local/bin/m8s-agent"]

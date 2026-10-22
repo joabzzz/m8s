@@ -1,0 +1,16 @@
+{
+  "schema": "m8s.prototype-artifact-sources/v1",
+  "mesh_commit": "f2cbf8fd8159a16401040a3536550d49a3da8ce2",
+  "model": {
+    "repository": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+    "revision": "9217f5db79a29953eb74d5343926648285ec7e67",
+    "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    "license": "Apache-2.0"
+  },
+  "platform": "linux/amd64",
+  "cuda_devel_base": "nvidia/cuda@sha256:61f6c08f2b59036cb935e56d1e31a6b64e3ae2c7ddb86d33fa0b044c7917b719",
+  "cuda_runtime_base": "nvidia/cuda@sha256:59e0e4376a0f16d10b03d3a14344b80a866a1674cb4948cb318291387ac05010",
+  "cuda_tag_at_selection": "12.8.1-cudnn-<devel|runtime>-ubuntu22.04",
+  "base_status": "Public registry pins only. These bases are not prepared mesh builders or qualified m8s runtime images."
+}
