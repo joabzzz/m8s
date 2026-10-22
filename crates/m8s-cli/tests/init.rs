@@ -288,3 +288,16 @@ fn broken_stdout_does_not_undo_or_retry_completed_workspace() {
     refused(w.run(), "init-failed-partial-artifacts-may-remain");
     assert_eq!(inventory(&w.path), before);
 }
+
+#[test]
+fn generated_no_acl_descriptors_pass_borrowed_acl_metadata_check_without_mutation() {
+    let w = Workspace::new();
+    let out = w.run();
+    assert!(out.status.success());
+    let before = inventory(&w.path);
+    for name in ["m8s.toml", "catalog.toml", "README.md", "state"] {
+        let fd = File::open(w.path.join(name)).unwrap();
+        m8s_secrets::check_no_extended_acl(&fd).unwrap();
+    }
+    assert_eq!(inventory(&w.path), before);
+}

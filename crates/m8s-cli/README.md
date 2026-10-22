@@ -667,3 +667,13 @@ Text/JSON share one bounded fully rendered projection; node/log/error payloads
 are omitted. A refused/invalid/lost reply, timeout, snapshot or output failure MAY
 follow a committed mutation. Nonzero NEVER proves rollback/no effects; do not
 blindly retry. No provider approval/authentication or execution authority implied.
+
+Init also rejects extended ACL metadata on every retained ancestor, root, child
+file and state-directory descriptor, before/after identity checks; Linux additionally
+checks default/inheritable ACL presence. Any ACL (including empty/deny-only),
+unexpected metadata failure or unsupported checker refuses conservatively. No
+ACL interpretation/repair/removal is attempted. Parent refusal precedes mkdir;
+new-file ACL refusal precedes writing example bytes (an empty partial file may
+remain). This ACL-only borrowed-FD check is not an ownership/mode/identity,
+authentication or complete private-access certificate; existing checks and
+same-UID/nontransactional limitations still apply.

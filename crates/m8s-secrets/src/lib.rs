@@ -176,3 +176,12 @@ mod tests {
 
 #[cfg(test)]
 mod backend_tests;
+
+/// Rejects extended ACL metadata on this borrowed descriptor (Linux: access AND
+/// default/inheritable ACL presence). Does not read values, mutate ACLs, or prove
+/// ownership, mode, path identity, authentication or private access by itself.
+/// Unexpected metadata failures and unsupported Unix platforms fail closed.
+#[cfg(unix)]
+pub fn check_no_extended_acl(file: &std::fs::File) -> Result<(), Error> {
+    acl::check_no_extended(file)
+}

@@ -87,7 +87,8 @@ mod unix {
         size: Option<u64>,
     }
     impl Anchor {
-        fn check(&self) -> Result<(), ()> {
+        fn check(&self, acl: &impl Fn(&File) -> Result<(), ()>) -> Result<(), ()> {
+            acl(&self.file)?;
             let fd = self.file.metadata().map_err(|_| ())?;
             let p = fs::symlink_metadata(&self.path).map_err(|_| ())?;
             if fd.dev() != p.dev()
@@ -108,10 +109,15 @@ mod unix {
             {
                 return Err(());
             }
-            Ok(())
+            acl(&self.file)
         }
     }
-    fn directory(path: &Path, private: bool, uid: u32) -> Result<Anchor, ()> {
+    fn directory(
+        path: &Path,
+        private: bool,
+        uid: u32,
+        acl: &impl Fn(&File) -> Result<(), ()>,
+    ) -> Result<Anchor, ()> {
         let file = fs::OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_DIRECTORY)
@@ -128,12 +134,12 @@ mod unix {
             mode: m.mode(),
             size: None,
         };
-        anchor.check()?;
+        anchor.check(acl)?;
         Ok(anchor)
     }
-    fn check(anchors: &[Anchor]) -> Result<(), ()> {
+    fn check(anchors: &[Anchor], acl: &impl Fn(&File) -> Result<(), ()>) -> Result<(), ()> {
         for anchor in anchors {
-            anchor.check()?;
+            anchor.check(acl)?;
         }
         Ok(())
     }
@@ -141,6 +147,15 @@ mod unix {
         m.is_file() && m.uid() == uid && m.mode() & 0o7777 == 0o600 && m.nlink() == 1
     }
     pub(super) fn create(path: &Path, fail_after: Option<usize>) -> Result<(), ()> {
+        create_checked(path, fail_after, &|file| {
+            m8s_secrets::check_no_extended_acl(file).map_err(|_| ())
+        })
+    }
+    fn create_checked(
+        path: &Path,
+        fail_after: Option<usize>,
+        acl: &impl Fn(&File) -> Result<(), ()>,
+    ) -> Result<(), ()> {
         // Validate exact shipped bytes before the first directory/file write.
         let catalog = toml::from_str(m8s_models::EXAMPLE_CATALOG).map_err(|_| ())?;
         m8s_config::Config::parse(
@@ -164,7 +179,7 @@ mod unix {
                 return Err(());
             }
             part.push(component.as_os_str());
-            let a = directory(&part, false, uid)?;
+            let a = directory(&part, false, uid, acl)?;
             let m = a.file.metadata().map_err(|_| ())?;
             if (m.uid() != 0 && m.uid() != uid)
                 || (m.mode() & 0o022 != 0 && !(m.uid() == 0 && m.mode() & 0o1000 != 0))
@@ -177,14 +192,14 @@ mod unix {
         if m.uid() != uid || m.mode() & 0o022 != 0 {
             return Err(());
         }
-        check(&anchors)?;
+        check(&anchors, acl)?;
         // Exclusive mkdir refuses every existing final entry, even a safe empty dir.
         fs::DirBuilder::new()
             .mode(0o700)
             .create(path)
             .map_err(|_| ())?;
-        anchors.push(directory(path, true, uid)?);
-        check(&anchors)?;
+        anchors.push(directory(path, true, uid, acl)?);
+        check(&anchors, acl)?;
         if fail_after == Some(0) {
             return Err(());
         }
@@ -196,7 +211,7 @@ mod unix {
         .into_iter()
         .enumerate()
         {
-            check(&anchors)?;
+            check(&anchors, acl)?;
             let child = path.join(name);
             let mut file = fs::OpenOptions::new()
                 .write(true)
@@ -216,25 +231,67 @@ mod unix {
                 mode: m.mode(),
                 size: Some(0),
             };
-            anchor.check()?;
-            check(&anchors)?;
+            anchor.check(acl)?;
+            check(&anchors, acl)?;
             file.write_all(bytes).map_err(|_| ())?;
             anchor.size = Some(bytes.len() as u64);
-            anchor.check()?;
+            anchor.check(acl)?;
             anchors.push(anchor);
-            check(&anchors)?;
+            check(&anchors, acl)?;
             if fail_after == Some(index + 1) {
                 return Err(());
             }
         }
-        check(&anchors)?;
+        check(&anchors, acl)?;
         let state = path.join("state");
         fs::DirBuilder::new()
             .mode(0o700)
             .create(&state)
             .map_err(|_| ())?;
-        anchors.push(directory(&state, true, uid)?);
-        check(&anchors)
+        anchors.push(directory(&state, true, uid, acl)?);
+        check(&anchors, acl)
+    }
+    #[cfg(test)]
+    mod acl_tests {
+        use super::*;
+        #[test]
+        fn injected_parent_acl_denial_prevents_creation_and_file_denial_keeps_empty_partial() {
+            let root = tempfile::tempdir().unwrap();
+            let parent = root.path().canonicalize().unwrap();
+            let m = File::open(&parent).unwrap().metadata().unwrap();
+            let identity = (m.dev(), m.ino());
+            // Library seam tests distinguish access/default/unknown failures;
+            // init intentionally collapses ALL checker failures to one opaque refusal.
+            let path = parent.join("denied-parent");
+            assert!(
+                create_checked(&path, None, &|file| {
+                    let m = file.metadata().map_err(|_| ())?;
+                    if (m.dev(), m.ino()) == identity {
+                        Err(())
+                    } else {
+                        Ok(())
+                    }
+                })
+                .is_err()
+            );
+            assert!(!path.exists());
+            let partial = parent.join("partial");
+            assert!(
+                create_checked(
+                    &partial,
+                    None,
+                    &|file| if file.metadata().map_err(|_| ())?.is_file() {
+                        Err(())
+                    } else {
+                        Ok(())
+                    }
+                )
+                .is_err()
+            );
+            assert_eq!(fs::metadata(partial.join("m8s.toml")).unwrap().len(), 0);
+            assert_eq!(fs::read_dir(&partial).unwrap().count(), 1);
+            assert!(!partial.join("state").exists());
+        }
     }
 }
 #[cfg(all(test, unix))]

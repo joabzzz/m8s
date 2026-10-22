@@ -409,3 +409,18 @@ runtime/toolchain, non-secret synthetic identifiers, outcome and retained
 artifacts. Neither phase proves external deployment writers cooperate, provisions
 a production home directory, qualifies every binary/signing/prompt configuration,
 or authorizes enabling the default. No Phase B result is claimed here.
+
+## Borrowed descriptor ACL-only check
+
+`check_no_extended_acl(&File)` (Unix) reuses the existing extended-ACL rejection;
+on Linux it also rejects presence of `system.posix_acl_default` using a borrowed-FD
+size-only query. No ACL bytes, allow/deny interpretation or mutation. Empty and
+deny-only ACLs refuse too. Existing missing/unsupported-xattr semantics remain;
+unexpected query errors/unsupported Unix checkers fail closed. Darwin uses the
+unchanged extended-ACL rejection (including inheritance flags), allocation/freeing
+and no-ACL handling. Existing FileStore/keyring/lock callers are unchanged.
+
+This helper is ONLY an ACL metadata check, not a secret/backend operation or proof
+of ownership, mode, path identity, authentication or comprehensive private access.
+It does not open paths, read values, contact Keychain, repair permissions or grant
+execution authority.
