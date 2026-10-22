@@ -142,6 +142,10 @@ pub struct ControlAcl {
     endpoints: BTreeSet<EndpointId>,
 }
 impl ControlAcl {
+    /// Immutable authenticated policy metadata, not per-frame authorization.
+    pub fn endpoints(&self) -> impl Iterator<Item = EndpointId> + '_ {
+        self.endpoints.iter().copied()
+    }
     pub fn owner_only(owner: EndpointId) -> Self {
         Self {
             owner,

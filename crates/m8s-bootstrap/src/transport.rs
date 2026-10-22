@@ -184,6 +184,30 @@ pub struct ReceivedBundle {
     pub acl: ControlAcl,
     pub settings: BundleSettings,
 }
+/// Receipt minted only by successful pinned TLS redemption and certificate
+/// verification. No public constructor, Clone or Deserialize. This does not
+/// prove model readiness or provider-side destruction capability.
+///
+/// ```compile_fail
+/// use m8s_bootstrap::transport::{ReceivedBundle, VerifiedBootstrap};
+/// fn cannot_mint(bundle: ReceivedBundle) -> VerifiedBootstrap {
+///     VerifiedBootstrap { bundle }
+/// }
+/// ```
+pub struct VerifiedBootstrap {
+    bundle: ReceivedBundle,
+}
+impl VerifiedBootstrap {
+    pub fn node(&self) -> EndpointId {
+        self.bundle.claims.node
+    }
+    /// Consuming the receipt discards its transport provenance. Plain bundle
+    /// data alone must never be used to reconstruct this receipt.
+    pub fn into_bundle(self) -> ReceivedBundle {
+        self.bundle
+    }
+}
+
 pub async fn redeem_over_iroh(
     endpoint: &Endpoint,
     owner: EndpointAddr,
@@ -191,6 +215,19 @@ pub async fn redeem_over_iroh(
     verifier: &impl CertificateVerifier,
     clock: impl Fn() -> i64,
 ) -> Result<ReceivedBundle> {
+    redeem_verified_over_iroh(endpoint, owner, request, verifier, clock)
+        .await
+        .map(VerifiedBootstrap::into_bundle)
+}
+
+/// Retains original authenticated receipt provenance for secure node startup.
+pub async fn redeem_verified_over_iroh(
+    endpoint: &Endpoint,
+    owner: EndpointAddr,
+    request: Redemption,
+    verifier: &impl CertificateVerifier,
+    clock: impl Fn() -> i64,
+) -> Result<VerifiedBootstrap> {
     let expected_owner = EndpointId(*owner.id.as_bytes());
     if EndpointId(*endpoint.id().as_bytes()) != request.node {
         return Err(Error::Refused);
@@ -246,7 +283,7 @@ pub async fn redeem_over_iroh(
         .await?;
     }
     connection.close(0u32.into(), b"boot complete");
-    result
+    result.map(|bundle| VerifiedBootstrap { bundle })
 }
 
 /// Live owner-controlled ACL/revocation policy. Update this same shared object;
@@ -261,6 +298,13 @@ struct ControlPolicyState {
     not_after: i64,
 }
 impl ControlPolicy {
+    /// Install the received ACL only when it belongs to the trusted owner.
+    pub fn from_acl(owner: EndpointId, acl: &ControlAcl, not_after: i64) -> Result<Self> {
+        if acl.owner != owner {
+            return Err(Error::Refused);
+        }
+        Self::new(owner, acl.endpoints.iter().copied(), [], not_after)
+    }
     pub fn new(
         owner: EndpointId,
         delegates: impl IntoIterator<Item = EndpointId>,
@@ -526,6 +570,8 @@ mod tests {
     fn current_policy_rejects_revocation_expiry_and_owner_mismatch() {
         let owner = EndpointId([1; 32]);
         let delegate = EndpointId([2; 32]);
+        assert!(ControlPolicy::from_acl(owner, &ControlAcl::owner_only(delegate), 100).is_err());
+        assert!(ControlPolicy::from_acl(owner, &ControlAcl::owner_only(owner), 100).is_ok());
         let p = ControlPolicy::new(owner, [delegate], [], 100).unwrap();
         assert!(p.authorize(owner, delegate, 99).is_ok());
         let bound = p.shared();

@@ -5,6 +5,8 @@
 pub mod container;
 mod preflight;
 mod process;
+#[cfg(feature = "secure-runtime")]
+pub mod runtime;
 use crate::supervisor::ChildSpec;
 use m8s_bootstrap::mp001::Mp001CertificateVerifier;
 use m8s_bootstrap::transport::ReceivedBundle;

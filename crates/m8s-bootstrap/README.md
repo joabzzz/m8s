@@ -36,6 +36,15 @@ durable SQLite settings. SQLite errors are uncertainty and fail closed.
 
 ## Optional `iroh-transport` feature
 
+`redeem_verified_over_iroh` returns an opaque, single-use `VerifiedBootstrap`
+receipt after authenticated delivery and verification. Its private constructor
+prevents a decoded or synthetic `ReceivedBundle` from being used as transport
+provenance. Consuming `into_bundle` relinquishes that provenance. The agent's
+default-off `secure-runtime` feature consumes this receipt, rechecks the concrete
+certificate and native node identity, and supervises the native child with live
+authenticated heartbeats and a certificate-bounded monotonic deadline. This is
+a library integration; the secure executable entrypoint remains unfinished.
+
 Dependencies: exact iroh 1.3.0, defaults disabled, `tls-aws-lc-rs`; tokio rt/macros/net/
 time/io-util. This matches mesh-llm transport and avoids competing TLS backends. Integration
 owner owns final root Cargo.lock resolution and must
