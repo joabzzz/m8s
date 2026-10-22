@@ -1,8 +1,9 @@
 # m8s-bootstrap
 
 Owner-side ADR-0006 policy plus optional **real iroh QUIC/TLS adapter**.
-Implementation compiles; real network qualification is blocked in the current
-managed macOS sandbox. This is not a working provider/admission integration.
+Implementation compiles; this crate's transport and composed bootstrap runtime
+remain unqualified. Separate external MP-001 endpoint PASS at cc08962a does not
+qualify this integration. This is not a working provider/admission integration.
 
 ## Policy core
 
@@ -14,15 +15,20 @@ managed macOS sandbox. This is not a working provider/admission integration.
 - `Ledger::redeem` checks launch + authenticated endpoint + provider IP, validity
   `[issued, issued+900)`, atomically burns, then invokes `NodeSigner` and independent
   `CertificateVerifier`. Failures/unwind/cancellation/dropped delivery never restore
-  the nonce. Certificate expiry is owner policy, not agent input. No production
-  signer/verifier is supplied. Tests with synthetic authority are not admission.
+  the nonce. Certificate expiry is owner policy, not agent input. Optional
+  default-OFF canonical verification is supplied by `mp001-certificates`;
+  owner/machine signing and the default daemon route remain unwired.
+  Tests with synthetic authority are not admission.
 - `ControlAcl` is explicit endpoint allowlist, default `[owner]`, not "all admitted
   mesh members". `HeartbeatGuard` checks authenticated node identity, owner, ALPN,
   sequence/time/TTL/cert expiry. Persist node replay state before acknowledging.
 
-The separate `bootstrap_nonce` table is **not wired** to m8sd's nonce/gpu_node
-state. Do not run independent authorization ledgers. Root must design one
-transactional authoritative path for persisted launch state/ownership and nonce.
+The standalone `Ledger` owns a separate `bootstrap_nonce` table. m8sd's
+`Store::redeem_bootstrap` already uses its authoritative nonce/gpu_node path
+through `NonceConsumer`, committing burn + cleanup intent before signing and
+certifying afterward. It never instantiates `Ledger`: do not combine them or run
+a second authorization ledger. Trusted launch observations remain adapter
+assertions, not provider identity proof; no provider/TLS listener is wired.
 Ledger rejects an already-open outer transaction so rollback cannot restore a
 nonce after signing. It accepts an already-open connection, never opens/chmods
 files or relaxes policy: owner retains private-dir/no-symlink/0600 DB/WAL/SHM and
@@ -139,15 +145,18 @@ removal. Root owns coherent commits, manifest/lock integration and bundle export
 
 ## Certificate identity adapter gate
 
-Existing reviewed mesh identity is a separate checkout/workspace, not a portable
-registered dependency here. No absolute external path or duplicate MP-001 format
-is added. Its signing owner ID (`sha256(signing public key)`), transport endpoint
-ID, certificate millisecond fields and wall-clock signing API need an explicit
-trusted mapping/time adapter. Do not equate endpoint bytes to signing-owner ID or
-trust a public key supplied inside an untrusted certificate. Production signer
-implementation belongs behind the existing injection boundary on the owner host;
-only signatures/certs leave it. Current test-only Ed25519 authority is real crypto
-but deliberately NOT an MP-001 certificate or admission-readiness claim.
+The portable, workspace-excluded `vendor/mesh-llm-identity` package and optional
+default-OFF `mp001-certificates` supply bounded canonical public verification.
+The vendor's `UPSTREAM.md` and `SHA256SUMS` are the authoritative snapshot
+inventory; no temporary Cargo path or duplicate encoder is used. The immutable
+trusted pin explicitly maps the owner iroh endpoint to a mesh signing public key
+and canonical-derived signing owner ID; certificate milliseconds bind exactly to
+expected times. Do not equate endpoint bytes to signing-owner ID or trust a public
+key supplied inside an untrusted certificate. Owner/machine signer integration
+remains unwired behind the existing injection boundary on the owner host; only
+signatures/certs may leave it. The legacy `iroh_loopback` test authority is real
+Ed25519 but not MP-001. In contrast, `mp001_public` and separate public adversarial
+fixtures exercise canonical MP-001 signatures, not runtime admission readiness.
 
 ## Default-OFF canonical `mp001-certificates`
 
@@ -184,9 +193,9 @@ Accepted expired static canonical vectors prove real crypto only through private
 unit-test timing; the real trait correctly rejects them. No host signer or
 fixture encoder is invoked.
 
-The portable vendor snapshot is the full accepted identity package c2190fdd,
-NOT a verification-only crate. Existing broader crypto/signing source is included
-unchanged; no authority/key access is wired. See vendor/mesh-llm-identity/UPSTREAM.md
+The portable vendor snapshot is the full identity package described by its
+`UPSTREAM.md` and `SHA256SUMS`, NOT a verification-only crate. Existing broader
+crypto/signing source is included unchanged; no authority/key access is wired. See vendor/mesh-llm-identity/UPSTREAM.md
 and SHA256SUMS. It is explicitly workspace-excluded, with default-features=false
 and no host-io forwarding. Root lock integration/full checks remain primary-owned.
 Exact-time machine signer, TLS/Store integration, current-policy provenance,
