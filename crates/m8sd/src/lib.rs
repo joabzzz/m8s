@@ -422,6 +422,8 @@ impl Store {
     }
 }
 
+#[cfg(feature = "secure-bootstrap")]
+pub mod bootstrap_delivery;
 pub mod budget;
 pub mod nonce;
 pub mod operation;

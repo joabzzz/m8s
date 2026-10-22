@@ -4,6 +4,21 @@ The daemon now exposes one authoritative Store-backed launch/nonce adapter.
 It still runs mock-only: main does not bind an iroh listener, contact a real
 provider, wire MP-001 signer/verifier, or advertise Ready.
 
+The default-off `secure-bootstrap` feature provides
+`Store::deliver_bootstrap` in `bootstrap_delivery`: one authenticated
+`BootConnection` is received, redeemed through this Store, signed and verified
+with the concrete MP-001 verifier, then delivered on its original TLS stream.
+Only an acknowledged delivery followed by successful Store confirmation returns
+`DeliveredBootstrap`. The clock is sampled again after acknowledgement, so
+expiry or cancellation cannot produce successful confirmation. A failed or
+cancelled attempt after nonce burn retains cleanup intent and must not be
+retried with a new nonce. The caller supplies current trusted launch observation,
+owner-side signer custody, bundle settings, listener and surviving cleanup.
+This library composition does not yet wire the CLI, launch a native node,
+implement its DMS loop, or prove readiness/inference. Its new tests exercise
+record selection and persistence with synthetic fixtures; no endpoint or provider
+qualification was rerun.
+
 ## One authority and public contracts
 
 `Store::issue_bootstrap_nonce(nonce: &[u8;32], LaunchIdentity, now)` registers

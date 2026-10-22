@@ -12,6 +12,69 @@ use std::{
 };
 static NEXT: AtomicU64 = AtomicU64::new(0);
 const NONCE: [u8; 32] = [42; 32];
+
+#[cfg(feature = "secure-bootstrap")]
+#[test]
+fn delivery_coordinator_selects_only_exact_uncancelled_certified_attempt() {
+    use crate::bootstrap_delivery::certified_attempt;
+    let (_, s, _, uid, binding) = fixture();
+    issue(&s, &uid, &binding);
+    let claims = m8s_bootstrap::CertificateClaims {
+        owner: binding.owner,
+        node: EndpointId([2; 32]),
+        issued_at: 101,
+        expires_at: 2000,
+    };
+    let select = || {
+        certified_attempt(
+            s.bootstrap_attempts().unwrap(),
+            "owner",
+            &uid,
+            &binding,
+            &claims,
+        )
+    };
+    assert!(select().is_err());
+    consume(&s, &NONCE, &binding, 101).unwrap();
+    assert!(select().is_err());
+    certify(&s, &binding, 101).unwrap();
+    assert!(select().is_ok());
+    let mut wrong_owner = claims.clone();
+    wrong_owner.owner = EndpointId([9; 32]);
+    assert!(
+        certified_attempt(
+            s.bootstrap_attempts().unwrap(),
+            "owner",
+            &uid,
+            &binding,
+            &wrong_owner,
+        )
+        .is_err()
+    );
+    for field in 0..11 {
+        let mut attempts = s.bootstrap_attempts().unwrap();
+        let a = &mut attempts[0];
+        match field {
+            0 => a.owner.push('x'),
+            1 => a.node_uid.push('x'),
+            2 => a.instance_id.push('x'),
+            3 => a.container_id.push('x'),
+            4 => a.node_endpoint = Some(EndpointId([9; 32])),
+            5 => a.redeemed_at = Some(100),
+            6 => a.cert_expires_at = Some(2001),
+            7 => a.stage = BootstrapStage::Delivered,
+            8 => a.cancelled = true,
+            9 => a.cleanup_required = false,
+            _ => attempts.extend(s.bootstrap_attempts().unwrap()),
+        }
+        assert!(certified_attempt(attempts, "owner", &uid, &binding, &claims).is_err());
+    }
+    let attempt = select().unwrap();
+    assert!(!s.confirm_bootstrap_delivery(&attempt, 2000).unwrap());
+    assert!(select().is_ok()); // Expired confirmation did not clear cleanup intent.
+    s.down().unwrap();
+    assert!(select().is_err());
+}
 fn path() -> PathBuf {
     use std::os::unix::fs::DirBuilderExt;
     let path = std::env::temp_dir().join(format!(
