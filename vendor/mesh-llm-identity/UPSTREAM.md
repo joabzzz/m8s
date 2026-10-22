@@ -1,16 +1,17 @@
 # Canonical MP-001 package import
 
-Accepted Mesh-LLM commit: cecee5d23e33d2626a0bf4624bfa71dc1615d167
-Source checkout inspected: /private/tmp/mp016-primary-qualification.odsQBZ (provenance only, never a build path).
+Accepted Mesh-LLM commit: f2cbf8fd8159a16401040a3536550d49a3da8ce2
+Source checkout inspected: /Users/sandro/.agor/worktrees/local/mesh-mp001-reviewed/prototype-keyless-main-integration (provenance only, never a build path).
 Package path: mesh/crates/mesh-llm-identity.
-m8s baseline: 14ff55348bf5b5559e6214f09c2d26a34736c58b.
+Original m8s import baseline: 14ff55348bf5b5559e6214f09c2d26a34736c58b.
 Design: agor://kb/document/01a16108-e37d-75cf-8223-ea95551f59bc
 
 ## Inventory / authority
-Twelve complete src Rust files, public certificate test, package README, and
+Fourteen complete src Rust files, public certificate test, package README, and
 external root LICENSE are byte-identical to the accepted Git objects.
 This is the full identity package, NOT a verification-only extraction: existing
-in-memory signing, envelope and key APIs are included but not wired by m8s.
+in-memory signing, envelope and key APIs are included. The default-off m8s
+owner-signing adapter consumes the pure exact-signing API without host-io.
 host-io stays default-OFF; production m8s never forwards it. Upstream README wording about
 host-io is retained verbatim; canonical public verification is pure.
 Declared license remains MIT OR Apache-2.0; supplied LICENSE is the upstream
@@ -68,7 +69,21 @@ Primary reviews isolated root lock patch/new-package inventory before changing
 the primary-owned root lock. Re-run relocated focused checks and independent
 review, then primary full scripts/check before commit/bundle handoff.
 
-## Composed qualification import (Stage A only)
+## Current exact-signing import
+
+The primary integration owner imported the complete package directly from Git
+objects at f2cbf8fd8159a16401040a3536550d49a3da8ce2 after verifying a clean
+canonical worktree. No canonical source or test bytes were rewritten. The six
+manifest expansions above remain byte-identical to the previous import; there
+are no added dependencies or manifest/lock changes. SHA256SUMS was regenerated
+for all 18 imported objects, including the normalized manifest and LICENSE.
+The new pure exact signer and required-certificate validator are available
+without enabling host-io. The operator reported native `just no-console-print`
+PASS, then committed the previously reviewed 16-file candidate. Existing E PASS
+is historical qualification evidence for its original source, not runtime proof
+of this refreshed import or a reason to rerun that completed qualification.
+
+## Historical composed qualification import (Stage A only)
 
 Explicit ten-file primary grant imports the accepted exact-request module, not
 an m8s source fork. All fourteen non-manifest package objects (README, twelve

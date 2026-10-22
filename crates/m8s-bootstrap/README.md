@@ -160,6 +160,16 @@ fixtures exercise canonical MP-001 signatures, not runtime admission readiness.
 
 ## Default-OFF canonical `mp001-certificates`
 
+The separately default-off `mp001-owner-signing` feature exposes
+`mp001::signing::Mp001NodeSigner`. It borrows an in-memory canonical owner key,
+checks its public key against the configured endpoint/signing-key pin, and calls
+the canonical exact-time signer with explicit lifetime and issuance-age limits.
+It does not load keys, enable host-io, or authorize an invoker. The authoritative
+Store must burn the nonce before invoking it. Canonical signing rechecks real
+time; adapter tests use deterministic synthetic keys and exercise refusal and
+conversion boundaries without minting current certificates. Source is pinned
+at `f2cbf8fd8159a16401040a3536550d49a3da8ce2`; see vendor provenance and hashes.
+
 This feature exposes `mp001::{Mp001TrustPin, Mp001CertificateVerifier}`.
 Construct a pin from a trusted owner iroh EndpointId and separately provisioned
 mesh signing public key [u8;32]; it validates the key and derives the owner ID

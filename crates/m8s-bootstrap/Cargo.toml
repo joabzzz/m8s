@@ -13,6 +13,7 @@ zeroize.workspace = true
 [features]
 default = []
 mp001-certificates = ["dep:mesh-llm-identity", "dep:serde", "dep:serde_json", "dep:hex", "dep:ed25519-dalek"]
+mp001-owner-signing = ["mp001-certificates"]
 iroh-transport = ["dep:iroh", "dep:tokio"]
 
 [dependencies.iroh]

@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 pub mod exact_request;
 
 use super::keystore::write_keystore_bytes_atomically;
-use super::node_certificate::canonical_claim_bytes;
 pub use super::node_certificate::{
     DEFAULT_NODE_CERT_LIFETIME_SECS, DEFAULT_NODE_CERT_RENEW_WINDOW_SECS, NODE_OWNERSHIP_VERSION,
     NodeOwnershipClaim, OwnershipStatus, OwnershipSummary, RevokedNodeCert, RevokedNodeId,
     RevokedOwner, SignedNodeOwnership, TRUST_STORE_VERSION, TrustPolicy, TrustStore, TrustedOwner,
     certificate_needs_renewal, verify_node_ownership,
 };
+use super::node_certificate::{canonical_claim_bytes, random_cert_id};
 use super::{CryptoError, OwnerKeypair};
 
 fn mesh_dir() -> Result<PathBuf, CryptoError> {
@@ -78,11 +78,6 @@ fn current_time_unix_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
-}
-
-fn random_cert_id() -> String {
-    let bytes: [u8; 16] = rand::random();
-    hex::encode(bytes)
 }
 
 pub fn sign_node_ownership(

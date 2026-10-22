@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 local-development = ["dep:m8s-provider-local"]
-secure-bootstrap = ["m8s-bootstrap/iroh-transport", "m8s-bootstrap/mp001-certificates"]
+secure-bootstrap = ["m8s-bootstrap/iroh-transport", "m8s-bootstrap/mp001-owner-signing"]
 
 [dependencies]
 m8s-config = { path = "../m8s-config" }

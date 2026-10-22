@@ -2,7 +2,8 @@
 //!
 //! This immutable snapshot is NOT live revocation authority or proof of policy
 //! currentness. The trusted caller must rebuild it from current policy before
-//! each redemption/startup attempt. No signer, secret access or IO is supplied.
+//! each redemption/startup attempt. Verification supplies no secret access or IO.
+//! The separate owner-signing feature borrows an already-custodied owner key.
 use crate::{CertificateClaims, CertificateVerifier, EndpointId, Error, NodeCertificate, Result};
 use mesh_llm_identity::{
     NodeOwnershipClaim, OwnershipStatus, SignedNodeOwnership, TrustPolicy, TrustStore,
@@ -13,6 +14,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_JSON: usize = 128 * 1024;
 const MAX_ENTRIES: usize = 256;
+
+#[cfg(feature = "mp001-owner-signing")]
+pub mod signing;
 
 /// Trusted configuration, never reconstructed from certificate claims.
 /// Private fields; deliberately no Deserialize or mutation API.

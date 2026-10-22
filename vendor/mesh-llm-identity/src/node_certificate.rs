@@ -154,6 +154,11 @@ fn write_optional_string(buf: &mut Vec<u8>, value: Option<&str>) {
     }
 }
 
+pub(crate) fn random_cert_id() -> String {
+    let bytes: [u8; 16] = rand::random();
+    hex::encode(bytes)
+}
+
 pub(crate) fn canonical_claim_bytes(claim: &NodeOwnershipClaim) -> Result<Vec<u8>, CryptoError> {
     let owner_sign_public_key =
         decode_hex_32("owner_sign_public_key", &claim.owner_sign_public_key)?;

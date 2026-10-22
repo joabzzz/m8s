@@ -2,6 +2,7 @@
 
 pub mod envelope;
 pub mod error;
+pub mod exact_node_signing;
 #[cfg(feature = "host-io")]
 pub mod keychain;
 pub mod keys;
@@ -14,6 +15,7 @@ pub mod node_key;
 pub mod ownership;
 pub mod plugin_delegation;
 pub mod provider;
+pub mod required_node_certificate;
 
 pub use envelope::{OpenedMessage, SignedEncryptedEnvelope, open_message, seal_message};
 pub use error::CryptoError;

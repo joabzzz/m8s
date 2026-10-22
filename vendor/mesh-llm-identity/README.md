@@ -19,9 +19,10 @@ without `host-io`. Enable `host-io` for host-facing binaries and runtime crates
 that need OS keychain access, encrypted keystore files, node key files,
 certificate signing, or trust-store persistence.
 
-## Exact-time signing mechanics (`host-io` only)
+## Exact-time signing mechanics (pure, no `host-io`)
 
-`ownership::exact_request` exposes `ExactNodeSigningRequest::new(node, issued_ms,
+`exact_node_signing` (also importable at the legacy `ownership::exact_request`
+path under `host-io`) exposes `ExactNodeSigningRequest::new(node, issued_ms,
 expires_ms)`, `ExactSigningPolicy::new(max_lifetime_ms, max_issuance_age_ms)`,
 `preflight_exact_node_ownership`, and `sign_node_ownership_exact(owner, request,
 policy)`. Request and policy fields are private, with no deserialization or
@@ -56,3 +57,18 @@ no nonce ledger, remint recovery or deduplication here: invoking twice generates
 fresh independent certificate IDs. Independent caller verification remains needed.
 Tests use explicit test-only limits and fixed synthetic in-memory keys, never
 host signing wrappers, keystores or default paths.
+
+## Required pre-signed certificate verification (pure)
+
+`required_node_certificate::verify_required_node_ownership(cert, actual_node,
+trust_store, now_ms)` is the fail-closed counterpart of `verify_node_ownership`.
+It returns `Err` for absent, malformed, badly signed, tampered, wrong-node,
+expired, not-yet-issued, inverted-window, revoked, unsupported-version and
+non-allowlisted-owner certificates, and `Ok(())` only for a fully verified
+certificate whose owner appears in the caller's explicit trusted-owner list. The
+certificate never approves its own owner. It reuses the single canonical claim
+encoder and performs no IO, key loading or clock reads. A future-issued
+certificate is rejected with no skew tolerance. Hosts opt in with
+`mesh-llm --node-ownership <cert> --node-ownership-required --trust-policy
+allowlist --trust-owner <id>`; the mode is off by default and unrelated to
+`--owner-required`, which demands an owner keystore.
