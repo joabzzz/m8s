@@ -10,7 +10,7 @@ const SCHEMA: &str = "m8s.model-catalog/v1";
 const HELP: &str = "m8s models --catalog ABSOLUTE_CATALOG list [--json]\nm8s models --catalog ABSOLUTE_CATALOG show ID [--json]\nFlags may appear before or after the command/ID, once each. Explicit catalog only. Metadata is not runtime verification, license permission or deployment approval.\n";
 
 #[cfg(unix)]
-pub(super) fn load_catalog(path: &std::path::Path) -> Result<ModelCatalog, ()> {
+pub(super) fn load_bytes(path: &std::path::Path) -> Result<Vec<u8>, ()> {
     use std::{io::Read, os::unix::fs::OpenOptionsExt};
     let file = std::fs::OpenOptions::new()
         .read(true)
@@ -28,12 +28,17 @@ pub(super) fn load_catalog(path: &std::path::Path) -> Result<ModelCatalog, ()> {
     if bytes.len() > CAP {
         return Err(());
     }
-    let text = std::str::from_utf8(&bytes).map_err(|_| ())?;
-    toml::from_str(text).map_err(|_| ())
+    Ok(bytes)
 }
 #[cfg(not(unix))]
-pub(super) fn load_catalog(_: &std::path::Path) -> Result<ModelCatalog, ()> {
+pub(super) fn load_bytes(_: &std::path::Path) -> Result<Vec<u8>, ()> {
     Err(())
+}
+
+pub(super) fn load_catalog(path: &std::path::Path) -> Result<ModelCatalog, ()> {
+    let bytes = load_bytes(path)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| ())?;
+    toml::from_str(text).map_err(|_| ())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

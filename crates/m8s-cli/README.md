@@ -477,3 +477,50 @@ are viewport-limited; opt-in JSON includes all 32 validated tiers. These are two
 check. Failed config read preserves status with config UNKNOWN, not file fallback;
 failed whole refresh marks retained config UNKNOWN with the existing stale banner.
 No files/reload/mutation or TTY initialization for redirected one-shot/JSON use.
+
+## Offline queue replay
+
+```sh
+m8s queue replay --config /absolute/m8s.toml --catalog /absolute/catalog.toml \
+  --tier small --samples /absolute/samples.json \
+  --freshness-seconds 2 --max-gap-seconds 2 --json
+```
+
+All six flags are required once; flag order after `replay` is arbitrary. Seconds
+are positive ASCII decimal integers <= i64MAX. `queue replay --help` needs no files.
+The entire config/catalog is validated with existing default validation limits;
+selected-tier queue thresholds, durations and replica bounds feed the actual core
+queue controller. Missing queue rules or bounds incompatible with its max16 cap
+refuse; freshness/gap are explicit engineering inputs, not approved live policy.
+
+Samples use a strict positional JSON schema (no object/free-text fields):
+
+```json
+["m8s.queue-samples/v1", [
+  [0, 0, "enabled", [0, 2001, 0]],
+  [2, 0, "paused", null]
+]]
+```
+
+Each record is `[now, desired, intent, sample]`; sample is `null` or
+`[observed_at, queue_wait_ms, inflight]`. Intent is exactly `enabled` or `paused`.
+Times are nonnegative integer Unix seconds <= i64MAX; metrics are unsigned u64,
+desired unsigned u32. At most 256 records (at least one), 65536 input bytes;
+explicit regular files only, no final symlink/special-file following on Unix.
+Non-Unix loaders refuse. Unknown/stale samples reset windows, not idle evidence;
+future/replayed timestamps, non-increasing now or invalid desired refuse the
+whole replay. Gap/freshness equality is accepted; strict pressure thresholds,
+sample-time durations and all proposal decisions are the core controller's rules.
+
+Output is deterministic compact JSON or the same projection as pretty JSON,
+bounded to 256KiB and rendered completely before stdout. Includes only safe policy
+fields and indexed proposals/reasons, never raw samples/paths/catalog metadata.
+Any validation error refuses the entire command without partial results. Broken
+stdout returns nonzero; partial output on an output-device failure is possible.
+
+This is **authored counterfactual simulation with no feedback**: each record's
+desired is supplied by the author, NOT changed by prior proposals. There is no
+clock, live metrics reader, daemon/socket/Store access, provider or effect.
+Enabled is not authorization; metrics authenticity, live currentness and readiness
+are not assessed. A future coordinator must enforce durable stop, current desired,
+authorization, clock, claims, rates and budgets atomically before effects.

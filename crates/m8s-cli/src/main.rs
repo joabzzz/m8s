@@ -4,6 +4,7 @@ mod fit;
 mod log_page;
 mod models;
 mod plan;
+mod queue;
 mod secrets;
 use m8s_api::Request;
 const HELP: &str = concat!(
@@ -12,6 +13,7 @@ const HELP: &str = concat!(
     "  models --catalog ABS show ID [--json]    One catalog profile, not runtime verification\n",
     "  models fit --help                       Offline capacity estimate, not a live offer\n",
     "  config validate --help                  Whole configuration intent, not authorization\n",
+    "  queue replay --help                     Offline queue proposals, no effects\n",
     "  plan --help                             Effect-free intent, not authorization\n",
     "  local-demo --help                       Unix, local-development default OFF; synthetic only\n",
     "  local-inspect --help                    Unix, local-development default OFF; historical only\n",
@@ -47,6 +49,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             && (args.len() > 4 || args[3..].iter().any(|a| a != "--json")))
     {
         return log_page::run(&args).map_err(Into::into);
+    }
+    if args.first().is_some_and(|arg| arg == "queue") {
+        return queue::run(&args[1..]).map_err(Into::into);
     }
     if args.first().is_some_and(|arg| arg == "config") {
         return config::run(&args[1..]).map_err(Into::into);
