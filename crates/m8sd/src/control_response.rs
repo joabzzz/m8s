@@ -27,7 +27,11 @@ pub(super) fn frame(response: &Response) -> Vec<u8> {
     }
     // The fixed refusal is much smaller than MAX_FRAME. Never expose any bytes
     // from the failed encoding, nor claim a preceding mutation was rolled back.
-    render(&Response {
+    render(&refusal()).expect("fixed legacy control refusal fits frame")
+}
+
+pub(super) fn refusal() -> Response {
+    Response {
         ok: false,
         mode: "mock-only".into(),
         nodes: vec![],
@@ -37,8 +41,7 @@ pub(super) fn frame(response: &Response) -> Vec<u8> {
             "control response unavailable; outcome uncertain; empty fields are not absence".into(),
         ),
         secure_bootstrap: "unavailable; nodes cannot become Ready".into(),
-    })
-    .expect("fixed legacy control refusal fits frame")
+    }
 }
 
 #[cfg(test)]

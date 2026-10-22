@@ -126,6 +126,7 @@ fn sidecars(path: &Path) -> [PathBuf; 2] {
         PathBuf::from(p)
     })
 }
+#[cfg(test)]
 pub(crate) fn verify_sidecars(path: &Path) -> Result<()> {
     for path in sidecars(path) {
         match fs::symlink_metadata(&path) {
@@ -138,11 +139,13 @@ pub(crate) fn verify_sidecars(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+#[cfg(test)]
 pub(crate) struct PrivateState {
     pub path: PathBuf,
     directory: File,
     database: File,
 }
+#[cfg(test)]
 impl PrivateState {
     pub fn recheck(&self) -> Result<()> {
         validate(&self.directory, true)?;
@@ -155,7 +158,7 @@ impl PrivateState {
         verify_sidecars(&self.path)
     }
 }
-#[cfg(unix)]
+#[cfg(all(test, unix))]
 pub(crate) fn prepare(path: &Path) -> Result<PrivateState> {
     let parent = path
         .parent()
@@ -186,9 +189,458 @@ pub(crate) fn prepare(path: &Path) -> Result<PrivateState> {
     state.recheck()?;
     Ok(state)
 }
-#[cfg(not(unix))]
+#[cfg(all(test, not(unix)))]
 pub(crate) fn prepare(_path: &Path) -> Result<PrivateState> {
     Err(Error::PrivateState)
+}
+
+// These guards coordinate managed Store connections, not arbitrary raw SQLite
+// connections or uncooperative same-UID path replacement. Never close an extra
+// SQLite-inode FD while any associated managed connection is alive.
+pub(crate) use lifetime::{Lease, acquire};
+#[cfg(unix)]
+mod lifetime {
+    use super::*;
+    use std::{
+        collections::BTreeMap,
+        sync::{Mutex, OnceLock},
+    };
+    type Identity = (u64, u64);
+    fn identity(m: &fs::Metadata) -> Identity {
+        (m.dev(), m.ino())
+    }
+    struct Anchor {
+        file: File,
+        id: Identity,
+        #[cfg(test)]
+        closed: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+    }
+    impl Anchor {
+        fn new(file: File, id: Identity) -> Self {
+            Self {
+                file,
+                id,
+                #[cfg(test)]
+                closed: None,
+            }
+        }
+    }
+    #[cfg(test)]
+    impl Drop for Anchor {
+        fn drop(&mut self) {
+            if let Some(closed) = &self.closed {
+                closed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+    }
+    struct Entry {
+        path: PathBuf,
+        directory: File,
+        database: Anchor,
+        sidecars: [Option<Anchor>; 2],
+        leases: usize,
+        refused: bool,
+    }
+    #[derive(Default)]
+    struct Registry {
+        entries: BTreeMap<Identity, Entry>,
+        // A successful open is registered here BEFORE metadata/validation.
+        // Unknown identity/race/poison refuses further opens; keep these until
+        // every managed connection closes rather than guessing which owns it.
+        pending: Vec<File>,
+        refused: bool,
+    }
+    fn registry() -> &'static Mutex<Registry> {
+        static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
+        REGISTRY.get_or_init(|| Mutex::new(Registry::default()))
+    }
+    impl Registry {
+        fn pending_identity(&mut self, expected: Option<Identity>) -> Result<Identity> {
+            let metadata = self.pending.last().ok_or(Error::PrivateState)?.metadata();
+            match metadata {
+                Ok(m) if expected.is_none_or(|id| id == identity(&m)) => Ok(identity(&m)),
+                _ => {
+                    self.refused = true;
+                    Err(Error::PrivateState)
+                }
+            }
+        }
+        fn known_inode(&self, id: Identity) -> bool {
+            self.entries
+                .values()
+                .any(|e| e.database.id == id || e.sidecars.iter().flatten().any(|a| a.id == id))
+        }
+        fn open_pending(&mut self, path: &Path, expected: Identity) -> Result<Identity> {
+            // No validation may drop this FD, even on an ACL/query/path failure.
+            let file = OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+                .open(path)
+                .map_err(|_| Error::PrivateState)?;
+            self.pending.push(file);
+            self.pending_identity(Some(expected))
+        }
+        fn check(&mut self, id: Identity) -> Result<()> {
+            if self.refused || self.entries.get(&id).is_none_or(|e| e.refused) {
+                return Err(Error::PrivateState);
+            }
+            let result = self.check_inner(id);
+            if result.is_err() {
+                self.entries.get_mut(&id).unwrap().refused = true;
+            }
+            result
+        }
+        fn check_inner(&mut self, id: Identity) -> Result<()> {
+            let entry = self.entries.get(&id).ok_or(Error::PrivateState)?;
+            validate(&entry.directory, true)?;
+            same_path(
+                &entry.directory,
+                entry.path.parent().ok_or(Error::PrivateState)?,
+            )?;
+            validate(&entry.database.file, false)?;
+            same_path(&entry.database.file, &entry.path)?;
+            let paths = sidecars(&entry.path);
+            for (index, path) in paths.iter().enumerate() {
+                if let Some(anchor) = &self.entries[&id].sidecars[index] {
+                    validate(&anchor.file, false)?;
+                    same_path(&anchor.file, path)?;
+                    continue;
+                }
+                let meta = match fs::symlink_metadata(path) {
+                    Ok(m) => m,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(_) => return Err(Error::PrivateState),
+                };
+                // Reject aliases BEFORE any extra open; canonical parent aliases
+                // already share the database entry. Cached inode checks also
+                // catch a renamed managed inode without creating a close hazard.
+                let expected = identity(&meta);
+                if !meta.is_file() || meta.nlink() != 1 || self.known_inode(expected) {
+                    return Err(Error::PrivateState);
+                }
+                let actual = self.open_pending(path, expected)?;
+                // A race that reaches another registered inode must not close it.
+                if self.known_inode(actual) {
+                    self.refused = true;
+                    return Err(Error::PrivateState);
+                }
+                let file = self.pending.pop().ok_or(Error::PrivateState)?;
+                self.entries.get_mut(&id).unwrap().sidecars[index] =
+                    Some(Anchor::new(file, actual));
+                let anchor = self.entries[&id].sidecars[index].as_ref().unwrap();
+                validate(&anchor.file, false)?;
+                same_path(&anchor.file, path)?;
+            }
+            Ok(())
+        }
+        fn acquire(&mut self, path: PathBuf, directory: File) -> Result<Identity> {
+            if self.refused {
+                return Err(Error::PrivateState);
+            }
+            if let Some(id) = self
+                .entries
+                .iter()
+                .find_map(|(id, e)| (e.path == path).then_some(*id))
+            {
+                self.check(id)?;
+                let entry = self.entries.get_mut(&id).unwrap();
+                entry.leases = entry.leases.checked_add(1).ok_or(Error::PrivateState)?;
+                return Ok(id);
+            }
+            let meta = match fs::symlink_metadata(&path) {
+                Ok(m) => Some(m),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(_) => return Err(Error::PrivateState),
+            };
+            let id = if let Some(meta) = meta {
+                let expected = identity(&meta);
+                if !meta.is_file() || meta.nlink() != 1 || self.known_inode(expected) {
+                    return Err(Error::PrivateState);
+                }
+                self.open_pending(&path, expected)?
+            } else {
+                let file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+                    .open(&path)
+                    .map_err(|_| Error::PrivateState)?;
+                self.pending.push(file);
+                self.pending_identity(None)?
+            };
+            if self.known_inode(id) {
+                self.refused = true;
+                return Err(Error::PrivateState);
+            }
+            let file = self.pending.pop().ok_or(Error::PrivateState)?;
+            self.entries.insert(
+                id,
+                Entry {
+                    path,
+                    directory,
+                    database: Anchor::new(file, id),
+                    sidecars: [None, None],
+                    leases: 0,
+                    refused: false,
+                },
+            );
+            self.check(id)?;
+            self.entries.get_mut(&id).unwrap().leases = 1;
+            Ok(id)
+        }
+        fn close_unused(&mut self) {
+            // Called under the SAME mutex as acquire: last close cannot race a
+            // new connection open. An unknown pending FD pins every entry until
+            // the last connection, because its identity cannot safely be guessed.
+            if !self.pending.is_empty() && self.entries.values().any(|e| e.leases > 0) {
+                return;
+            }
+            self.entries.retain(|_, e| e.leases > 0);
+            if self.entries.is_empty() {
+                self.pending.clear();
+                self.refused = false;
+            }
+        }
+    }
+    pub(crate) struct Lease {
+        pub path: PathBuf,
+        id: Identity,
+    }
+    impl Lease {
+        pub fn recheck(&self) -> Result<()> {
+            let mut guards = registry().lock().map_err(|_| Error::PrivateState)?;
+            guards.check(self.id)
+        }
+    }
+    fn release(registry: &Mutex<Registry>, id: Identity) {
+        // Recover ownership only to drain already-closed connections. Poisoned
+        // mutexes still refuse every acquire/recheck; never panic in Drop.
+        let mut guards = match registry.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        if let Some(entry) = guards.entries.get_mut(&id) {
+            entry.leases = entry.leases.saturating_sub(1);
+        }
+        guards.close_unused();
+    }
+    impl Drop for Lease {
+        fn drop(&mut self) {
+            release(registry(), self.id);
+        }
+    }
+    pub(crate) fn acquire(path: &Path) -> Result<Lease> {
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .ok_or(Error::PrivateState)?;
+        let directory = open_checked(parent, true)?;
+        let parent = fs::canonicalize(parent).map_err(|_| Error::PrivateState)?;
+        same_path(&directory, &parent)?;
+        let path = parent.join(path.file_name().ok_or(Error::PrivateState)?);
+        let mut guards = registry().lock().map_err(|_| Error::PrivateState)?;
+        let result = guards.acquire(path.clone(), directory);
+        guards.close_unused();
+        result.map(|id| Lease { path, id })
+    }
+    #[cfg(test)]
+    mod lifecycle_tests {
+        use super::*;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        struct Fixture(PathBuf);
+        impl Fixture {
+            fn new() -> Self {
+                use std::os::unix::fs::DirBuilderExt;
+                let path = std::env::temp_dir().join(format!(
+                    "m8lease-{}-{}",
+                    std::process::id(),
+                    NEXT.fetch_add(1, Ordering::Relaxed)
+                ));
+                fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+                Self(path)
+            }
+            fn acquire(&self, g: &mut Registry) -> Identity {
+                g.acquire(
+                    self.0.join("state.db"),
+                    open_checked(&self.0, true).unwrap(),
+                )
+                .unwrap()
+            }
+        }
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        #[test]
+        fn failed_discovered_anchor_is_retained_before_validation_and_poisoned() {
+            let f = Fixture::new();
+            let mut g = Registry::default();
+            let id = f.acquire(&mut g);
+            let wal = sidecars(&f.0.join("state.db"))[0].clone();
+            drop(
+                OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o640)
+                    .open(&wal)
+                    .unwrap(),
+            );
+            assert!(g.check(id).is_err());
+            let closed = Arc::new(AtomicUsize::new(0));
+            g.entries.get_mut(&id).unwrap().sidecars[0]
+                .as_mut()
+                .unwrap()
+                .closed = Some(closed.clone());
+            let anchor = g.entries[&id].sidecars[0].as_ref().unwrap().id;
+            assert!(g.entries[&id].refused);
+            assert!(g.check(id).is_err());
+            assert_eq!(g.entries[&id].sidecars[0].as_ref().unwrap().id, anchor);
+            assert!(g.pending.is_empty());
+            g.close_unused();
+            assert_eq!(closed.load(Ordering::SeqCst), 0);
+            g.entries.get_mut(&id).unwrap().leases = 0;
+            g.close_unused();
+            assert_eq!(closed.load(Ordering::SeqCst), 1);
+            assert!(g.entries.is_empty());
+        }
+        #[test]
+        fn last_anchor_close_is_serialized_against_next_acquire() {
+            let f = Fixture::new();
+            let g = Arc::new(Mutex::new(Registry::default()));
+            let mut guard = g.lock().unwrap();
+            let id = f.acquire(&mut guard);
+            let closed = Arc::new(AtomicUsize::new(0));
+            guard.entries.get_mut(&id).unwrap().database.closed = Some(closed.clone());
+            guard.entries.get_mut(&id).unwrap().leases = 0;
+            guard.close_unused();
+            assert_eq!(closed.load(Ordering::SeqCst), 1);
+            let contender = g.clone();
+            // try_lock is bounded: even AFTER actual anchor Drop, acquire is
+            // excluded until this same last-close guard is released.
+            assert!(
+                std::thread::spawn(move || matches!(
+                    contender.try_lock(),
+                    Err(std::sync::TryLockError::WouldBlock)
+                ))
+                .join()
+                .unwrap()
+            );
+            drop(guard);
+            let mut guard = g.lock().unwrap();
+            let new = f.acquire(&mut guard);
+            assert_eq!(guard.entries[&new].leases, 1);
+        }
+        #[test]
+        fn poison_and_unknown_pending_fd_do_not_destroy_live_anchors() {
+            let f = Fixture::new();
+            let g = Arc::new(Mutex::new(Registry::default()));
+            let closed = Arc::new(AtomicUsize::new(0));
+            let id = {
+                let mut guard = g.lock().unwrap();
+                let id = f.acquire(&mut guard);
+                let entry = guard.entries.get_mut(&id).unwrap();
+                entry.leases = 2;
+                entry.database.closed = Some(closed.clone());
+                guard
+                    .pending
+                    .push(File::open(f.0.join("state.db")).unwrap());
+                assert!(guard.pending_identity(Some((0, 0))).is_err());
+                assert!(guard.refused);
+                id
+            };
+            let poisoned = g.clone();
+            assert!(
+                std::thread::spawn(move || {
+                    let _guard = poisoned.lock().unwrap();
+                    panic!("synthetic registry unwind");
+                })
+                .join()
+                .is_err()
+            );
+            assert!(g.lock().is_err());
+            release(&g, id);
+            assert_eq!(closed.load(Ordering::SeqCst), 0);
+            assert_eq!(g.lock().unwrap_or_else(|e| e.into_inner()).pending.len(), 1);
+            release(&g, id);
+            assert_eq!(closed.load(Ordering::SeqCst), 1);
+            let guard = g.lock().unwrap_or_else(|e| e.into_inner());
+            assert!(guard.entries.is_empty() && guard.pending.is_empty());
+            drop(guard);
+            assert!(g.lock().is_err()); // No silent poison recovery/public reopen.
+        }
+        #[test]
+        fn hardlinks_and_live_sidecar_replacement_refuse_until_last_close() {
+            let f = Fixture::new();
+            let mut g = Registry::default();
+            let id = f.acquire(&mut g);
+            fs::hard_link(f.0.join("state.db"), f.0.join("alias.db")).unwrap();
+            assert!(
+                g.acquire(f.0.join("alias.db"), open_checked(&f.0, true).unwrap())
+                    .is_err()
+            );
+            assert_eq!(g.entries.len(), 1);
+            assert!(g.pending.is_empty());
+            // New independent fixture for the live sidecar generation check.
+            let other = Fixture::new();
+            let id2 = other.acquire(&mut g);
+            let wal = sidecars(&other.0.join("state.db"))[0].clone();
+            drop(
+                OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&wal)
+                    .unwrap(),
+            );
+            g.check(id2).unwrap();
+            let old = g.entries[&id2].sidecars[0].as_ref().unwrap().id;
+            fs::rename(&wal, wal.with_extension("old")).unwrap();
+            drop(
+                OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&wal)
+                    .unwrap(),
+            );
+            assert!(g.check(id2).is_err());
+            assert_eq!(g.entries[&id2].sidecars[0].as_ref().unwrap().id, old);
+            assert!(
+                g.acquire(
+                    other.0.join("state.db"),
+                    open_checked(&other.0, true).unwrap()
+                )
+                .is_err()
+            );
+            g.entries.get_mut(&id2).unwrap().leases = 0;
+            g.close_unused();
+            let next = other.acquire(&mut g);
+            assert_ne!(g.entries[&next].sidecars[0].as_ref().unwrap().id, old);
+            assert_eq!(g.entries[&id].leases, 1);
+        }
+    }
+}
+#[cfg(not(unix))]
+mod lifetime {
+    use super::*;
+    pub(crate) struct Lease {
+        pub path: PathBuf,
+    }
+    impl Lease {
+        pub fn recheck(&self) -> Result<()> {
+            Err(Error::PrivateState)
+        }
+    }
+    pub(crate) fn acquire(_: &Path) -> Result<Lease> {
+        Err(Error::PrivateState)
+    }
 }
 
 #[cfg(test)]

@@ -34,6 +34,8 @@ struct StoreOrigin;
 pub struct Store {
     origin: std::sync::Arc<StoreOrigin>,
     conn: Connection,
+    // Field order is significant: SQLite closes before the validation lease.
+    _private: Option<private::Lease>,
     owner: String,
 }
 // Exact existing mock launch gate, shared by managed LOCAL preparation. Read
@@ -59,7 +61,7 @@ impl Store {
         if owner.is_empty() {
             return Err(Error::Invalid);
         }
-        let private = private::prepare(path.as_ref())?;
+        let private = private::acquire(path.as_ref())?;
         let path = &private.path;
         let mut conn = Connection::open_with_flags(
             path,
@@ -94,10 +96,15 @@ impl Store {
         nonce::initialize(&conn)?;
         budget::initialize(&conn)?;
         operation::initialize(&conn)?;
+        // Allocate before moving either lifetime-sensitive local into Self.
+        // On every earlier error/unwind, conn (declared later) drops first.
+        let origin = std::sync::Arc::new(StoreOrigin);
+        let owner = owner.to_owned();
         Ok(Self {
-            origin: std::sync::Arc::new(StoreOrigin),
+            origin,
             conn,
-            owner: owner.into(),
+            _private: Some(private),
+            owner,
         })
     }
 
@@ -419,6 +426,8 @@ pub mod budget;
 pub mod nonce;
 pub mod operation;
 
+mod control_snapshot;
+pub use control_snapshot::ControlSnapshot;
 mod diagnostics;
 mod manual;
 mod private;

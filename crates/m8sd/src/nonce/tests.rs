@@ -160,6 +160,7 @@ fn wrong_owner_uid_and_rebound_instance_are_refused() {
     let rogue = Store {
         origin: std::sync::Arc::new(crate::StoreOrigin),
         conn: Connection::open(&path).unwrap(),
+        _private: None,
         owner: "other".into(),
     };
     assert!(consume(&rogue, &NONCE, &b, 101).is_err());

@@ -898,7 +898,35 @@ Legacy responses are fully encoded into a bounded buffer before the socket write
 MAX_FRAME (64 KiB) includes the final newline. Fitting responses keep their exact
 JSON field order/bytes; encoding/cap failures instead send a fixed refusal whose
 empty fields are explicitly not absence and whose outcome is uncertain. This
-bounds encoding/output only: Store snapshot queries still collect rows first.
+encoder alone bounds encoding/output, not snapshot collection (separately bounded
+for legacy control below).
 It is not atomic socket delivery; failed/partial output may follow committed
 intent. No retry/rollback is performed, and confirmed shutdown still exits after
 the write attempt, including when only a fallback refusal can be encoded.
+
+Legacy control now collects `Store::control_snapshot()` in one DEFERRED read
+transaction: at most 256 nodes and 256 tiers (overflow refuses, never truncates),
+plus the existing latest-200 event window in ascending sequence order. Borrowed
+SQLite values are type/UTF-8/byte-bound checked before cloning: tier IDs <=64
+Store-compatible ASCII, desired <=16, node UID 1..256, owner/optional instance ID
+<=256, encoded phase <=32 with a known stored enum, event messages <=4096.
+All known phases remain stored metadata, not Ready/runtime evidence. Existing
+`nodes`/`tiers`/`logs` and reconciliation semantics remain unchanged/unbounded.
+This bounds Rust control collections and encoding, not SQLite engine work/memory,
+SQL scheduling or global currentness. Any snapshot failure returns a fixed
+uncertainty refusal and keeps the daemon running; empty fields are not absence.
+A request may already have committed before observation fails. Shutdown snapshot
+failure still refuses exit; no automatic reset, repair, retry or provider action.
+
+Managed Store connections share inode-scoped validation-anchor leases within the
+process. Extra database/WAL/SHM validation descriptors remain owned until the last
+associated SQLite connection closes; last-anchor close and the next acquire use
+the same registry mutex. SQLite initialization/busy waits never hold that mutex.
+Rechecks borrow retained anchors; canonical parent aliases share the same lease.
+Hardlinks, live replacement and unsafe metadata refuse rather than closing and
+reopening SQLite inodes. Failed opens and
+unwinds retain the same lifetime ordering; an unidentified descriptor or poisoned
+registry fails closed. No ACL/mode/nofollow/identity checks are relaxed or repaired.
+This coordinates **managed Store** connections only, not arbitrary raw SQLite
+connections in the same process or hostile same-UID replacement. It adds no
+cross-process authentication or new execution/permission authority.

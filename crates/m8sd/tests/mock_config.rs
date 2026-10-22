@@ -925,3 +925,128 @@ fn tier_explanation_is_stored_snapshot_with_active_policy_context_only() {
     assert!(f.call(Request::Shutdown {}).ok);
     assert!(legacy.wait().success());
 }
+
+#[test]
+fn bounded_control_snapshot_overflow_refuses_request_but_daemon_and_stop_remain_available() {
+    if snapshot_reader_child() {
+        return;
+    }
+    let f = Fixture::new();
+    let mut d = f.start(false);
+    assert!(f.call(up("active")).ok);
+    wait_for_mock_nodes(&f);
+    // Restore the ORIGINAL live external Store open/drop, not a pinned observer.
+    let writer = m8sd::Store::open(f.state().join("state.db"), OWNER).unwrap();
+    for i in 0..256 {
+        writer.scale(&format!("tier{i:03}"), 0).unwrap();
+    }
+    drop(writer);
+    let refused = f.call(Request::Status {});
+    assert!(!refused.ok);
+    assert!(refused.nodes.is_empty() && refused.tiers.is_empty() && refused.events.is_empty());
+    assert_eq!(
+        refused.error.as_deref(),
+        Some("control response unavailable; outcome uncertain; empty fields are not absence")
+    );
+    let socket = f.state().join("control.sock");
+    let config = m8s_api::call_config_status(&socket).unwrap();
+    assert!(config.ok && !config.configured);
+    assert!(!f.call(Request::Down {}).ok);
+    assert!(d.child().try_wait().unwrap().is_none());
+    assert_eq!(fresh_snapshot_counts(&f, "down").0, 0);
+    let fresh = m8sd::Store::open(f.state().join("state.db"), OWNER).unwrap();
+    let tiers = fresh.tiers().unwrap();
+    assert_eq!(tiers.len(), 257);
+    assert!(tiers.iter().all(|(_, n)| *n == 0));
+    drop(fresh);
+    assert!(!f.call(Request::Shutdown {}).ok);
+    assert!(d.child().try_wait().unwrap().is_none());
+    assert!(m8s_api::call_config_status(&socket).unwrap().ok);
+    assert_eq!(fresh_snapshot_counts(&f, "shutdown"), (0, 0));
+    d.stop();
+    let reopened = m8sd::Store::open(f.state().join("state.db"), OWNER).unwrap();
+    assert!(reopened.nodes().unwrap().is_empty());
+    let tiers = reopened.tiers().unwrap();
+    assert_eq!(tiers.len(), 257);
+    assert!(tiers.iter().all(|(_, n)| *n == 0));
+}
+
+// Test-only separate-process raw reader. The same real test dispatches this
+// branch only when its parent supplies its own explicit fresh fixture path.
+fn snapshot_reader_child() -> bool {
+    let Some(path) = std::env::var_os("M8S_TEST_SNAPSHOT_DB") else {
+        return false;
+    };
+    let conn = rusqlite::Connection::open_with_flags(
+        PathBuf::from(path),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+    )
+    .unwrap();
+    conn.busy_timeout(Duration::from_secs(2)).unwrap();
+    let desired: i64 = conn
+        .query_row("SELECT coalesce(sum(desired),0) FROM tier", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let nodes: i64 = conn
+        .query_row("SELECT count(*) FROM gpu_node", [], |r| r.get(0))
+        .unwrap();
+    println!("SNAPSHOT_COUNTS={desired},{nodes}");
+    true
+}
+fn fresh_snapshot_counts(f: &Fixture, label: &str) -> (i64, i64) {
+    use std::io::Read;
+    let capture = f.root.join(format!("reader-{label}"));
+    let out = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&capture)
+        .unwrap();
+    let mut child=Daemon(Some(Command::new(std::env::current_exe().unwrap())
+        .args(["--exact","bounded_control_snapshot_overflow_refuses_request_but_daemon_and_stop_remain_available","--test-threads=1","--nocapture"])
+        .env_clear().env("M8S_TEST_SNAPSHOT_DB",f.state().join("state.db"))
+        .stdin(Stdio::null()).stdout(out).stderr(Stdio::null()).spawn().unwrap()));
+    assert!(child.wait().success());
+    let mut text = String::new();
+    fs::File::open(capture)
+        .unwrap()
+        .take(4096)
+        .read_to_string(&mut text)
+        .unwrap();
+    assert!(text.len() < 4096);
+    let counts = text
+        .lines()
+        .find_map(|s| s.split_once("SNAPSHOT_COUNTS=").map(|(_, n)| n))
+        .unwrap();
+    let (desired, nodes) = counts.split_once(',').unwrap();
+    (desired.parse().unwrap(), nodes.parse().unwrap())
+}
+
+#[test]
+fn managed_validation_leases_share_aliases_and_survive_failed_and_overlapping_opens() {
+    let f = Fixture::new();
+    fs::DirBuilder::new().mode(0o700).create(f.state()).unwrap();
+    let db = f.state().join("state.db");
+    let first = m8sd::Store::open(&db, OWNER).unwrap();
+    first.scale("active", 1).unwrap();
+    let alias = PathBuf::from("/tmp")
+        .join(f.root.file_name().unwrap())
+        .join("state/state.db");
+    let second = m8sd::Store::open(&alias, OWNER).unwrap();
+    assert!(m8sd::Store::open(&db, "different-owner").is_err());
+    assert!(
+        std::panic::catch_unwind(|| {
+            let _unwinding = m8sd::Store::open(&db, OWNER).unwrap();
+            panic!("synthetic constructor-owner unwind");
+        })
+        .is_err()
+    );
+    drop(first);
+    second.scale("active", 0).unwrap();
+    assert_eq!(fresh_snapshot_counts(&f, "overlap"), (0, 0));
+    drop(second);
+    let reopened = m8sd::Store::open(&db, OWNER).unwrap();
+    reopened.scale("active", 1).unwrap();
+    assert_eq!(fresh_snapshot_counts(&f, "new-generation"), (1, 0));
+    drop(reopened);
+}

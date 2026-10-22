@@ -325,12 +325,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
                 let snapshot = (|| -> m8sd::Result<Response> {
+                    let snapshot = store.control_snapshot()?;
                     Ok(Response {
                         ok: result.is_ok(),
                         mode: "mock-only".into(),
-                        nodes: store.nodes()?,
-                        tiers: store.tiers()?,
-                        events: store.logs()?,
+                        nodes: snapshot.nodes,
+                        tiers: snapshot.tiers,
+                        events: snapshot.events,
                         error: result.err().map(|_| "control request refused".into()),
                         secure_bootstrap: "unavailable; nodes cannot become Ready".into(),
                     })
@@ -357,7 +358,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             secure_bootstrap: "unavailable; nodes cannot become Ready".into(),
                         }
                     }
-                    Err(error) => return Err(error.into()),
+                    Err(_) => control_response::refusal(),
                 };
                 // Shutdown is already durable/confirmed. A disconnected client
                 // cannot undo it; all other request disconnect behavior is unchanged.
