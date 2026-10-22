@@ -98,6 +98,19 @@ impl Config {
     ) -> Result<Self> {
         Self::parse(&read_bounded(path)?, catalog, limits)
     }
+    /// Reads both explicit inputs through the same bounded regular-file loader,
+    /// then performs the existing whole-configuration/catalog validation. This
+    /// is metadata/intent validation, not source/license/runtime or spend approval.
+    pub fn from_paths(
+        config_path: &Path,
+        catalog_path: &Path,
+        limits: &ValidationLimits,
+    ) -> Result<Self> {
+        let bytes = read_bounded(catalog_path).map_err(|_| Error::Catalog)?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| Error::Catalog)?;
+        let catalog: ModelCatalog = toml::from_str(text).map_err(|_| Error::Catalog)?;
+        Self::from_path(config_path, &catalog, limits)
+    }
     pub fn to_toml(&self) -> Result<String> {
         let output = toml::to_string(&self.document).map_err(|_| Error::Invalid)?;
         if output.len() > MAX_BYTES {

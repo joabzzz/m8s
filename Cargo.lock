@@ -2054,6 +2054,7 @@ dependencies = [
  "libc",
  "m8s-api",
  "m8s-bootstrap",
+ "m8s-config",
  "m8s-core",
  "m8s-provider",
  "m8s-provider-local",

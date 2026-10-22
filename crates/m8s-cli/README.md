@@ -367,3 +367,27 @@ offer are omitted. JSON/text failures use fixed categories:
 Whole-argv non-UTF8 still fails generically without JSON. Broken output is nonzero
 and may leave partial bytes. Loader ancestor/concurrent-edit/platform boundaries
 are identical to catalog browsing; no security/default expansion is implied.
+
+## Apply tier intent to the opt-in MOCK daemon
+
+After `config validate`, the daemon can enforce configured membership/replica
+bounds without deploying models or selecting a real provider:
+
+```sh
+m8sd /private/tmp/my-private-mock-state synthetic-mock-owner --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml
+# Separate terminal:
+m8s --socket /private/tmp/my-private-mock-state/control.sock up small
+m8s --socket /private/tmp/my-private-mock-state/control.sock scale small 2
+m8s --socket /private/tmp/my-private-mock-state/control.sock status --json
+m8s --socket /private/tmp/my-private-mock-state/control.sock down
+```
+
+Use your own private state path. Up selects max(1,min); positive scale must be
+within configured bounds; known-tier scale0/down remain explicit stops even when
+min>0. No startup scale is inferred. Desired state survives restart; an incompatible
+new configuration refuses without clamping/resetting state or replacing the old
+socket/opening Mock. Configuration is a startup snapshot, not live reload. See
+[daemon boundaries](../m8sd/README.md#opt-in-configuration-backed-mock-control),
+including disabled tiers, Store-compatible IDs and existing initialization rules.
+The provider remains hardwired Mock, mode mock-only, bootstrap unavailable: no
+Ready/model execution, scheduling, approval, live budget or security proof.

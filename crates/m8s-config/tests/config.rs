@@ -455,3 +455,38 @@ fn supplied_fifo_is_refused_without_blocking_open() {
         Err(Error::UnsafePath)
     ));
 }
+
+#[test]
+fn paired_explicit_paths_reuse_bounded_loaders_and_full_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    let catalog_path = dir.path().join("catalog.toml");
+    std::fs::write(&config_path, MINIMAL).unwrap();
+    std::fs::write(&catalog_path, toml::to_string(&catalog()).unwrap()).unwrap();
+    let limits = ValidationLimits::default();
+    let loaded = Config::from_paths(&config_path, &catalog_path, &limits).unwrap();
+    assert!(loaded == parse(MINIMAL).unwrap());
+    let before = std::fs::read(&config_path).unwrap();
+    let mut invalid = catalog();
+    invalid.models[1].weights_bytes = 0;
+    std::fs::write(&catalog_path, toml::to_string(&invalid).unwrap()).unwrap();
+    assert!(matches!(
+        Config::from_paths(&config_path, &catalog_path, &limits),
+        Err(Error::Catalog)
+    ));
+    std::fs::write(&catalog_path, vec![b'x'; MAX_BYTES + 1]).unwrap();
+    assert!(matches!(
+        Config::from_paths(&config_path, &catalog_path, &limits),
+        Err(Error::Catalog)
+    ));
+    #[cfg(unix)]
+    {
+        let link = dir.path().join("catalog-link");
+        std::os::unix::fs::symlink(&catalog_path, &link).unwrap();
+        assert!(matches!(
+            Config::from_paths(&config_path, &link, &limits),
+            Err(Error::Catalog)
+        ));
+    }
+    assert_eq!(std::fs::read(config_path).unwrap(), before);
+}

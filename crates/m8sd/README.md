@@ -683,3 +683,59 @@ generic/cloud operation manager, paid provider or approval route. Public lower-
 level prepare and mock reserve retain their previous behavior via private shared
 transaction/rate helpers. Local cleanup still cannot erase Store history, settle
 unknown bills, refund or authorize another create.
+
+## Opt-in configuration-backed MOCK control
+
+```sh
+m8sd /private/tmp/my-private-mock-state synthetic-mock-owner --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml
+# In another terminal, using only the local mock control socket:
+m8s --socket /private/tmp/my-private-mock-state/control.sock up small
+m8s --socket /private/tmp/my-private-mock-state/control.sock scale small 2
+m8s --socket /private/tmp/my-private-mock-state/control.sock status --json
+m8s --socket /private/tmp/my-private-mock-state/control.sock down
+```
+
+Choose your own private state path and replace the absolute checkout paths.
+`m8sd <private-state-dir> [nonsecret-owner-label]` without flags retains legacy
+mock behavior/default owner. To opt in, supply `--config ABS --catalog ABS` once
+**together**, after the state directory (owner/flags may otherwise be reordered).
+No defaults, file/env discovery, provider selection or live reload. Unknown,
+duplicate, partial, relative-input-path and non-UTF8 arguments fail opaquely.
+The whole config and catalog use existing bounded regular-file, final-component
+no-follow/nonblocking 65536-byte loaders and actual default ValidationLimits.
+Whole-input validation and configured-ID/bound representability checks finish
+before any state directory, lock, socket, Store or Mock-provider effects.
+
+Configured tier membership and replica limits are an immutable startup snapshot:
+- `up TIER` selects `max(1, configured_min)` and refuses if above configured max.
+- Positive `scale TIER N` requires a known tier and `min <= N <= max`, within
+  Store's existing cap16. Unknown tiers cannot create durable desired rows.
+- Explicit `scale TIER 0` is always allowed for a **known** tier, even with a
+  positive minimum. `down` always remains the emergency stop for every tier.
+- A max0/min0 tier is disabled: up/positive scale refuse, zero/down are allowed.
+  Empty configurations are invalid. Config IDs containing dots (valid in the
+  general config schema but unsupported by Store), or limits beyond Store's cap,
+  refuse the whole startup before filesystem effects; nothing is rewritten.
+- No configured tiers are automatically inserted or scaled at startup. Existing
+  desired values persist and still drive the ordinary hardwired Mock reconcile.
+
+Restart with the same state/owner and compatible configuration to retain desired
+values. Before opening Mock, reconciling or replacing a stale control socket,
+configured startup reads persisted `Store::tiers`: any unknown retained tier
+(including desired0), or a positive desired count outside current limits, refuses
+startup and retains state. No clamp, down, reset, repair, tier/node/history rewrite
+or config-driven migration is performed. Supply a compatible configuration; do
+not erase state to evade a refusal. Normal Store initialization/existing migrations
+still apply: this is not immutable database inspection or a migration bypass.
+The configuration handling itself only reads startup desired state; node/attempt/
+history transitions remain the existing Store/reconcile behavior.
+
+This is **MOCK-ONLY control intent**, not a model deployment or provider policy/
+budget approval mechanism. Response.mode stays `mock-only`, secure bootstrap
+unavailable, and nodes cannot become Ready. Even configured Vast preferences,
+models, schedules, DMS and budgets do not select a provider, execute a model,
+start scheduling or establish live all-in accounting/security qualification.
+Mock stays hardwired; no Local/paid provider, iroh listener, credentials, download,
+new socket protocol or automatic startup scaling/reload is introduced. Existing
+filesystem/lock/trusted-ancestor assumptions are unchanged, not strengthened into
+protection against uncooperative same-UID processes by this feature.

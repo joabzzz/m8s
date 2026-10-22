@@ -9,6 +9,7 @@ default = []
 local-development = ["dep:m8s-provider-local"]
 
 [dependencies]
+m8s-config = { path = "../m8s-config" }
 m8s-provider-local = { path = "../m8s-provider-local", optional = true }
 m8s-core.workspace = true
 m8s-provider.workspace = true

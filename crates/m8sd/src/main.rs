@@ -1,3 +1,4 @@
+mod mock_config;
 use fs2::FileExt;
 use m8s_api::{Request, Response};
 use m8s_provider::Mock;
@@ -9,7 +10,6 @@ use std::{
         fs::{FileTypeExt, PermissionsExt},
         net::UnixListener,
     },
-    path::PathBuf,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 fn now() -> i64 {
@@ -20,15 +20,12 @@ fn now() -> i64 {
         .min(i64::MAX as u64) as i64
 }
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
-    let dir = PathBuf::from(
-        args.next()
-            .ok_or("usage: m8sd <private-state-directory> [owner-label]; mock only")?,
-    );
-    let owner = args.next().unwrap_or_else(|| "local-mock-owner".into());
-    if args.next().is_some() {
-        return Err("too many arguments".into());
-    }
+    let options = mock_config::Options::parse(std::env::args_os().skip(1).collect())?;
+    // Whole config/catalog validation and Store compatibility constraints precede
+    // all state, lock, socket and provider effects. Snapshot is immutable here.
+    let policy = options.policy()?;
+    let dir = options.dir;
+    let owner = options.owner;
     match fs::symlink_metadata(&dir) {
         Ok(m)
             if !m.is_dir() || m.file_type().is_symlink() || m.permissions().mode() & 0o077 != 0 =>
@@ -50,6 +47,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .open(dir.join("daemon.lock"))?;
     lock.try_lock_exclusive()
         .map_err(|_| "another daemon owns this state directory")?;
+    // Configured reopen checks persisted desired before provider opening,
+    // reconciliation or even replacing the old socket. No clamp/reset/repair.
+    let configured_store = if let Some(policy) = &policy {
+        let store = Store::open(dir.join("state.db"), &owner)
+            .map_err(|_| "configured mock state unavailable; state retained")?;
+        let tiers = store
+            .tiers()
+            .map_err(|_| "configured mock state unavailable; state retained")?;
+        policy.persisted(&tiers)?;
+        Some(store)
+    } else {
+        None
+    };
     let socket = dir.join("control.sock");
     if let Ok(meta) = fs::symlink_metadata(&socket) {
         if !meta.file_type().is_socket() {
@@ -60,7 +70,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listener = UnixListener::bind(&socket)?;
     fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
     listener.set_nonblocking(true)?;
-    let mut store = Store::open(dir.join("state.db"), &owner)?;
+    let mut store = match configured_store {
+        Some(store) => store,
+        None => Store::open(dir.join("state.db"), &owner)?,
+    };
     let mut provider = Mock::persistent(dir.join("mock-provider.json"))?;
     let mut last = Instant::now() - Duration::from_secs(30);
     eprintln!(
@@ -95,8 +108,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
                     let frame = m8s_api::read_frame(&mut stream)?;
                     match serde_json::from_slice::<Request>(&frame)? {
-                        Request::Up { tier } => store.scale(&tier, 1)?,
-                        Request::Scale { tier, replicas } => store.scale(&tier, replicas)?,
+                        Request::Up { tier } => {
+                            let replicas = policy.as_ref().map_or(Ok(1), |p| p.up(&tier))?;
+                            store.scale(&tier, replicas)?;
+                        }
+                        Request::Scale { tier, replicas } => {
+                            let replicas = policy
+                                .as_ref()
+                                .map_or(Ok(replicas), |p| p.scale(&tier, replicas))?;
+                            store.scale(&tier, replicas)?;
+                        }
                         Request::Down {} => store.down()?,
                         Request::Status {} | Request::Logs {} => {}
                     }
