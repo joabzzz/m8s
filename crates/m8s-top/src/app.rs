@@ -45,6 +45,7 @@ pub struct Options {
     socket: PathBuf,
     json: bool,
     once: bool,
+    show_config: bool,
     timeout: Duration,
 }
 impl Options {
@@ -55,6 +56,7 @@ impl Options {
         let mut socket = None;
         let mut json = false;
         let mut once = false;
+        let mut show_config = false;
         let mut timeout = Duration::from_secs(1);
         while let Some(arg) = args.next() {
             match arg.to_str() {
@@ -63,6 +65,7 @@ impl Options {
                 }
                 Some("--json") if !json => json = true,
                 Some("--once") if !once => once = true,
+                Some("--show-config") if !show_config => show_config = true,
                 Some("--timeout-ms") => {
                     let millis = args
                         .next()
@@ -82,6 +85,7 @@ impl Options {
             socket: socket.ok_or("missing --socket PATH")?,
             json,
             once,
+            show_config,
             timeout,
         })
     }
@@ -94,8 +98,15 @@ impl Options {
 /// best-effort RAII, not restoration of arbitrary prior signal dispositions.
 pub fn run(options: Options) -> Result<(), String> {
     let client = StatusClient::new(options.timeout).map_err(|e| e.to_string())?;
+    let read = || {
+        if options.show_config {
+            client.status_with_config(&options.socket)
+        } else {
+            client.status(&options.socket)
+        }
+    };
     if options.json || options.once || !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        let snapshot = client.status(&options.socket).map_err(|e| e.to_string())?;
+        let snapshot = read().map_err(|e| e.to_string())?;
         if options.json {
             println!(
                 "{}",
@@ -131,7 +142,7 @@ pub fn run(options: Options) -> Result<(), String> {
             break;
         }
         if Instant::now() >= refresh {
-            dashboard.update(client.status(&options.socket));
+            dashboard.update(read());
             refresh = Instant::now() + Duration::from_secs(1);
         }
         if signals.requested.load(Ordering::Relaxed) {
@@ -212,5 +223,21 @@ mod tests {
         let options = Options::parse(&["--socket".into(), bytes.clone()]).unwrap();
         assert_eq!(options.socket.as_os_str(), bytes);
         assert!(Options::parse(&["--socket".into(), "x".into(), bytes]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod config_option_tests {
+    use super::*;
+    #[test]
+    fn config_flag_is_explicit_effectfree_and_not_repeatable() {
+        let args: Vec<_> = ["--socket", "/synthetic/missing", "--show-config", "--json"]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        assert!(Options::parse(&args).unwrap().show_config);
+        let mut duplicate = args;
+        duplicate.push("--show-config".into());
+        assert!(Options::parse(&duplicate).is_err());
     }
 }

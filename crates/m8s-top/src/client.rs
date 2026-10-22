@@ -2,9 +2,11 @@
 use crate::{NodeStatus, StatusSnapshot, display_text};
 use m8s_api::{MAX_FRAME, Request};
 use m8s_core::{Phase, Timestamp};
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use serde::{Deserialize, Deserializer};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::io::{self, Read, Write};
+use std::os::fd::AsFd;
 use std::os::unix::{
     fs::{FileTypeExt, MetadataExt},
     net::UnixStream,
@@ -12,10 +14,80 @@ use std::os::unix::{
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
+/// Fixed provenance only: never stores paths, addresses or an io::Error payload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IoStage {
+    WorkingDirectory,
+    PathMetadata,
+    SocketCreate,
+    Address,
+    Connect,
+    Nonblocking,
+    Poll,
+    WriteOption,
+    Write,
+    ReadOption,
+    Read,
+}
+impl IoStage {
+    fn label(self) -> &'static str {
+        match self {
+            Self::WorkingDirectory => "working-directory",
+            Self::PathMetadata => "path-metadata",
+            Self::SocketCreate => "socket-create",
+            Self::Address => "address",
+            Self::Connect => "connect",
+            Self::Nonblocking => "nonblocking",
+            Self::Poll => "poll",
+            Self::WriteOption => "write-option",
+            Self::Write => "write",
+            Self::ReadOption => "read-option",
+            Self::Read => "read",
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IoKind {
+    NotFound,
+    PermissionDenied,
+    ConnectionRefused,
+    ConnectionReset,
+    ConnectionAborted,
+    NotConnected,
+    AddressInUse,
+    AddressNotAvailable,
+    BrokenPipe,
+    WriteZero,
+    UnexpectedEof,
+    Other,
+}
+impl IoKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::NotFound => "not-found",
+            Self::PermissionDenied => "permission-denied",
+            Self::ConnectionRefused => "connection-refused",
+            Self::ConnectionReset => "connection-reset",
+            Self::ConnectionAborted => "connection-aborted",
+            Self::NotConnected => "not-connected",
+            Self::AddressInUse => "address-in-use",
+            Self::AddressNotAvailable => "address-not-available",
+            Self::BrokenPipe => "broken-pipe",
+            Self::WriteZero => "write-zero",
+            Self::UnexpectedEof => "unexpected-eof",
+            Self::Other => "other",
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReadError {
     InvalidTimeout,
     Unavailable,
+    Io {
+        stage: IoStage,
+        kind: IoKind,
+        os_code: Option<i32>,
+    },
     UnsafeSocket,
     Timeout,
     InvalidResponse,
@@ -23,21 +95,53 @@ pub enum ReadError {
 }
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::InvalidTimeout => "invalid status timeout",
-            Self::Unavailable => "status socket unavailable",
-            Self::UnsafeSocket => "status socket trust checks failed",
-            Self::Timeout => "status request timed out",
-            Self::InvalidResponse => "invalid status response",
-            Self::Rejected => "status request rejected",
-        })
+        match self {
+            Self::InvalidTimeout => f.write_str("invalid status timeout"),
+            Self::Unavailable => f.write_str("status socket unavailable"),
+            Self::UnsafeSocket => f.write_str("status socket trust checks failed"),
+            Self::Timeout => f.write_str("status request timed out"),
+            Self::InvalidResponse => f.write_str("invalid status response"),
+            Self::Rejected => f.write_str("status request rejected"),
+            Self::Io {
+                stage,
+                kind,
+                os_code,
+            } => {
+                write!(
+                    f,
+                    "status IO failure: stage={} kind={} os_code=",
+                    stage.label(),
+                    kind.label()
+                )?;
+                match os_code {
+                    Some(code) => write!(f, "{code}"),
+                    None => f.write_str("none"),
+                }
+            }
+        }
     }
 }
 impl std::error::Error for ReadError {}
-fn io_error(error: io::Error) -> ReadError {
-    match error.kind() {
-        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => ReadError::Timeout,
-        _ => ReadError::Unavailable,
+fn io_error(stage: IoStage, error: io::Error) -> ReadError {
+    let kind = match error.kind() {
+        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => return ReadError::Timeout,
+        io::ErrorKind::NotFound => IoKind::NotFound,
+        io::ErrorKind::PermissionDenied => IoKind::PermissionDenied,
+        io::ErrorKind::ConnectionRefused => IoKind::ConnectionRefused,
+        io::ErrorKind::ConnectionReset => IoKind::ConnectionReset,
+        io::ErrorKind::ConnectionAborted => IoKind::ConnectionAborted,
+        io::ErrorKind::NotConnected => IoKind::NotConnected,
+        io::ErrorKind::AddrInUse => IoKind::AddressInUse,
+        io::ErrorKind::AddrNotAvailable => IoKind::AddressNotAvailable,
+        io::ErrorKind::BrokenPipe => IoKind::BrokenPipe,
+        io::ErrorKind::WriteZero => IoKind::WriteZero,
+        io::ErrorKind::UnexpectedEof => IoKind::UnexpectedEof,
+        _ => IoKind::Other,
+    };
+    ReadError::Io {
+        stage,
+        kind,
+        os_code: error.raw_os_error(),
     }
 }
 fn remaining(deadline: Instant) -> Result<Duration, ReadError> {
@@ -58,24 +162,60 @@ impl StatusClient {
     }
     pub fn status(&self, path: &Path) -> Result<StatusSnapshot, ReadError> {
         let deadline = Instant::now() + self.timeout;
-        let uid = nix::unistd::geteuid().as_raw();
-        let checked = validate_socket_path(path, uid)?;
-        let socket = Socket::new(Domain::UNIX, Type::STREAM, None).map_err(io_error)?;
-        let address = SockAddr::unix(&checked.path).map_err(io_error)?;
-        socket
-            .connect_timeout(&address, remaining(deadline)?)
-            .map_err(io_error)?;
-        verify_peer_uid(&socket, uid)?;
-        let after = validate_socket_path(&checked.path, uid)?;
-        if checked != after {
-            return Err(ReadError::UnsafeSocket);
-        }
-        remaining(deadline)?;
-        let descriptor: std::os::fd::OwnedFd = socket.into();
-        let mut stream = UnixStream::from(descriptor);
+        let mut stream = checked_connect(path, deadline)?;
         read_status(&mut stream, deadline)
     }
+    /// Two separately checked connections share ONE absolute timeout budget.
+    /// Status failure fails the operation; config failure never erases status.
+    pub fn status_with_config(&self, path: &Path) -> Result<StatusSnapshot, ReadError> {
+        let deadline = Instant::now() + self.timeout;
+        let mut stream = checked_connect(path, deadline)?;
+        let mut snapshot = read_status(&mut stream, deadline)?;
+        drop(stream);
+        let config = (|| {
+            let mut stream = checked_connect(path, deadline)?;
+            let frame = exchange(&mut stream, deadline, &Request::ConfigStatus {})?;
+            let response =
+                m8s_api::decode_config_status(&frame).map_err(|_| ReadError::InvalidResponse)?;
+            if !response.ok {
+                return Err(ReadError::Rejected);
+            }
+            Ok(crate::ConfigObservation::Available {
+                configured: response.configured,
+                tiers: response.tiers,
+                atomic_with_status: false,
+            })
+        })()
+        .unwrap_or(crate::ConfigObservation::Unknown {
+            atomic_with_status: false,
+        });
+        snapshot.config_observation = Some(config);
+        Ok(snapshot)
+    }
 }
+fn checked_connect(path: &Path, deadline: Instant) -> Result<UnixStream, ReadError> {
+    let uid = nix::unistd::geteuid().as_raw();
+    let checked = validate_socket_path(path, uid)?;
+    let socket = Socket::new(Domain::UNIX, Type::STREAM, None)
+        .map_err(|e| io_error(IoStage::SocketCreate, e))?;
+    let address = SockAddr::unix(&checked.path).map_err(|e| io_error(IoStage::Address, e))?;
+    socket
+        .connect_timeout(&address, remaining(deadline)?)
+        .map_err(|e| io_error(IoStage::Connect, e))?;
+    verify_peer_uid(&socket, uid)?;
+    let after = validate_socket_path(&checked.path, uid)?;
+    if checked != after {
+        return Err(ReadError::UnsafeSocket);
+    }
+    remaining(deadline)?;
+    socket
+        .set_nonblocking(true)
+        .map_err(|e| io_error(IoStage::Nonblocking, e))?;
+    let descriptor: std::os::fd::OwnedFd = socket.into();
+    let stream = UnixStream::from(descriptor);
+    Ok(stream)
+}
+
 #[derive(PartialEq, Eq)]
 struct CheckedSocket {
     path: PathBuf,
@@ -89,7 +229,9 @@ fn validate_socket_path(path: &Path, uid: u32) -> Result<CheckedSocket, ReadErro
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        std::env::current_dir().map_err(io_error)?.join(path)
+        std::env::current_dir()
+            .map_err(|e| io_error(IoStage::WorkingDirectory, e))?
+            .join(path)
     };
     let mut clean = PathBuf::new();
     let mut depth = 0;
@@ -105,7 +247,8 @@ fn validate_socket_path(path: &Path, uid: u32) -> Result<CheckedSocket, ReadErro
                     return Err(ReadError::UnsafeSocket);
                 }
                 clean.push(name);
-                let meta = std::fs::symlink_metadata(&clean).map_err(io_error)?;
+                let meta = std::fs::symlink_metadata(&clean)
+                    .map_err(|e| io_error(IoStage::PathMetadata, e))?;
                 if meta.file_type().is_symlink() {
                     return Err(ReadError::UnsafeSocket);
                 }
@@ -125,8 +268,9 @@ fn validate_socket_path(path: &Path, uid: u32) -> Result<CheckedSocket, ReadErro
         }
     }
     let parent = clean.parent().ok_or(ReadError::UnsafeSocket)?;
-    let dir = std::fs::symlink_metadata(parent).map_err(io_error)?;
-    let socket = std::fs::symlink_metadata(&clean).map_err(io_error)?;
+    let dir = std::fs::symlink_metadata(parent).map_err(|e| io_error(IoStage::PathMetadata, e))?;
+    let socket =
+        std::fs::symlink_metadata(&clean).map_err(|e| io_error(IoStage::PathMetadata, e))?;
     if !dir.is_dir()
         || dir.file_type().is_symlink()
         || dir.uid() != uid
@@ -176,33 +320,113 @@ fn verify_peer_uid(_: &Socket, _: u32) -> Result<(), ReadError> {
     Err(ReadError::UnsafeSocket) // Unsupported credential paths fail closed.
 }
 
+fn poll_failure() -> ReadError {
+    ReadError::Io {
+        stage: IoStage::Poll,
+        kind: IoKind::Other,
+        os_code: None,
+    }
+}
+fn poll_timeout(duration: Duration) -> Result<PollTimeout, ReadError> {
+    // nix's Duration conversion truncates; round UP to avoid zero-ms spinning.
+    // Deadline is rechecked after poll, so rounding cannot authorize late I/O.
+    let millis = duration
+        .as_nanos()
+        .checked_add(999_999)
+        .ok_or_else(poll_failure)?
+        / 1_000_000;
+    PollTimeout::try_from(millis).map_err(|_| poll_failure())
+}
+fn poll_events(
+    events: Option<PollFlags>,
+    interest: PollFlags,
+) -> Result<Option<PollFlags>, ReadError> {
+    let events = events.ok_or_else(poll_failure)?;
+    if events.contains(PollFlags::POLLNVAL) {
+        return Err(poll_failure());
+    }
+    Ok(events
+        .intersects(interest | PollFlags::POLLHUP | PollFlags::POLLERR)
+        .then_some(events))
+}
+fn wait_ready(
+    stream: &UnixStream,
+    interest: PollFlags,
+    deadline: Instant,
+) -> Result<PollFlags, ReadError> {
+    loop {
+        let timeout = poll_timeout(remaining(deadline)?)?;
+        let mut fds = [PollFd::new(stream.as_fd(), interest)];
+        match poll(&mut fds, timeout) {
+            Ok(_) => {
+                remaining(deadline)?;
+                if let Some(events) = poll_events(fds[0].revents(), interest)? {
+                    return Ok(events);
+                }
+            }
+            Err(nix::errno::Errno::EINTR) => continue,
+            Err(error) => {
+                return Err(io_error(
+                    IoStage::Poll,
+                    io::Error::from_raw_os_error(error as i32),
+                ));
+            }
+        }
+    }
+}
 fn read_status(stream: &mut UnixStream, deadline: Instant) -> Result<StatusSnapshot, ReadError> {
-    let mut request =
-        serde_json::to_vec(&Request::Status {}).map_err(|_| ReadError::InvalidResponse)?;
+    decode_status(&exchange(stream, deadline, &Request::Status {})?)
+}
+fn exchange(
+    stream: &mut UnixStream,
+    deadline: Instant,
+    request: &Request,
+) -> Result<Vec<u8>, ReadError> {
+    let mut request = serde_json::to_vec(request).map_err(|_| ReadError::InvalidResponse)?;
     request.push(b'\n');
     let mut offset = 0;
     while offset < request.len() {
-        stream
-            .set_write_timeout(Some(remaining(deadline)?))
-            .map_err(io_error)?;
+        let events = wait_ready(stream, PollFlags::POLLOUT, deadline)?;
         match stream.write(&request[offset..]) {
-            Ok(0) => return Err(ReadError::Unavailable),
+            Ok(0) => {
+                return Err(ReadError::Io {
+                    stage: IoStage::Write,
+                    kind: IoKind::WriteZero,
+                    os_code: None,
+                });
+            }
             Ok(n) => offset += n,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(io_error(error)),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if events.intersects(PollFlags::POLLHUP | PollFlags::POLLERR) {
+                    return Err(io_error(
+                        IoStage::Write,
+                        io::Error::other("terminal readiness without progress"),
+                    ));
+                }
+                continue;
+            }
+            Err(error) => return Err(io_error(IoStage::Write, error)),
         }
     }
     let mut frame = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
-        stream
-            .set_read_timeout(Some(remaining(deadline)?))
-            .map_err(io_error)?;
+        let events = wait_ready(stream, PollFlags::POLLIN, deadline)?;
         let count = match stream.read(&mut chunk) {
             Ok(0) => return Err(ReadError::InvalidResponse),
             Ok(n) => n,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(io_error(error)),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if events.intersects(PollFlags::POLLHUP | PollFlags::POLLERR) {
+                    return Err(io_error(
+                        IoStage::Read,
+                        io::Error::other("terminal readiness without progress"),
+                    ));
+                }
+                continue;
+            }
+            Err(error) => return Err(io_error(IoStage::Read, error)),
         };
         frame.extend_from_slice(&chunk[..count]);
         if frame.len() > MAX_FRAME {
@@ -213,7 +437,7 @@ fn read_status(stream: &mut UnixStream, deadline: Instant) -> Result<StatusSnaps
                 return Err(ReadError::InvalidResponse);
             }
             remaining(deadline)?;
-            return decode_status(&frame);
+            return Ok(frame);
         }
     }
 }
@@ -325,6 +549,7 @@ pub fn decode_status(frame: &[u8]) -> Result<StatusSnapshot, ReadError> {
         bootstrap_verified: None,
         heartbeat_age_seconds: None,
         hourly_micro_usd: None,
+        config_observation: None,
     })
 }
 
@@ -373,5 +598,167 @@ mod path_tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         let after = validate_socket_path(&path, uid).unwrap();
         assert!(before != after);
+    }
+}
+
+#[cfg(test)]
+mod io_diagnostic_tests {
+    use super::*;
+    #[test]
+    fn numeric_os_errors_and_static_stage_kind_are_the_only_diagnostics() {
+        let stages = [
+            IoStage::WorkingDirectory,
+            IoStage::PathMetadata,
+            IoStage::SocketCreate,
+            IoStage::Address,
+            IoStage::Connect,
+            IoStage::WriteOption,
+            IoStage::Write,
+            IoStage::ReadOption,
+            IoStage::Read,
+        ];
+        for stage in stages {
+            for code in [2, 13, 22, 61, 111, -12345] {
+                let error = io_error(stage, io::Error::from_raw_os_error(code));
+                assert!(
+                    matches!(error, ReadError::Io { stage:s,os_code:Some(c),.. } if s==stage && c==code)
+                );
+                let text = error.to_string();
+                assert!(
+                    text.starts_with(&format!("status IO failure: stage={} kind=", stage.label()))
+                );
+                assert!(text.ends_with(&format!(" os_code={code}")));
+                assert!(text.bytes().all(|b| b.is_ascii_graphic() || b == b' '));
+            }
+            let error = io_error(
+                stage,
+                io::Error::other("sensitive-path\u{1b}[31m private-argv error-chain"),
+            );
+            assert_eq!(
+                error,
+                ReadError::Io {
+                    stage,
+                    kind: IoKind::Other,
+                    os_code: None
+                }
+            );
+            for text in [error.to_string(), format!("{error:?}")] {
+                assert!(
+                    !text.contains("sensitive")
+                        && !text.contains("private")
+                        && !text.contains('\u{1b}')
+                );
+            }
+        }
+    }
+    #[test]
+    fn timeout_wouldblock_and_kind_whitelist_do_not_use_error_messages() {
+        for kind in [io::ErrorKind::TimedOut, io::ErrorKind::WouldBlock] {
+            assert_eq!(
+                io_error(IoStage::Read, io::Error::new(kind, "sensitive")),
+                ReadError::Timeout
+            );
+        }
+        for (kind, label) in [
+            (io::ErrorKind::NotFound, "not-found"),
+            (io::ErrorKind::PermissionDenied, "permission-denied"),
+            (io::ErrorKind::ConnectionRefused, "connection-refused"),
+            (io::ErrorKind::ConnectionReset, "connection-reset"),
+            (io::ErrorKind::ConnectionAborted, "connection-aborted"),
+            (io::ErrorKind::NotConnected, "not-connected"),
+            (io::ErrorKind::AddrInUse, "address-in-use"),
+            (io::ErrorKind::AddrNotAvailable, "address-not-available"),
+            (io::ErrorKind::BrokenPipe, "broken-pipe"),
+            (io::ErrorKind::WriteZero, "write-zero"),
+            (io::ErrorKind::UnexpectedEof, "unexpected-eof"),
+            (io::ErrorKind::InvalidInput, "other"),
+        ] {
+            assert_eq!(
+                io_error(IoStage::Connect, io::Error::new(kind, "sensitive")).to_string(),
+                format!("status IO failure: stage=connect kind={label} os_code=none")
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod poll_transport_tests {
+    use super::*;
+    #[test]
+    fn bounded_poll_conversion_and_invalid_event_seam() {
+        assert_eq!(
+            poll_timeout(Duration::from_nanos(1)).unwrap().as_millis(),
+            Some(1)
+        );
+        assert_eq!(
+            poll_timeout(Duration::from_micros(1001))
+                .unwrap()
+                .as_millis(),
+            Some(2)
+        );
+        assert_eq!(
+            poll_timeout(Duration::from_secs(10)).unwrap().as_millis(),
+            Some(10000)
+        );
+        assert!(poll_timeout(Duration::MAX).is_err());
+        assert_eq!(
+            poll_events(Some(PollFlags::POLLNVAL), PollFlags::POLLIN),
+            Err(poll_failure())
+        );
+        assert_eq!(poll_events(None, PollFlags::POLLIN), Err(poll_failure()));
+        assert_eq!(
+            poll_events(Some(PollFlags::POLLHUP), PollFlags::POLLIN),
+            Ok(Some(PollFlags::POLLHUP))
+        );
+        assert_eq!(
+            poll_events(Some(PollFlags::POLLERR), PollFlags::POLLIN),
+            Ok(Some(PollFlags::POLLERR))
+        );
+        assert_eq!(
+            poll_events(Some(PollFlags::empty()), PollFlags::POLLIN),
+            Ok(None)
+        );
+    }
+    #[test]
+    fn pending_write_times_out_under_original_deadline_without_resend() {
+        let (sender, _receiver) = UnixStream::pair().unwrap();
+        let fd: std::os::fd::OwnedFd = sender.into();
+        let socket = Socket::from(fd);
+        socket.set_send_buffer_size(4096).unwrap(); // owned fixture only
+        socket.set_nonblocking(true).unwrap();
+        let fd: std::os::fd::OwnedFd = socket.into();
+        let mut sender = UnixStream::from(fd);
+        let mut blocked = false;
+        for _ in 0..256 {
+            match sender.write(&[b'x'; 4096]) {
+                Ok(n) => assert!(n > 0),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    blocked = true;
+                    break;
+                }
+                Err(_) => panic!("fixture write failed"),
+            }
+        }
+        assert!(blocked, "bounded fixture did not fill socket");
+        assert_eq!(
+            exchange(
+                &mut sender,
+                Instant::now() + Duration::from_millis(40),
+                &Request::Status {}
+            )
+            .err(),
+            Some(ReadError::Timeout)
+        );
+        // Positive readiness control: a fresh, unfilled nonblocking socket.
+        let (sender, _receiver) = UnixStream::pair().unwrap();
+        sender.set_nonblocking(true).unwrap();
+        assert!(
+            wait_ready(
+                &sender,
+                PollFlags::POLLOUT,
+                Instant::now() + Duration::from_secs(1)
+            )
+            .is_ok()
+        );
     }
 }

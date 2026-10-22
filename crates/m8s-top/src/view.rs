@@ -1,5 +1,5 @@
 //! Pure rendering: usable with an in-memory backend, never initializes a TTY.
-use crate::{StatusSnapshot, client::ReadError, display_text};
+use crate::{ConfigObservation, StatusSnapshot, client::ReadError, display_text};
 use m8s_core::Phase;
 use ratatui::{
     Frame, Terminal,
@@ -22,7 +22,16 @@ impl Dashboard {
                 self.snapshot = Some(snapshot);
                 self.error = None;
             }
-            Err(error) => self.error = Some(error),
+            Err(error) => {
+                self.error = Some(error);
+                if let Some(snapshot) = &mut self.snapshot
+                    && snapshot.config_observation.is_some()
+                {
+                    snapshot.config_observation = Some(ConfigObservation::Unknown {
+                        atomic_with_status: false,
+                    });
+                }
+            }
         }
     }
     pub fn render(&self, frame: &mut Frame<'_>) {
@@ -33,15 +42,32 @@ impl Dashboard {
             } else {
                 "Status unverified"
             };
-            let compact = format!(
+            let mut compact = format!(
                 "m8s top | READ-ONLY\n{state}\nReadiness: UNKNOWN\nLast observation: UNKNOWN\nResize to 100x14 for node table"
             );
+            if let Some(config) = self
+                .snapshot
+                .as_ref()
+                .and_then(|s| s.config_observation.as_ref())
+            {
+                compact.push_str(&format!("\n{}", config_label(config)));
+            }
             frame.render_widget(Paragraph::new(compact), area);
             return;
         }
         let regions = Layout::vertical([
             Constraint::Length(3),
-            Constraint::Length(4),
+            Constraint::Length(
+                if self
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|s| s.config_observation.is_some())
+                {
+                    6
+                } else {
+                    4
+                },
+            ),
             Constraint::Min(3),
             Constraint::Length(3),
         ])
@@ -76,7 +102,7 @@ impl Dashboard {
             .map(|(pool, desired)| format!("{} desired={desired}", display_text(pool)))
             .collect::<Vec<_>>()
             .join(" | ");
-        let summary = format!(
+        let mut summary = format!(
             "mode={} | bootstrap=unverified | heartbeat=unknown | cost=unknown\n{}",
             display_text(&snapshot.reported_mode),
             if pools.is_empty() {
@@ -85,6 +111,24 @@ impl Dashboard {
                 &pools
             }
         );
+        if let Some(config) = &snapshot.config_observation {
+            summary.push_str(&format!("\n{}\n", config_label(config)));
+            if let ConfigObservation::Available {
+                configured: true,
+                tiers,
+                ..
+            } = config
+            {
+                summary.push_str(
+                    &tiers
+                        .iter()
+                        .take(32)
+                        .map(|t| format!("{} min={} max={}", display_text(&t.id), t.min, t.max))
+                        .collect::<Vec<_>>()
+                        .join(" | "),
+                );
+            }
+        }
         frame.render_widget(
             Paragraph::new(summary).block(Block::default().borders(Borders::ALL)),
             regions[1],
@@ -200,4 +244,22 @@ pub fn text_snapshot(dashboard: &Dashboard, width: u16, height: u16) -> std::io:
         output.push('\n');
     }
     Ok(output)
+}
+
+fn config_label(config: &ConfigObservation) -> &'static str {
+    match config {
+        ConfigObservation::Available {
+            configured: true, ..
+        } => {
+            "Config: CONFIGURED | separate observations, NOT atomic | bounds viewport-limited (JSON: all)"
+        }
+        ConfigObservation::Available {
+            configured: false, ..
+        } => {
+            "Config: UNCONFIGURED | separate observations, NOT atomic | NOT empty desired/default-cap proof"
+        }
+        ConfigObservation::Unknown { .. } => {
+            "Config: UNKNOWN | separate observations, NOT atomic | no current bounds claim"
+        }
+    }
 }

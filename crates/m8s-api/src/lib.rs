@@ -229,14 +229,23 @@ fn config_status_error<'de, D: serde::Deserializer<'de>>(
     Option::<String>::deserialize(deserializer)
 }
 pub fn call_config_status(path: &Path) -> io::Result<ConfigStatusResponse> {
-    let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid config status");
     let mut stream = UnixStream::connect(path)?;
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
     stream.set_write_timeout(Some(Duration::from_secs(3)))?;
     serde_json::to_writer(&mut stream, &Request::ConfigStatus {})?;
     stream.write_all(b"\n")?;
-    let response: ConfigStatusResponse =
-        serde_json::from_slice(&read_frame(&mut stream)?).map_err(|_| invalid())?;
+    decode_config_status(&read_frame(&mut stream)?)
+}
+/// Pure bounded decoder shared by clients with independently checked transport.
+pub fn decode_config_status(frame: &[u8]) -> io::Result<ConfigStatusResponse> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid config status");
+    if frame.len() > MAX_FRAME
+        || !frame.ends_with(b"\n")
+        || frame[..frame.len().saturating_sub(1)].contains(&b'\n')
+    {
+        return Err(invalid());
+    }
+    let response: ConfigStatusResponse = serde_json::from_slice(frame).map_err(|_| invalid())?;
     if response.mode != "mock-only"
         || response.scope != "mock-control-admission-only"
         || response.tiers.len() > 32

@@ -467,3 +467,13 @@ config text/fingerprints/credentials or global version appear. No provenance,
 authorization/readiness/live-policy guarantee; the snapshot may change after the
 query or restart. Output is bounded before stdout; broken writes return nonzero
 and may be partial. No file discovery, provider/model activation or inference.
+
+`m8s top --socket PATH --show-config --once` (or `--json`) optionally adds active
+Mock bounds beside reported desired. Default dashboard and JSON remain unchanged;
+standalone `m8s-top` supports the same flag. Configured, legacy UNCONFIGURED and
+config UNKNOWN are distinct, not fleet-empty/approval/Ready claims. Text bounds
+are viewport-limited; opt-in JSON includes all 32 validated tiers. These are two
+**non-atomic** observations sharing one total timeout and each full socket trust
+check. Failed config read preserves status with config UNKNOWN, not file fallback;
+failed whole refresh marks retained config UNKNOWN with the existing stale banner.
+No files/reload/mutation or TTY initialization for redirected one-shot/JSON use.

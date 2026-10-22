@@ -133,3 +133,50 @@ Synthetic PTY cleanup helpers are shared by standalone and CLI alias tests,
 including q and real SIGINT/SIGTERM; no user controlling terminal or /dev/tty
 bypass is used. Tests prove local command/terminal behavior only, not
 cryptographic daemon identity, secure admission, provider absence or readiness.
+
+### Optional active configuration observation
+
+`m8s-top --socket PATH --show-config --once` (or `--json`) adds the actual active
+Mock admission bounds. `m8s top` accepts the same flag in-process. Default output,
+JSON and single Status request are unchanged; duplicate --show-config refuses.
+No file reads, reload or mutation is requested. JSON exposes all validated tiers
+(up to 32), while the bounded text/TUI viewport labels its bounds summary as limited.
+
+Configured, legacy UNCONFIGURED and config UNKNOWN are distinct. Unconfigured is
+not empty desired/fleet or verified default cap; unknown never substitutes an empty
+configured policy. Retained config becomes UNKNOWN on whole-status refresh failure,
+while the existing stale banner continues to qualify retained status rows.
+
+Status and config are **two non-atomic observations**, with no cross-request
+consistency/provenance/version/approval/Ready claim. Every connection repeats the
+existing path/inode/UID/mode/peer checks. Both share ONE absolute total timeout;
+config refusal/unsupported/malformed/timeout preserves usable status as config
+UNKNOWN, never retries or falls back to files. JSON marks atomic_with_status=false.
+No terminal initialization occurs for redirected one-shot/JSON use.
+
+### Redacted status I/O diagnostics
+
+Non-timeout I/O errors report a fixed typed stage (`working-directory`,
+`path-metadata`, `socket-create`, `address`, `connect`, `nonblocking`, `poll`,
+`write`, `read`; legacy `write-option`/`read-option` labels remain available), a
+fixed kind label (or `other`), and optional signed numeric
+OS error code (`none` if absent). No paths, addresses, argv/environment, raw error
+text or error chains are retained or formatted. Codes are platform-specific
+observations, not a diagnosis of daemon state or permission/security readiness.
+Deadline expiry remains Timeout; WouldBlock waits for readiness as described
+below. Trust/schema/refusal errors are unchanged.
+Optional configuration failures still show UNKNOWN without erasing usable status.
+There are no request retries, fallback, new timeout budgets or trust-policy changes.
+
+Status exchange now sets its owned descriptor nonblocking once after the existing
+bounded connect/trust checks. Safe `nix::poll` readiness waits use the same original
+absolute deadline for partial writes, reads and the optional second observation;
+no per-read/write SO_RCVTIMEO/SO_SNDTIMEO changes occur. WouldBlock waits again,
+EINTR recomputes remaining time, and checked ceiling-millisecond poll conversion
+is followed by a deadline recheck. Request offsets prevent reissuing sent bytes.
+HUP/ERR readiness only permits a bounded nonblocking I/O attempt, never proves
+success or a complete frame. Buffered complete frames followed by immediate peer
+close can decode; partial EOF, malformed/oversized frames and invalid poll events
+refuse. Setup/poll failures use redacted typed `nonblocking`/`poll` stages. There
+is no application request retry/reconnect/fallback, transport authorization change
+or new time budget.

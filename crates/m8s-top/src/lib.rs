@@ -29,6 +29,8 @@ pub struct StatusSnapshot {
     pub bootstrap_verified: Option<bool>,
     pub heartbeat_age_seconds: Option<u64>,
     pub hourly_micro_usd: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_observation: Option<ConfigObservation>,
 }
 
 /// Display only printable ASCII. Control/bidi/non-ASCII characters become
@@ -46,4 +48,18 @@ pub fn display_text(input: &str) -> String {
         }
     }
     output
+}
+
+/// Display-only second observation, never an atomic/policy capability.
+#[derive(Clone, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum ConfigObservation {
+    Available {
+        configured: bool,
+        tiers: Vec<m8s_api::ConfigTierBounds>,
+        atomic_with_status: bool,
+    },
+    Unknown {
+        atomic_with_status: bool,
+    },
 }
