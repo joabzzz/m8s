@@ -71,7 +71,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Entries, Error> {
                 }
                 // Exact capacity avoids leaving secret bytes in reallocated buffers.
                 let mut out = Zeroizing::new(Vec::with_capacity(s.len() / 2));
-                for pair in s.chunks_exact(2) {
+                for pair in s.as_chunks::<2>().0 {
                     fn nibble(b: u8) -> Result<u8, Error> {
                         match b {
                             b'0'..=b'9' => Ok(b - b'0'),

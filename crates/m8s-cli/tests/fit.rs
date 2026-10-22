@@ -178,7 +178,7 @@ fn each_layout_cross_checks_actual_library_and_explicit_projection() {
         assert!(header.contains("NOT authorized or executable"));
         assert_eq!(serde_json::from_str::<Value>(projection).unwrap(), v);
         let mut reordered = vec!["models".into(), "fit".into(), "--json".into()];
-        for pair in args[2..args.len() - 1].chunks_exact(2).rev() {
+        for pair in args[2..args.len() - 1].as_chunks::<2>().0.iter().rev() {
             reordered.extend_from_slice(pair);
         }
         assert_eq!(success(&f.run(&reordered)), v);

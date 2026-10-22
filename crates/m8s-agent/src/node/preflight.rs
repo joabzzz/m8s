@@ -12,7 +12,14 @@ fn decode(bytes: &[u8], expected: EndpointId) -> Result<()> {
     if id.node_id.len() != 64 {
         return Err(Error::NativeId);
     }
-    for (pair, expected) in id.node_id.as_bytes().chunks_exact(2).zip(expected.0) {
+    for (pair, expected) in id
+        .node_id
+        .as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .zip(expected.0)
+    {
         let nibble = |c| match c {
             b'0'..=b'9' => Some(c - b'0'),
             b'a'..=b'f' => Some(c - b'a' + 10),
