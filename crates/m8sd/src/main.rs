@@ -225,6 +225,30 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 .map_or(Ok(replicas), |p| p.scale(&tier, replicas))?;
                             store.scale(&tier, replicas)?;
                         }
+                        Request::ScaleBatch { targets } => {
+                            let mut seen = std::collections::BTreeSet::new();
+                            if targets.is_empty() || targets.len() > 32 {
+                                return Err("batch refused".into());
+                            }
+                            for t in &targets {
+                                if t.tier.is_empty()
+                                    || t.tier.len() > 64
+                                    || !t.tier.bytes().all(|b| {
+                                        b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
+                                    })
+                                    || t.replicas > 16
+                                    || !seen.insert(&t.tier)
+                                {
+                                    return Err("batch refused".into());
+                                }
+                                if let Some(p) = &policy {
+                                    p.scale(&t.tier, t.replicas)?;
+                                }
+                            }
+                            let targets: Vec<_> =
+                                targets.into_iter().map(|t| (t.tier, t.replicas)).collect();
+                            store.scale_batch(&targets)?;
+                        }
                         Request::Down {} => store.down()?,
                         Request::ConfigStatus {} => config_status_requested = true,
                         Request::ReloadConfig {} => {

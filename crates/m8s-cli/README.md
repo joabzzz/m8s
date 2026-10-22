@@ -643,3 +643,27 @@ Text/JSON print the same fixed bounded relative inventory, never the selected pa
 Creation is not transactional: errors may leave owned partial artifacts. Broken
 stdout can occur AFTER complete creation; nonzero does not mean no files/effects.
 Inspect deliberately rather than blindly retrying, adopting or deleting state.
+
+### Atomic manual multi-tier desired update
+
+```sh
+m8s --socket /absolute/state/control.sock scale-batch small=2 large=0 --json
+m8s scale-batch --help
+```
+
+1..32 UNIQUE ASCII alnum/underscore/hyphen IDs<=64, explicit decimal counts0..16.
+`--json` once anywhere after the command; no implicit targets/defaults/--all.
+Unmentioned tiers unchanged. Configured Mock checks ALL targets against active
+membership/min/max before a single Store transaction; zero is an explicit stop
+for a known tier even when min>0. Positive batch after down is a MANUAL request,
+not automated resume. Legacy Mock retains Store bounds.
+
+Atomicity covers selected desired upserts and existing explicit-zero nonce
+cancellations in ONE IMMEDIATE transaction, NOT provider effects, allocation,
+destruction, convergence or Ready. Asynchronous reconciliation still follows.
+Reply includes only checked Mock mode, sorted requested targets and bounded safe
+desired snapshot (<=256 tiers), with requested counts matched before printing.
+Text/JSON share one bounded fully rendered projection; node/log/error payloads
+are omitted. A refused/invalid/lost reply, timeout, snapshot or output failure MAY
+follow a committed mutation. Nonzero NEVER proves rollback/no effects; do not
+blindly retry. No provider approval/authentication or execution authority implied.

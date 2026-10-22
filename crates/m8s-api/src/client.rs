@@ -73,10 +73,30 @@ impl Write for RequestBuffer {
 }
 fn prepare(request: &Request, deadline: Instant) -> io::Result<Vec<u8>> {
     remaining(deadline)?;
-    // These are the only variable-size request fields. Raw bytes already over
+    // Bound individual request strings before scanning; batches are bounded below.
+    // Raw bytes already over
     // the frame cap cannot fit JSON; avoid scanning unbounded caller strings.
     if matches!(request, Request::Up {tier} | Request::Scale {tier,..} if tier.len()>MAX_FRAME) {
         return Err(invalid());
+    }
+    if let Request::ScaleBatch { targets } = request {
+        let mut seen = std::collections::BTreeSet::new();
+        if targets.is_empty() || targets.len() > 32 {
+            return Err(invalid());
+        }
+        for target in targets {
+            if target.tier.is_empty()
+                || target.tier.len() > 64
+                || !target
+                    .tier
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+                || target.replicas > 16
+                || !seen.insert(&target.tier)
+            {
+                return Err(invalid());
+            }
+        }
     }
     let mut buffer = RequestBuffer {
         bytes: vec![],
@@ -304,6 +324,87 @@ mod tests {
                 }
                 drop(client);
             });
+        }
+    }
+    #[test]
+    fn batch_preparation_rejects_unbounded_or_invalid_inputs_before_transport() {
+        for targets in [
+            vec![],
+            vec![
+                crate::ScaleTarget {
+                    tier: "a".into(),
+                    replicas: 1
+                };
+                33
+            ],
+            vec![crate::ScaleTarget {
+                tier: "x".repeat(MAX_FRAME + 1),
+                replicas: 1,
+            }],
+            vec![crate::ScaleTarget {
+                tier: "a".into(),
+                replicas: 17,
+            }],
+            vec![
+                crate::ScaleTarget {
+                    tier: "a".into(),
+                    replicas: 1
+                };
+                2
+            ],
+        ] {
+            assert!(
+                prepare(
+                    &Request::ScaleBatch { targets },
+                    Instant::now() + Duration::from_secs(1)
+                )
+                .is_err()
+            );
+        }
+    }
+    #[test]
+    fn rejected_batch_preparation_makes_no_connection() {
+        use std::{
+            fs,
+            os::unix::{fs::DirBuilderExt, net::UnixListener},
+        };
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = fs::canonicalize("/tmp")
+            .unwrap()
+            .join(format!("m8-ab-{}", std::process::id()));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let fixture = Fixture(root);
+        let path = fixture.0.join("s");
+        let listener = UnixListener::bind(&path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        for targets in [
+            vec![
+                crate::ScaleTarget {
+                    tier: "a".into(),
+                    replicas: 1
+                };
+                33
+            ],
+            vec![crate::ScaleTarget {
+                tier: "x".repeat(MAX_FRAME + 1),
+                replicas: 1,
+            }],
+        ] {
+            assert_eq!(
+                exchange(&path, &Request::ScaleBatch { targets })
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::InvalidData
+            );
+            assert_eq!(
+                listener.accept().unwrap_err().kind(),
+                io::ErrorKind::WouldBlock
+            );
         }
     }
 }

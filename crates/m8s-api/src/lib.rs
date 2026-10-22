@@ -13,6 +13,7 @@ pub const MAX_FRAME: usize = 65536;
 pub enum Request {
     Up { tier: String },
     Scale { tier: String, replicas: u32 },
+    ScaleBatch { targets: Vec<ScaleTarget> },
     Down {},
     Shutdown {},
     ReloadConfig {},
@@ -21,6 +22,12 @@ pub enum Request {
     Status {},
     Logs {},
     LogsPage { after: u64, limit: u32 },
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ScaleTarget {
+    pub tier: String,
+    pub replicas: u32,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Response {
@@ -458,5 +465,30 @@ mod reload_check_tests {
         assert!(decode_reload_check(&frame(&r)).is_ok());
         r.error = Some("secret".into());
         assert!(decode_reload_check(&frame(&r)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod batch_wire_tests {
+    use super::*;
+    #[test]
+    fn additive_batch_tag_nested_fields_and_duplicates_are_strict() {
+        let r = Request::ScaleBatch {
+            targets: vec![ScaleTarget {
+                tier: "a".into(),
+                replicas: 0,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_string(&r).unwrap(),
+            r#"{"command":"scale_batch","targets":[{"tier":"a","replicas":0}]}"#
+        );
+        for bad in [
+            r#"{"command":"scale_batch","targets":[{"tier":"a","replicas":1,"force":true}]}"#,
+            r#"{"command":"scale_batch","targets":[{"tier":"a","tier":"b","replicas":1}]}"#,
+            r#"{"command":"scale_batch","targets":[],"targets":[]}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(bad).is_err());
+        }
     }
 }

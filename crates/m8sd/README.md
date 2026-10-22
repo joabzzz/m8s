@@ -855,3 +855,14 @@ before a later reload. No paths/overrides/force are accepted or returned.
 The handler performs no Store writes, reconciliation or provider calls; ordinary
 SQLite reads may perform bookkeeping and independent timer reconciliation remains
 independent. This is not immutable filesystem inspection, authorization or Ready.
+
+### Manual atomic batch desired intent
+
+`scale-batch TIER=N ...` applies1..32 unique Store-compatible targets atomically:
+all admission checks first, then ONE IMMEDIATE transaction for selected desired
+rows and existing nonce cancellation on each explicit zero. Unmentioned tiers
+stay unchanged. Configured membership/min/max applies to every target; unknown
+zero tiers refuse too. Any SQL/transaction failure rolls back that transaction,
+not earlier/later independent commands. Provider effects/reconciliation are NOT
+atomic with desired changes; no convergence/Ready claim. A failed response can
+follow commit, so clients must not infer no effects or automatically retry.

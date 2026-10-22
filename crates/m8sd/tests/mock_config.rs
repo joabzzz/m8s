@@ -800,3 +800,70 @@ fn legacy_check_refuses_without_paths_or_adoption() {
     assert!(f.call(Request::Shutdown {}).ok);
     assert!(d.wait().success());
 }
+
+#[test]
+fn configured_and_legacy_batch_admission_is_all_or_nothing() {
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    let batch = |pairs: &[(&str, u32)]| Request::ScaleBatch {
+        targets: pairs
+            .iter()
+            .map(|(id, n)| m8s_api::ScaleTarget {
+                tier: (*id).into(),
+                replicas: *n,
+            })
+            .collect(),
+    };
+    assert!(!f.call(up("disabled")).ok);
+    assert!(
+        f.call(batch(&[("bounded", 2), ("optional", 1), ("disabled", 0)]))
+            .ok
+    );
+    let expected = vec![
+        ("bounded".into(), 2),
+        ("disabled".into(), 0),
+        ("optional".into(), 1),
+    ];
+    assert_eq!(f.call(Request::Status {}).tiers, expected);
+    for pairs in [
+        vec![("bounded", 3), ("unknown", 0)],
+        vec![("bounded", 3), ("optional", 2)],
+        vec![("optional", 0), ("bounded", 1)],
+    ] {
+        assert!(!f.call(batch(&pairs)).ok);
+        assert_eq!(f.call(Request::Status {}).tiers, expected);
+    }
+    assert!(
+        m8s_api::call(
+            &f.state().join("control.sock"),
+            &batch(&[("bounded", 0), ("bounded", 2)])
+        )
+        .is_err()
+    );
+    assert_eq!(f.call(Request::Status {}).tiers, expected);
+    assert!(f.call(batch(&[("bounded", 0), ("optional", 0)])).ok);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+    let mut restarted = f.start(true);
+    assert!(
+        f.call(Request::Status {})
+            .tiers
+            .iter()
+            .all(|(_, n)| *n == 0)
+    );
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(restarted.wait().success());
+    let mut legacy = f.start(false);
+    assert!(f.call(batch(&[("legacy_a", 2), ("legacy_b", 0)])).ok);
+    let before = f.call(Request::Status {}).tiers;
+    assert!(
+        m8s_api::call(
+            &f.state().join("control.sock"),
+            &batch(&[("legacy_a", 1), ("bad.id", 0)])
+        )
+        .is_err()
+    );
+    assert_eq!(f.call(Request::Status {}).tiers, before);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(legacy.wait().success());
+}
