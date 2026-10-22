@@ -14,6 +14,45 @@ The default feature set stays pure and does not depend on host filesystem or
 OS keychain crates. This keeps embedded/client dependency graphs free of local
 machine policy.
 
-Enable `host-io` for host-facing binaries and runtime crates that need OS
-keychain access, encrypted keystore files, node key files, ownership
-certificates, or trust-store persistence.
+Public node ownership certificate types and verification are pure and available
+without `host-io`. Enable `host-io` for host-facing binaries and runtime crates
+that need OS keychain access, encrypted keystore files, node key files,
+certificate signing, or trust-store persistence.
+
+## Exact-time signing mechanics (`host-io` only)
+
+`ownership::exact_request` exposes `ExactNodeSigningRequest::new(node, issued_ms,
+expires_ms)`, `ExactSigningPolicy::new(max_lifetime_ms, max_issuance_age_ms)`,
+`preflight_exact_node_ownership`, and `sign_node_ownership_exact(owner, request,
+policy)`. Request and policy fields are private, with no deserialization or
+defaults. Limits are mandatory trusted configuration, **not remote authorization,
+Admin approval, or nonce-consumption proof**. Production lifetime/age limits and
+automated-invoker authorization remain unresolved; no CLI, service, policy store,
+default machine route, or m8s wiring is enabled here. Legacy signing is unchanged.
+
+Requests contain only a public 32-byte node and exact nonzero, ordered,
+whole-1000ms issuance/expiry bounds. The signer reuses the existing canonical
+encoder and mesh-owned in-memory `OwnerKeypair`; it never loads keys, paths or
+owner labels. Optional certificate metadata is absent and all output fields are
+bounded (the synthetic test checks serialized output below 8KiB). No IO is done.
+The library cannot prove key-load ordering when a caller already holds the key.
+A future owner invocation must real-clock preflight **before key loading**, then
+call the signer, which always rechecks rather than accepting a cached capability.
+
+Real `SystemTime` is sampled at entry, immediately before signing and immediately
+after signing. Observed backward time, future issuance, excessive age or expiry
+refuses the request; post-sign failure discards the response. Requested times
+are never rounded, rebased, extended or saturated. Clock checks retain sub-ms
+precision; an explicitly zero-age policy is strict and never automatically widened.
+There is no hard real-time preemption or guarantee of detecting jumps between
+observations, and a discarded response cannot undo a signature already computed.
+
+For a future m8s adapter, original redemption seconds captured **before SQL**
+must be converted with checked multiplication by 1000. Age includes up to 999ms
+of fractional offset plus SQL/dispatch/key-access delay. SQL delay is potentially
+unbounded: the owner must choose tolerance; this source does not pick one. Stale
+work rejects without rewriting issuance or retrying a consumed nonce. There is
+no nonce ledger, remint recovery or deduplication here: invoking twice generates
+fresh independent certificate IDs. Independent caller verification remains needed.
+Tests use explicit test-only limits and fixed synthetic in-memory keys, never
+host signing wrappers, keystores or default paths.

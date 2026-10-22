@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+pub mod exact_request;
+
 use super::keystore::write_keystore_bytes_atomically;
 use super::node_certificate::canonical_claim_bytes;
 pub use super::node_certificate::{

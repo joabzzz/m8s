@@ -1,17 +1,17 @@
 # Canonical MP-001 package import
 
-Accepted Mesh-LLM commit: c2190fdd6bc4f9100ac5029621622341c3e8c8e6
-Source checkout inspected: /private/tmp/mp014-primary-qualification.HCUsrP (provenance only, never a build path).
+Accepted Mesh-LLM commit: cecee5d23e33d2626a0bf4624bfa71dc1615d167
+Source checkout inspected: /private/tmp/mp016-primary-qualification.odsQBZ (provenance only, never a build path).
 Package path: mesh/crates/mesh-llm-identity.
-m8s baseline: b614e7ae2bf6443aa4adcff02f3ce6d6207db52c.
-Design: agor://kb/document/01a160e3-192c-70b6-a80f-8b952aad7dad
+m8s baseline: 14ff55348bf5b5559e6214f09c2d26a34736c58b.
+Design: agor://kb/document/01a16108-e37d-75cf-8223-ea95551f59bc
 
 ## Inventory / authority
-Eleven complete src/*.rs files, public certificate test, package README, and
+Twelve complete src Rust files, public certificate test, package README, and
 external root LICENSE are byte-identical to the accepted Git objects.
 This is the full identity package, NOT a verification-only extraction: existing
 in-memory signing, envelope and key APIs are included but not wired by m8s.
-host-io stays default-OFF; m8s never forwards it. Upstream README wording about
+host-io stays default-OFF; production m8s never forwards it. Upstream README wording about
 host-io is retained verbatim; canonical public verification is pure.
 Declared license remains MIT OR Apache-2.0; supplied LICENSE is the upstream
 Apache-2.0 text. No additional license claim is made.
@@ -67,3 +67,25 @@ Keep workspace exclusion and defaultfalse/no-host-io graph evidence.
 Primary reviews isolated root lock patch/new-package inventory before changing
 the primary-owned root lock. Re-run relocated focused checks and independent
 review, then primary full scripts/check before commit/bundle handoff.
+
+## Composed qualification import (Stage A only)
+
+Explicit ten-file primary grant imports the accepted exact-request module, not
+an m8s source fork. All fourteen non-manifest package objects (README, twelve
+source files, public test) and external root LICENSE match cecee Git blobs.
+The manifest is unchanged from the preceding import: exactly six inheritance
+expansions, sha2 0.11, unchanged features/dependencies/license declaration.
+No upstream tests or legacy signing functions were edited.
+
+Only the separately workspace-excluded qualification/bootstrap-mp001 package
+unifies host-io to compile the canonical in-memory exact signer. Its own reviewed
+lock is independently generated; root Cargo.lock remains unchanged. Production
+bootstrap/default/all-feature graphs must keep host-io inactive. Compiling the
+host package does not execute keystore, Keychain, CLI or legacy signer paths.
+The harness uses fixed inline synthetic keys and explicit TEST policy values;
+no production numerical policy or automated invoker authorization is implied.
+Stage A never executes its single ignored endpoint body. Stage B requires a
+separate explicit primary instruction after frozen source acceptance.
+
+Accepted source evidence: agor://kb/document/01a160ff-0f43-7704-83cd-08d1fbd4184a
+Independent source review: agor://kb/document/01a16101-1e2f-7271-91c3-91888e1d0c07
