@@ -741,3 +741,47 @@ A mismatch fails with static `control-outcome-unknown`, with no successful
 snapshot output and no retry. This binds reported stored intent only: it does
 not authenticate the peer or confirm provider absence/convergence. A mutation
 may already have committed before a mismatch, lost reply or output failure.
+
+## Prototype: real request leg (not launch/admission)
+
+```sh
+# After a separately qualified mesh node is already serving the chosen model:
+# Use the model ID actually reported by that owner's /v1/models endpoint.
+m8s prototype request --local-qualification \
+  --endpoint http://127.0.0.1:9337 --model SERVED_MODEL_ID \
+  --prompt-file /ABSOLUTE/OWNED/prompt.txt --max-tokens 8 --timeout-ms 60000 --json
+m8s prototype request --help
+```
+
+This command really sends one non-streaming `POST /v1/chat/completions`, using
+`model`, one user message, `stream=false` and explicit `max_tokens`. It does not
+launch a node/container, fetch a model, sign a certificate or call a provider.
+Its source contract is the accepted mesh checkout's OpenAI API, not a fabricated
+inference backend. Synthetic HTTP tests are **not real inference evidence**.
+
+Every sizing/timing/input flag above is mandatory, once; `--json` optional once.
+Unix only; exact numeric loopback `127.0.0.1` with port1..65535, no DNS, proxy,
+redirect, credentials, discovery or alternative URLs. Prompt file uses the shared
+64KiB no-follow/nonblock regular-file loader, then requires UTF-8 bytes1..8192.
+Model ID ASCII1..128 (`A-Z a-z 0-9 - _ . : /`); max_tokens1..128,
+timeout_ms1..60000. No silent numeric profile or retry. Prompt/content are not
+written to logs or echoed in errors; output intentionally includes returned text.
+Do not supply credentials: the explicit prompt is sent to the selected endpoint.
+
+One absolute injected-duration deadline covers connection, request preparation
+and all transport I/O; no per-read timeout renewal. File loading/JSON projection
+are not preempted by that deadline. A timeout/lost reply can leave server compute
+running: no cancellation/rollback or paid-cost guarantee is implied. The bounded
+HTTP subset requires non-streaming JSON with one Content-Length (body<=64KiB,
+headers<=8KiB); chunked/compressed/streaming/redirect responses refuse. Exactly
+one assistant text choice with matching model and finish_reason stop/length is
+required; length means token-limited, not proof the requested task completed.
+
+Complete output is capped/ASCII-escaped before stdout; text is the same safe JSON
+projection, pretty-printed. Errors are static/nonzero; broken output can follow a
+successful request. Plaintext loopback HTTP is this existing mesh *inference*
+API, **not** a substitute for ADR-0006 bootstrap/control TLS. Identity, Ready,
+owner-routed origin, resource destruction and paid qualification remain explicitly
+unverified. Successful synthetic fixtures or an HTTP completion alone cannot
+satisfy the afternoon prototype's full launch -> identity/model -> request ->
+owned teardown acceptance.

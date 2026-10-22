@@ -1946,6 +1946,7 @@ dependencies = [
  "m8s-top",
  "m8sd",
  "nix",
+ "serde",
  "serde_json",
  "tempfile",
  "toml",

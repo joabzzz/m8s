@@ -11,8 +11,9 @@ if [ "$#" -ne 1 ] || [ "$1" != --run-once-in-permitted-terminal ]; then
 fi
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
-# Rebuilding or changing any dependency source requires primary to refresh this packet.
-if ! /usr/bin/git diff --quiet 7cfbf2f086e4feff8d888cea4f199245ba0cf2ab -- Cargo.toml Cargo.lock crates/m8sd crates/m8s-bootstrap crates/m8s-api crates/m8s-core crates/m8s-provider crates/m8s-config crates/m8s-models crates/m8s-secrets vendor; then
+# Dependency sources and the standalone lock below pin this excluded workspace.
+# Root Cargo.lock is not used by this standalone qualification package.
+if ! /usr/bin/git diff --quiet 7cfbf2f086e4feff8d888cea4f199245ba0cf2ab -- Cargo.toml crates/m8sd crates/m8s-bootstrap crates/m8s-api crates/m8s-core crates/m8s-provider crates/m8s-config crates/m8s-models crates/m8s-secrets vendor; then
     printf '%s\n' 'operator qualification: source guard changed; stop, do not rebuild or bypass' >&2
     exit 1
 fi

@@ -17,6 +17,7 @@ toml = "=1.1.8"
 m8s-api.workspace = true
 m8s-top = { path = "../m8s-top" }
 serde_json.workspace = true
+serde.workspace = true
 m8s-secrets = { path = "../m8s-secrets" }
 
 [[bin]]
@@ -30,4 +31,4 @@ nix = { version = "0.29", default-features = false, features = ["term", "signal"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
-nix = { version = "0.29", default-features = false, features = ["user"] }
+nix = { version = "0.29", default-features = false, features = ["user", "poll"] }

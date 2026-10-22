@@ -9,6 +9,7 @@ mod log_follow;
 mod log_page;
 mod models;
 mod plan;
+mod prototype;
 mod queue;
 mod reload_check;
 mod safe_output;
@@ -17,6 +18,7 @@ mod secrets;
 use m8s_api::Request;
 const HELP: &str = concat!(
     "m8s command guide\n",
+    "  prototype request --help                Local mesh HTTP inference qualification only\n",
     "  init --mock --directory ABS [--json]     Fresh Unix Mock starter files only\n",
     "  models --catalog ABS list [--json]       Catalog-declared metadata only\n",
     "  models --catalog ABS show ID [--json]    One catalog profile, not runtime verification\n",
@@ -49,6 +51,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .write_all(HELP.as_bytes())
             .map_err(|_| "help-output-unavailable")?;
         return Ok(());
+    }
+    if args.first().is_some_and(|a| a == "prototype") {
+        return prototype::run(&args[1..]).map_err(Into::into);
     }
     if args.first().is_some_and(|a| a == "explain-tier")
         || (args.first().is_some_and(|a| a == "--socket")
