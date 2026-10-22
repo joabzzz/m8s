@@ -110,6 +110,41 @@ fn reload_check_frame(
     b.push(b'\n');
     b
 }
+fn explanation_frame(
+    data: Option<m8s_api::StoredLaunchGates>,
+    policy: Option<&mock_config::Policy>,
+) -> Vec<u8> {
+    let configured_tier = data
+        .as_ref()
+        .and_then(|d| policy.and_then(|p| p.snapshot().into_iter().find(|t| t.id == d.tier)));
+    let mut r = m8s_api::ExplainTierResponse {
+        schema: "m8s.explain-tier/v1".into(),
+        mode: "mock-only".into(),
+        scope: "stored-launch-gates-only".into(),
+        ok: data.is_some(),
+        error: data.is_none().then(|| "explain-tier-refused".into()),
+        readiness: "not-assessed".into(),
+        provider_currentness: "not-assessed".into(),
+        authorization: "not-assessed".into(),
+        configured: data.is_some() && policy.is_some(),
+        configured_tier,
+        data,
+    };
+    if let Ok(mut b) = serde_json::to_vec(&r)
+        && b.len() < m8s_api::MAX_FRAME
+    {
+        b.push(b'\n');
+        return b;
+    }
+    r.ok = false;
+    r.error = Some("explain-tier-refused".into());
+    r.configured = false;
+    r.configured_tier = None;
+    r.data = None;
+    let mut b = serde_json::to_vec(&r).expect("fixed explanation refusal serializes");
+    b.push(b'\n');
+    b
+}
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() == 1 && args[0] == "--help" {
@@ -206,6 +241,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     continue;
                 }
+                let mut explain_requested = false;
+                let mut explanation = None;
                 let mut reload_check_requested = false;
                 let mut checked_candidate = None;
                 let mut config_status_requested = false;
@@ -249,6 +286,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 targets.into_iter().map(|t| (t.tier, t.replicas)).collect();
                             store.scale_batch(&targets)?;
                         }
+                        Request::ExplainTier { tier } => {
+                            explain_requested = true;
+                            explanation = Some(store.explain_tier(&tier, now())?);
+                        }
                         Request::Down {} => store.down()?,
                         Request::ConfigStatus {} => config_status_requested = true,
                         Request::ReloadConfig {} => {
@@ -271,6 +312,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(())
                 })();
+                if explain_requested {
+                    let frame = explanation_frame(explanation, policy.as_ref());
+                    let _ = stream.write_all(&frame);
+                    continue;
+                }
                 if reload_check_requested {
                     let frame = reload_check_frame(policy.as_ref(), checked_candidate.as_ref());
                     let _ = stream.write_all(&frame);

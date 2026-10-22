@@ -1,6 +1,7 @@
 mod batch;
 mod config;
 mod config_status;
+mod explain;
 mod fit;
 mod init;
 mod log_follow;
@@ -26,6 +27,7 @@ const HELP: &str = concat!(
     "  local-inspect --help                    Unix, local-development default OFF; historical only\n",
     "  secrets --help                          Explicit local storage; Keychain default fails closed\n",
     "  --socket PATH up TIER|down|shutdown|reload-config|status|logs|scale TIER N [--json]  Mock-only control\n",
+    "  explain-tier --help                    Stored launch-gate observations only\n",
     "  scale-batch --help                     Atomic manual desired updates, Mock-only\n",
     "  reload-config --help                   Explicit reload or check-only preflight\n",
     "  config-status --help                   Active Mock admission snapshot, not desired state\n",
@@ -45,6 +47,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .write_all(HELP.as_bytes())
             .map_err(|_| "help-output-unavailable")?;
         return Ok(());
+    }
+    if args.first().is_some_and(|a| a == "explain-tier")
+        || (args.first().is_some_and(|a| a == "--socket")
+            && args.get(2).is_some_and(|a| a == "explain-tier"))
+    {
+        return explain::run(&args).map_err(Into::into);
     }
     if args.first().is_some_and(|a| a == "scale-batch")
         || (args.first().is_some_and(|a| a == "--socket")

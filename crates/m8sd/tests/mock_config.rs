@@ -867,3 +867,61 @@ fn configured_and_legacy_batch_admission_is_all_or_nothing() {
     assert!(f.call(Request::Shutdown {}).ok);
     assert!(legacy.wait().success());
 }
+
+#[test]
+fn tier_explanation_is_stored_snapshot_with_active_policy_context_only() {
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    let socket = f.state().join("control.sock");
+    let before = m8s_api::call_explain_tier(&socket, "bounded").unwrap();
+    assert!(before.ok && before.configured);
+    assert_eq!(before.configured_tier.unwrap().min, 2);
+    assert_eq!(before.data.unwrap().desired, None);
+    let absent = m8s_api::call_explain_tier(&socket, "unknown").unwrap();
+    assert!(absent.configured && absent.configured_tier.is_none());
+    assert_eq!(absent.data.unwrap().desired, None);
+    assert!(f.call(up("bounded")).ok);
+    // Wait for this own no-fault fixture to retain both nodes; no more launches needed.
+    let end = Instant::now() + Duration::from_secs(6);
+    while f.call(Request::Status {}).nodes.len() != 2 {
+        assert!(Instant::now() < end);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // Independent timer is not globally frozen, but this stable fixture must not gain attempts.
+
+    let store = m8sd::Store::open(f.state().join("state.db"), OWNER).unwrap();
+    let attempts = store.launch_count("bounded", 0).unwrap();
+    drop(store);
+    let explained = m8s_api::call_explain_tier(&socket, "bounded").unwrap();
+    let data = explained.data.unwrap();
+    assert_eq!(data.desired, Some(2));
+    assert!(data.stored_node_count <= 2);
+    assert_eq!(
+        data.stored_phases.iter().map(|p| p.count).sum::<u32>(),
+        data.stored_node_count
+    );
+    assert_eq!(
+        f.call(Request::Status {}).tiers,
+        vec![("bounded".into(), 2)]
+    );
+    let store = m8sd::Store::open(f.state().join("state.db"), OWNER).unwrap();
+    assert!(store.launch_count("bounded", 0).unwrap() >= attempts);
+    drop(store); // independent timer, not global freeze
+    use std::{io::Write, os::unix::net::UnixStream};
+    let mut raw = UnixStream::connect(&socket).unwrap();
+    raw.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    raw.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
+    raw.write_all(b"{\"command\":\"explain_tier\",\"tier\":\"bad.id\"}\n")
+        .unwrap();
+    let refused = m8s_api::decode_explain_tier(&m8s_api::read_frame(&mut raw).unwrap()).unwrap();
+    assert!(!refused.ok && refused.data.is_none());
+    drop(raw);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+    let mut legacy = f.start(false);
+    let r = m8s_api::call_explain_tier(&socket, "legacy").unwrap();
+    assert!(!r.configured && r.configured_tier.is_none());
+    assert_eq!(r.data.unwrap().desired, None);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(legacy.wait().success());
+}

@@ -677,3 +677,41 @@ new-file ACL refusal precedes writing example bytes (an empty partial file may
 remain). This ACL-only borrowed-FD check is not an ownership/mode/identity,
 authentication or complete private-access certificate; existing checks and
 same-UID/nontransactional limitations still apply.
+
+### Explain one tier's stored launch-gate observations
+
+```sh
+m8s --socket /absolute/state/control.sock explain-tier small --json
+m8s explain-tier --help
+```
+
+Explicit Store-compatible ASCII alnum/_/- tier ID<=64, optional `--json` once.
+One consistent stored snapshot/evaluation uses the daemon's internal nonnegative
+Unix seconds, never a caller clock override. `desired:null` means NO persisted
+intent, not zero/admission. All stored node/phase/deleting counts include retained
+rows; they are NOT confirmed provider inventory, absence, readiness or certificates.
+
+The existing gate is exactly3 launches/tier/window3600s, strict
+`at > evaluated_at.saturating_sub(3600)` (count includes future attempts); ANY
+`at > evaluated_at` attempt makes rate availability false. `launch_rate_available`
+reports ONLY that actual gate, NOT complete reconcile eligibility, a permit,
+capacity/overall decision or a prediction that a launch will happen. Desired0,
+absent intent, or deleting/finalizing rows can coexist with rate-available=true.
+Evaluated time describes calculation input, not trustworthy/current clock or zero
+query delay/future stability. Counts are checked/bounded; corrupt metadata refuses,
+never becomes empty success.
+
+Configured context comes ONLY from active in-memory policy. In successful replies,
+`configured:false` means legacy/no configured policy; configured=true with
+configured_tier=null means the requested ID is NOT configured. Neither implies
+admission/start or absence. Refusal has data=null and no usable context, NOT a
+no-history/no-policy assertion. Unknown persisted IDs may truthfully have null
+intent/zero counts without adoption.
+
+Read-only ONE DEFERRED SQLite transaction; no Store reopen, mutation, event log,
+provider query, budget/claim/nonce/key read or reconciliation in the handler.
+Normal SQLite bookkeeping and independent timer reconciliation still apply; not
+immutable filesystem inspection/global freeze. Compact JSON for both text/JSON is
+fully rendered/bounded before output, fixed labels/safe IDs/counts only. Broken
+output nonzero; partial device bytes possible. No auth/provider-currentness/Ready
+or execution qualification is claimed. Legacy commands/responses remain unchanged.

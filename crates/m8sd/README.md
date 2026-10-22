@@ -866,3 +866,13 @@ zero tiers refuse too. Any SQL/transaction failure rolls back that transaction,
 not earlier/later independent commands. Provider effects/reconciliation are NOT
 atomic with desired changes; no convergence/Ready claim. A failed response can
 follow commit, so clients must not infer no effects or automatically retry.
+
+`explain-tier TIER` exposes one read-only DEFERRED stored snapshot using internal
+now() and the UNCHANGED existing launch_rate_available helper. Only tier/attempt/
+node metadata is read, never provider/nonce/budget/keys. All stored rows/phases
+count, not confirmed runtime inventory. The3/hour strict cutoff includes future
+attempts and any future attempt blocks this rate gate. Gate availability is NOT
+complete eligibility, permission or will-launch prediction. Null desired is not
+zero; active configured context is informational only. A failed explanation has
+no data/context, never an absence claim. SQLite bookkeeping and independent
+reconcile timing remain; no mutation/provider/reconcile call inside this handler.

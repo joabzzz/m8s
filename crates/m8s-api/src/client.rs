@@ -79,6 +79,11 @@ fn prepare(request: &Request, deadline: Instant) -> io::Result<Vec<u8>> {
     if matches!(request, Request::Up {tier} | Request::Scale {tier,..} if tier.len()>MAX_FRAME) {
         return Err(invalid());
     }
+    if let Request::ExplainTier { tier } = request
+        && !super::diagnostic_id(tier)
+    {
+        return Err(invalid());
+    }
     if let Request::ScaleBatch { targets } = request {
         let mut seen = std::collections::BTreeSet::new();
         if targets.is_empty() || targets.len() > 32 {
@@ -404,6 +409,23 @@ mod tests {
             assert_eq!(
                 listener.accept().unwrap_err().kind(),
                 io::ErrorKind::WouldBlock
+            );
+        }
+    }
+    #[test]
+    fn explanation_preparation_is_bounded_and_path_free() {
+        for tier in [
+            "".to_string(),
+            "x".repeat(MAX_FRAME + 1),
+            "bad.id".into(),
+            "bad\n".into(),
+        ] {
+            assert!(
+                prepare(
+                    &Request::ExplainTier { tier },
+                    Instant::now() + Duration::from_secs(1)
+                )
+                .is_err()
             );
         }
     }
