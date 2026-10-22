@@ -876,3 +876,11 @@ complete eligibility, permission or will-launch prediction. Null desired is not
 zero; active configured context is informational only. A failed explanation has
 no data/context, never an absence claim. SQLite bookkeeping and independent
 reconcile timing remain; no mutation/provider/reconcile call inside this handler.
+
+### Store source components
+
+Private `manual` holds the existing atomic batch method/tests; private
+`diagnostics` holds the existing stored launch-gate snapshot method/tests. Both
+remain associated methods on `m8sd::Store`. Root Store initialization, legacy
+scale/down, reconcile and shared launch-rate gate remain unchanged. This split
+adds no public modules, field visibility, constructors or execution authority.
