@@ -334,3 +334,93 @@ fn invalid_arguments_or_full_configuration_refuse_before_creating_state() {
     );
     assert!(!f.state().exists());
 }
+
+#[test]
+fn standalone_help_is_fixed_effect_free_and_rejects_combinations() {
+    let f = Fixture::new();
+    let inventory = || {
+        let mut entries: Vec<_> = fs::read_dir(&f.root)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                let metadata = entry.metadata().unwrap();
+                (
+                    entry.file_name(),
+                    metadata.ino(),
+                    metadata.mode(),
+                    fs::read(entry.path()).unwrap(),
+                )
+            })
+            .collect();
+        entries.sort();
+        entries
+    };
+    let before = inventory();
+    let help = || {
+        Command::new(env!("CARGO_BIN_EXE_m8sd"))
+            .env_clear()
+            .arg("--help")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap()
+    };
+    let out = help();
+    assert!(out.status.success());
+    assert!(out.stderr.is_empty());
+    assert_eq!(out.stdout, help().stdout);
+    let text = String::from_utf8(out.stdout).unwrap();
+    for required in [
+        "m8sd <private-state-dir>",
+        "--config ABS --catalog ABS",
+        "max(1,min)",
+        "scale0",
+        "emergency down",
+        "disabled",
+        "Restart retains desired",
+        "hardwired Mock",
+        "no Ready",
+        "no automatic",
+    ] {
+        assert!(
+            text.to_lowercase().contains(&required.to_lowercase()),
+            "missing help boundary"
+        );
+    }
+    assert!(!text.contains(f.root.to_str().unwrap()));
+    assert!(!text.contains("example://"));
+    for args in [
+        vec!["--help".into(), f.state().into()],
+        vec![f.state().into(), "--help".into()],
+        {
+            let mut args = f.args(true);
+            args.push("--help".into());
+            args
+        },
+    ] {
+        let out = Daemon::spawn(&args, true).refusal();
+        assert_eq!(out.stderr,b"m8sd: invalid daemon arguments; expected state-dir [owner] with paired --config ABS --catalog ABS\n");
+        assert!(!f.state().exists());
+        assert_eq!(inventory(), before);
+    }
+    assert!(!f.state().exists());
+    assert_eq!(inventory(), before);
+}
+
+#[test]
+fn help_broken_stdout_is_nonzero_with_static_error() {
+    use std::os::{fd::OwnedFd, unix::net::UnixStream};
+    // Peer is closed BEFORE spawn: deterministic EPIPE, no timing/signal race.
+    let (reader, writer) = UnixStream::pair().unwrap();
+    drop(reader);
+    let fd: OwnedFd = writer.into();
+    let out = Command::new(env!("CARGO_BIN_EXE_m8sd"))
+        .env_clear()
+        .arg("--help")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(fd))
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert_eq!(out.stderr, b"m8sd: daemon-help-output-unavailable\n");
+}

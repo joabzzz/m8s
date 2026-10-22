@@ -12,6 +12,15 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+const HELP: &str = concat!(
+    "m8sd <private-state-dir> [nonsecret-owner-label]\n",
+    "m8sd <private-state-dir> [nonsecret-owner-label] --config ABS --catalog ABS\n",
+    "Legacy: no config flags, Store-valid tiers and existing cap16. Configured: paired flags once, whole inputs validated before state effects.\n",
+    "Configured up selects max(1,min), within max; positive scale must be within min..max. Known-tier scale0 and emergency down remain allowed even min>0.\n",
+    "Max0 tiers are disabled: no up/positive scale. No automatic startup scaling or live reload. Restart retains desired; incompatible retained tiers/counts refuse without clamp/reset.\n",
+    "Normal Store initialization/migrations still apply. Provider is hardwired Mock; mode mock-only, bootstrap unavailable, no Ready or authorization/deployment claim.\n",
+    "Standalone --help only; no config/state/file effects.\n",
+);
 fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -20,9 +29,19 @@ fn now() -> i64 {
         .min(i64::MAX as u64) as i64
 }
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let options = mock_config::Options::parse(std::env::args_os().skip(1).collect())?;
-    // Whole config/catalog validation and Store compatibility constraints precede
-    // all state, lock, socket and provider effects. Snapshot is immutable here.
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.len() == 1 && args[0] == "--help" {
+        let mut stdout = std::io::stdout().lock();
+        stdout
+            .write_all(HELP.as_bytes())
+            .and_then(|()| stdout.flush())
+            .map_err(|_| "daemon-help-output-unavailable")?;
+        return Ok(());
+    }
+    let options = mock_config::Options::parse(args)?;
+    // Whole config/catalog validation and configured identifier/bound
+    // representability precede state/lock/socket/provider effects. Snapshot is
+    // immutable here; persisted desired is checked after normal Store opening.
     let policy = options.policy()?;
     let dir = options.dir;
     let owner = options.owner;

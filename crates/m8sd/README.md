@@ -739,3 +739,9 @@ Mock stays hardwired; no Local/paid provider, iroh listener, credentials, downlo
 new socket protocol or automatic startup scaling/reload is introduced. Existing
 filesystem/lock/trusted-ancestor assumptions are unchanged, not strengthened into
 protection against uncooperative same-UID processes by this feature.
+
+`m8sd --help` prints a fixed concise guide to legacy/configured Mock mode,
+replica/stop/restart semantics and non-authorization boundaries. Only standalone
+`--help` bypasses parsing and all filesystem/config/state effects; combinations
+with state/config arguments refuse. Broken help output returns a static error
+and nonzero exit. Existing Store initialization/migration behavior is unchanged.

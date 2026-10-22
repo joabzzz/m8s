@@ -250,11 +250,14 @@ fn start_bound_invocation(
     let tx = Transaction::new_unchecked(&store.conn, TransactionBehavior::Immediate)?;
     // Local wall time sampled AFTER obtaining the SQL writer, not before a
     // possibly-blocking BEGIN; Explicit keeps existing synthetic semantics.
+    #[cfg(all(feature = "local-development", unix))]
     let now = match clock {
         InvocationClock::Explicit(now) => now,
         #[cfg(all(feature = "local-development", unix))]
         InvocationClock::LocalUtc => local_development::utc_seconds()?,
     };
+    #[cfg(not(all(feature = "local-development", unix)))]
+    let InvocationClock::Explicit(now) = clock;
     owned(&tx, &store.owner)?;
     let mut a = account(&tx, &store.owner, now)?;
     let mut r = get(&tx, &store.owner, &claim.intent.operation_id)?.ok_or(Error::Invalid)?;
