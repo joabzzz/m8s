@@ -721,3 +721,6 @@ mod catalog_validation_tests {
         ));
     }
 }
+
+/// Pure bounded matching-event projection, never a live scheduler.
+pub mod schedule;

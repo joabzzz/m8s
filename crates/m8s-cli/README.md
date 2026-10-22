@@ -577,3 +577,41 @@ generations, globally exactly-once delivery or no-event-loss proof. Restart/rese
 is not magically detected. Follow performs only existing read-only log-page calls;
 legacy tail and one-shot paging are unchanged. Independent daemon reconciliation
 continues; no provider/inference/approval/readiness claim.
+
+### Offline owner-calendar event preview
+
+```sh
+m8s schedule preview --config /absolute/m8s.toml --catalog /absolute/catalog.toml \
+  --tier small --from 1709553600 --hours 24 --limit 256 --json
+m8s schedule preview --help
+```
+
+All six flags mandatory once, any order after `preview`; optional `--json` once.
+`--from` is explicit nonnegative ASCII integer UTC Unix seconds <=i64MAX;
+`--hours` 1..168, `--limit` 1..256. No real clock, timezone discovery or live cadence.
+Whole config/catalog uses actual default-limit validation and existing bounded
+loaders. Selected tier requires owner IANA timezone and at least one schedule.
+
+Preview scans UTC-minute instants in **(from, from+hours*3600]** (exclusive from,
+inclusive checked horizon), converts via chrono-tz, and returns only matching
+open/close rule events. Maximum10080 UTC minutes x32 open/close expressions;
+checked UTC/local representability errors refuse the whole preview. Lists union;
+other calendar fields intersect. Sunday=0; wildcard steps anchor to field minimum,
+range steps to range minimum. To avoid inventing DOM/DOW semantics, each expression
+must have day-of-month OR day-of-week **literal `*`** (or both). Otherwise the entire
+preview refuses, even if `*/1` is equivalent; a valid config may be unpreviewable.
+
+Events sort by UTC instant, zero-based rule index, then open before close;
+overlaps/simultaneous events remain separate. Spring nonexistent local minutes
+produce no matches, repeated autumn minutes produce two distinct UTC events;
+this does NOT prescribe double firing by a live scheduler. Local timestamps include
+numeric offsets (historical offsets may include seconds); the grid is UTC minutes,
+not a claim that all historical local offsets are whole minutes. `has_more` and
+`truncated` explicitly indicate limit truncation; no unbounded search.
+
+Compact JSON and pretty-JSON text have the same safe projection, fully rendered
+and bounded to256KiB before stdout. No raw config/schedule/path/model/source/error
+strings. Broken stdout is nonzero (partial device bytes possible). These are NOT
+current open/closed state, paired intervals, conflict resolution, desired replica
+targets, execution, authorization or live firing policy. No daemon/Store/provider,
+realclock, filesystem writes or schedule activation occurs.

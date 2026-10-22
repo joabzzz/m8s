@@ -92,3 +92,23 @@ Primary docs: [TOML](https://docs.rs/toml/latest/toml/),
 [Serde unknown fields](https://serde.rs/container-attrs.html),
 [chrono-tz](https://docs.rs/chrono-tz/latest/chrono_tz/).
 Design/evidence: [Knowledge](agor://kb/m8s/designs/config-schema-v1-draft.md).
+
+## Pure calendar projection
+
+`schedule::preview(&validated_config, tier, from, hours, limit)` is an offline
+matching-event projection, not a scheduler or authority. Explicit nonnegative Unix
+seconds, hours1..168, limit1..256; scan UTC-minute instants in
+`(from, from+hours*3600]`, bounded10080minutes x32 expressions. Whole-window checked
+UTC/local representability; no clock/filesystem/effects. Uses actual chrono-tz
+owner IANA offsets, including historical second offsets. Events retain UTC order,
+then zero-based rule index/open-before-close; gaps omit matches and autumn repeats
+preserve distinct UTC instants, not a live firing policy. No current-state or
+interval/conflict/desired-state inference.
+
+Existing Config cron validation/serialization acceptance is unchanged. Expansion
+first reuses its private validator. Conservative preview subset requires DOM OR
+DOW literal `*` for every open/close expression; both nonliteral refuses the whole
+preview, including semantically equivalent `*/1`. Lists union, calendar fields
+intersect, Sunday0; wildcard/range steps anchor at field/range minimum. Inputs are
+validated intent, not authenticated/approved invocations. Returned limit truncation
+is explicit; replace neither schedule execution nor durable coordinator policy.

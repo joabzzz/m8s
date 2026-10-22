@@ -1955,6 +1955,7 @@ dependencies = [
 name = "m8s-config"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "chrono-tz",
  "libc",
  "m8s-core",
