@@ -1,4 +1,5 @@
 mod config;
+mod fit;
 mod models;
 mod plan;
 mod secrets;
@@ -7,6 +8,7 @@ const HELP: &str = concat!(
     "m8s command guide\n",
     "  models --catalog ABS list [--json]       Catalog-declared metadata only\n",
     "  models --catalog ABS show ID [--json]    One catalog profile, not runtime verification\n",
+    "  models fit --help                       Offline capacity estimate, not a live offer\n",
     "  config validate --help                  Whole configuration intent, not authorization\n",
     "  plan --help                             Effect-free intent, not authorization\n",
     "  local-demo --help                       Unix, local-development default OFF; synthetic only\n",

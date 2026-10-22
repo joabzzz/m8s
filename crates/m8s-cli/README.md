@@ -307,3 +307,63 @@ use those categories on stderr. Existing whole-argv non-UTF8 refusal remains
 `invalid arguments` without JSON. Broken output is nonzero and may leave partial
 bytes. This command does not change plan's selected-tier diagnostics, budget
 validation rules, deployment gates or any existing runtime/security behavior.
+
+## Offline model capacity calculator (default-available)
+
+Supply hypothetical capacity explicitly; this does not discover local hardware
+or search/evaluate a live provider offer. For example, using the shipped catalog:
+
+```sh
+m8s models fit --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml --model example-27b-q4km --gpu-count 2 --vram-bytes-per-gpu 80000000000 --layout a --context-tokens 1024 --minimum-sequences 1 --reserved-bytes-per-gpu 0 --json
+m8s models fit --help
+```
+
+`fit` must immediately follow `models`. All eight value flags shown are required
+exactly once, in any order after `fit`; `--json` is optional once. No default model,
+context, layout, reservation or capacity is assumed. Catalog must be an explicit
+absolute path, at most 4096 bytes, using the existing bounded read-only loader.
+Model ID follows the catalog's bounded lowercase ASCII grammar, and the entire
+catalog is validated before lookup, including unused profiles. Existing list/show
+grammar and loader behavior are unchanged; standalone fit help opens no files.
+
+Numbers are ASCII decimal integers only, at most 20 digits: no signs, whitespace,
+fraction/exponent syntax or overflow. GPU count is positive u32; VRAM bytes,
+context tokens and minimum sequences are positive u64; reserved bytes is u64 and
+**must be supplied even when zero**. Minimum sequences means per replica. All
+capacities/results are exact integer **bytes**, not ambiguous GB. Context above
+the declared model maximum is invalid; reservation exhausting VRAM or insufficient
+capacity is a no-fit refusal. Arithmetic overflow refuses, never wraps/clamps.
+
+The actual model-library planner computes these alternative layouts:
+- `a`: as many independent replicas per GPU as fit the requested minimum; remaining
+  capacity is divided equally among replicas on each GPU.
+- `b`: one independent replica per GPU, without sharing weights between GPUs.
+- `c`: one replica balanced-sharded across all GPUs on **one host**, never across
+  hosts. Balanced memory division and actual runtime sharding support remain
+  assumptions to verify, not capabilities established by the calculator.
+
+Text has a fixed offline-only header followed by the same formatted JSON
+projection as `--json`. Schema `m8s.model-fit/v1` reports the selected model ID,
+all explicit sizing inputs/layout, the typed FitPlan's replica/GPU counts,
+weights-plus-overhead bytes, KV bytes per sequence, KV headroom and concurrent
+sequence counts, plus a fixed layout assumption. Sequence counts are arithmetic
+capacity estimates, **not throughput or measured runtime performance**.
+
+Output explicitly says `capacity-estimate-only`, `model-unmeasured`,
+`runtime-not-verified`, `provider-policy-not-assessed`, `not-authorized` and
+`not-executable`. A catalog-declared certified status cannot change those labels.
+The internal capacity adapter is deliberately synthetic with unknown country and
+region and no price/network/reliability evidence; it is never a live offer or
+policy-admissible selection. No provider admission, automatic model selection,
+fit recommendation, cost/download estimate, Ready/current-runtime claim, execution,
+credential discovery, socket, child, Store or source fetch occurs. A successful
+estimate neither authorizes deployment nor changes config/plan/runtime gates.
+
+Both formats render fully and check a 16 KiB bound before stdout. Source URI,
+license/quant text, raw argv/paths/parser diagnostics and the internal synthetic
+offer are omitted. JSON/text failures use fixed categories:
+`invalid-model-fit-arguments`, `invalid-model-fit-catalog`, `unknown-model-fit-id`,
+`model-does-not-fit`, `model-fit-overflow`, `model-fit-output-unavailable`.
+Whole-argv non-UTF8 still fails generically without JSON. Broken output is nonzero
+and may leave partial bytes. Loader ancestor/concurrent-edit/platform boundaries
+are identical to catalog browsing; no security/default expansion is implied.

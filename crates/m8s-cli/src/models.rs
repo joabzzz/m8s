@@ -167,6 +167,9 @@ fn write(bytes: &[u8]) -> Result<(), Error> {
         .map_err(|_| Error::Output)
 }
 pub(super) fn run(args: &[String]) -> Result<(), &'static str> {
+    if args.first().is_some_and(|arg| arg == "fit") {
+        return super::fit::run(&args[1..]);
+    }
     if args == ["--help"] {
         return write(HELP.as_bytes()).map_err(Error::category);
     }

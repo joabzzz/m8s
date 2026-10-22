@@ -1938,6 +1938,7 @@ dependencies = [
  "libc",
  "m8s-api",
  "m8s-config",
+ "m8s-core",
  "m8s-models",
  "m8s-secrets",
  "m8s-top",
