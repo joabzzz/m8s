@@ -15,6 +15,7 @@ pub enum Request {
     Scale { tier: String, replicas: u32 },
     Down {},
     Shutdown {},
+    ReloadConfig {},
     Status {},
     Logs {},
     LogsPage { after: u64, limit: u32 },
@@ -173,6 +174,29 @@ mod log_page_tests {
             r#"{"command":"logs_page","after":0,"limit":2,"limit":1}"#,
             r#"{"command":"logs_page","after":-1,"limit":2}"#,
             r#"{"command":"logs_page","command":"status","after":0,"limit":2}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(frame).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod reload_config_tests {
+    use super::*;
+    #[test]
+    fn reload_config_tag_has_no_paths_or_overrides() {
+        assert_eq!(
+            serde_json::to_string(&Request::ReloadConfig {}).unwrap(),
+            r#"{"command":"reload_config"}"#
+        );
+        assert!(matches!(
+            serde_json::from_str::<Request>(r#"{"command":"reload_config"}"#),
+            Ok(Request::ReloadConfig {})
+        ));
+        for frame in [
+            r#"{"command":"reload_config","config":"sensitive-path"}"#,
+            r#"{"command":"reload_config","force":true}"#,
+            r#"{"command":"reload_config","command":"status"}"#,
         ] {
             assert!(serde_json::from_str::<Request>(frame).is_err());
         }

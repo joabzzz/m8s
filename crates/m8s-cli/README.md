@@ -386,7 +386,7 @@ Use your own private state path. Up selects max(1,min); positive scale must be
 within configured bounds; known-tier scale0/down remain explicit stops even when
 min>0. No startup scale is inferred. Desired state survives restart; an incompatible
 new configuration refuses without clamping/resetting state or replacing the old
-socket/opening Mock. Configuration is a startup snapshot, not live reload. See
+socket/opening Mock. Configuration stays frozen until explicit validated reload (never automatic). See
 [daemon boundaries](../m8sd/README.md#opt-in-configuration-backed-mock-control),
 including disabled tiers, Store-compatible IDs and existing initialization rules.
 The provider remains hardwired Mock, mode mock-only, bootstrap unavailable: no
@@ -431,3 +431,21 @@ state's retained history, not authenticated cross-DB/global continuity, current
 clock, real-time delivery or proof of no lost events. `ok=false` empty records are
 **not** evidence of no history; an empty successful page only describes that
 query snapshot. Model/runtime/readiness/authorization are not assessed.
+
+### Reload an explicitly configured Mock daemon
+
+```sh
+m8s --socket /absolute/private/state/control.sock reload-config --json
+```
+
+Only paired-config startup supports this path-free request. It rereads the exact
+startup-selected config/catalog files, validates both completely and checks all
+retained tiers/current positive desired counts against new bounds before one
+policy assignment. File edits alone do nothing. Invalid/incompatible reload
+refuses with old policy active and desired/history unchanged: no clamp/reset/down.
+Explicit down/known-tier scale0 can make new bounds compatible, but a retained
+zero tier still cannot be removed. Success changes subsequent up/scale admission;
+compatible restart reads the files normally. Legacy no-config mode refuses, with
+no file discovery. The independent daemon timer still reconciles normally.
+This is hardwired Mock control only, not model activation, provider selection,
+scheduling, Ready, budget/security qualification or authorization.

@@ -506,3 +506,131 @@ fn disconnected_response_reader_cannot_undo_committed_shutdown() {
     drop(stream);
     assert_stopped_and_restart_zero(&f);
 }
+
+#[test]
+fn legacy_reload_refuses_without_adopting_fixture_configuration() {
+    let f = Fixture::new();
+    let mut d = f.start(false);
+    // Files exist but were NOT selected at startup; no implicit discovery.
+    fs::write(f.root.join("config.toml"), "sensitive-invalid-document").unwrap();
+    let response = f.call(Request::ReloadConfig {});
+    assert!(!response.ok);
+    assert_eq!(response.error.as_deref(), Some("control request refused"));
+    assert!(response.tiers.is_empty());
+    assert!(d.child().try_wait().unwrap().is_none());
+    assert!(f.call(up("legacy-unconfigured")).ok);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+}
+
+#[test]
+fn explicit_reload_publishes_only_compatible_policy_and_restart_uses_files() {
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    assert!(f.call(up("bounded")).ok); // desired2 under min2/max3
+    fs::write(f.root.join("config.toml"), CONFIG.replace("max=3", "max=2")).unwrap();
+    // Editing alone has no effect; old max3 still admits3.
+    assert!(f.call(scale("bounded", 3)).ok);
+    let refused = f.call(Request::ReloadConfig {}); // desired3 incompatible
+    assert!(!refused.ok);
+    assert_eq!(refused.tiers, vec![("bounded".into(), 3)]);
+    assert!(f.call(scale("bounded", 3)).ok); // old snapshot remains active
+    assert!(f.call(Request::Down {}).ok);
+    let accepted = f.call(Request::ReloadConfig {});
+    assert!(accepted.ok);
+    assert_eq!(accepted.tiers, vec![("bounded".into(), 0)]);
+    assert!(!f.call(scale("bounded", 3)).ok); // NEW max2 now enforced
+    assert!(f.call(up("bounded")).ok);
+    let raised = CONFIG.replace("min=2,max=3", "min=3,max=4");
+    fs::write(f.root.join("config.toml"), &raised).unwrap();
+    assert!(!f.call(scale("bounded", 4)).ok); // file edits do not raise max
+    assert!(!f.call(Request::ReloadConfig {}).ok); // desired2 below new min3
+    assert!(f.call(scale("bounded", 2)).ok); // previous policy retained
+    assert!(f.call(Request::Down {}).ok);
+    assert!(f.call(Request::ReloadConfig {}).ok);
+    assert_eq!(f.call(up("bounded")).tiers, vec![("bounded".into(), 3)]);
+    assert!(!f.call(scale("bounded", 2)).ok);
+    assert!(f.call(scale("bounded", 4)).ok);
+    assert!(f.call(scale("bounded", 0)).ok); // explicit stop even min3
+    assert!(!f.call(up("disabled")).ok);
+    assert!(f.call(scale("disabled", 0)).ok);
+    assert!(!f.call(scale("unknown", 0)).ok);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+    let mut restarted = f.start(true);
+    assert!(
+        f.call(Request::Status {})
+            .tiers
+            .iter()
+            .all(|(_, n)| *n == 0)
+    );
+    assert_eq!(
+        f.call(up("bounded")).tiers,
+        vec![("bounded".into(), 3), ("disabled".into(), 0)]
+    );
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(restarted.wait().success());
+    assert_eq!(
+        fs::read_to_string(f.root.join("config.toml")).unwrap(),
+        raised
+    );
+}
+
+#[test]
+fn failed_full_reload_preserves_old_admission_and_durable_desired() {
+    let f = Fixture::new();
+    let mut d = f.start(true);
+    assert!(f.call(up("bounded")).ok);
+    // Retain a zero tier too: it cannot disappear via reload or adoption.
+    assert!(f.call(scale("optional", 0)).ok);
+    let expected = vec![("bounded".into(), 2), ("optional".into(), 0)];
+    let (prefix, suffix) = CATALOG
+        .rsplit_once("runtime_status = \"untested\"")
+        .unwrap();
+    let invalid_catalog = format!("{prefix}runtime_status = \"sensitive-invalid\"{suffix}");
+    let cases = [
+        ("sensitive-invalid-TOML".to_owned(), CATALOG.to_owned()),
+        (CONFIG.replace("max=3", "max=17"), CATALOG.to_owned()),
+        (
+            CONFIG.replace("tier.bounded", "tier.'with.dot'"),
+            CATALOG.to_owned(),
+        ),
+        (
+            CONFIG.replace("min=2,max=3", "min=3,max=2"),
+            CATALOG.to_owned(),
+        ),
+        (
+            CONFIG.replace("tier.optional", "tier.renamed"),
+            CATALOG.to_owned(),
+        ),
+        (CONFIG.to_owned(), invalid_catalog), // UNUSED model still validated
+    ];
+    for (config, catalog) in cases {
+        fs::write(f.root.join("config.toml"), &config).unwrap();
+        fs::write(f.root.join("catalog.toml"), &catalog).unwrap();
+        let response = f.call(Request::ReloadConfig {});
+        assert!(!response.ok);
+        assert_eq!(response.error.as_deref(), Some("control request refused"));
+        assert_eq!(response.tiers, expected);
+        assert_eq!(f.call(Request::Status {}).tiers, expected);
+        assert!(d.child().try_wait().unwrap().is_none());
+        assert!(f.call(scale("bounded", 3)).ok); // old max3 still works
+        assert!(f.call(scale("bounded", 2)).ok);
+        assert_eq!(
+            fs::read_to_string(f.root.join("config.toml")).unwrap(),
+            config
+        );
+        assert_eq!(
+            fs::read_to_string(f.root.join("catalog.toml")).unwrap(),
+            catalog
+        );
+    }
+    fs::write(f.root.join("config.toml"), CONFIG).unwrap();
+    fs::write(f.root.join("catalog.toml"), CATALOG).unwrap();
+    fs::remove_file(f.root.join("catalog.toml")).unwrap();
+    assert!(!f.call(Request::ReloadConfig {}).ok);
+    assert_eq!(f.call(Request::Status {}).tiers, expected);
+    assert!(f.call(scale("bounded", 3)).ok);
+    assert!(f.call(Request::Shutdown {}).ok);
+    assert!(d.wait().success());
+}

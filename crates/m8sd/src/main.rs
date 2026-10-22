@@ -19,7 +19,7 @@ const HELP: &str = concat!(
     "m8sd <private-state-dir> [nonsecret-owner-label] --config ABS --catalog ABS\n",
     "Legacy: no config flags, Store-valid tiers and existing cap16. Configured: paired flags once, whole inputs validated before state effects.\n",
     "Configured up selects max(1,min), within max; positive scale must be within min..max. Known-tier scale0 and emergency down remain allowed even min>0.\n",
-    "Max0 tiers are disabled: no up/positive scale. No automatic startup scaling or live reload. Restart retains desired; incompatible retained tiers/counts refuse without clamp/reset.\n",
+    "Max0 tiers are disabled: no up/positive scale. No automatic startup scaling or reload. Explicit reload-config validates startup-selected paths and retained desired before replacing policy. Restart retains desired; incompatible retained tiers/counts refuse without clamp/reset.\n",
     "Normal Store initialization/migrations still apply. Provider is hardwired Mock; mode mock-only, bootstrap unavailable, no Ready or authorization/deployment claim.\n",
     "Local shutdown commits down, requires confirmed Mock absence, then exits; refusal keeps daemon running with retained state.\n",
     "Standalone --help only; no config/state/file effects.\n",
@@ -45,9 +45,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Whole config/catalog validation and configured identifier/bound
     // representability precede state/lock/socket/provider effects. Snapshot is
     // immutable here; persisted desired is checked after normal Store opening.
-    let policy = options.policy()?;
-    let dir = options.dir;
-    let owner = options.owner;
+    let mut policy = options.policy()?;
+    let dir = options.dir.clone();
+    let owner = options.owner.clone();
     match fs::symlink_metadata(&dir) {
         Ok(m)
             if !m.is_dir() || m.file_type().is_symlink() || m.permissions().mode() & 0o077 != 0 =>
@@ -144,6 +144,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             store.scale(&tier, replicas)?;
                         }
                         Request::Down {} => store.down()?,
+                        Request::ReloadConfig {} => {
+                            // Reuse ONLY startup-selected paths and actual whole
+                            // validation. No writes/effects; publish once, last.
+                            let candidate = options
+                                .policy()?
+                                .ok_or("configured mock reload unavailable")?;
+                            candidate.persisted(&store.tiers()?)?;
+                            policy = Some(candidate);
+                        }
                         Request::Shutdown {} => {
                             shutdown_requested = true;
                             mock_shutdown::shutdown(&mut store, &mut provider, now())?;

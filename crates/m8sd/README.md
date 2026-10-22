@@ -699,14 +699,15 @@ Choose your own private state path and replace the absolute checkout paths.
 `m8sd <private-state-dir> [nonsecret-owner-label]` without flags retains legacy
 mock behavior/default owner. To opt in, supply `--config ABS --catalog ABS` once
 **together**, after the state directory (owner/flags may otherwise be reordered).
-No defaults, file/env discovery, provider selection or live reload. Unknown,
+No defaults, file/env discovery, provider selection or automatic reload. Unknown,
 duplicate, partial, relative-input-path and non-UTF8 arguments fail opaquely.
 The whole config and catalog use existing bounded regular-file, final-component
 no-follow/nonblocking 65536-byte loaders and actual default ValidationLimits.
 Whole-input validation and configured-ID/bound representability checks finish
 before any state directory, lock, socket, Store or Mock-provider effects.
 
-Configured tier membership and replica limits are an immutable startup snapshot:
+Configured tier membership and replica limits are immutable until explicit validated
+`reload-config` (file edits alone do not change the active snapshot):
 - `up TIER` selects `max(1, configured_min)` and refuses if above configured max.
 - Positive `scale TIER N` requires a known tier and `min <= N <= max`, within
   Store's existing cap16. Unknown tiers cannot create durable desired rows.
@@ -736,7 +737,7 @@ unavailable, and nodes cannot become Ready. Even configured Vast preferences,
 models, schedules, DMS and budgets do not select a provider, execute a model,
 start scheduling or establish live all-in accounting/security qualification.
 Mock stays hardwired; no Local/paid provider, iroh listener, credentials, download,
-new socket protocol or automatic startup scaling/reload is introduced. Existing
+new socket transport or automatic startup scaling/reload is introduced. Existing
 filesystem/lock/trusted-ancestor assumptions are unchanged, not strengthened into
 protection against uncooperative same-UID processes by this feature.
 
@@ -791,3 +792,30 @@ newline response must fit 65536 bytes before any success bytes are written;
 otherwise a fixed failed-page response is sent. Client text uses an escaped JSON
 projection, not raw event/control text. Broken output may still partially write
 and returns nonzero; no delivery/exactly-once claim is made.
+
+### Explicit configured Mock reload
+
+```sh
+m8s --socket /absolute/private/state/control.sock reload-config --json
+```
+
+Only a daemon started with paired `--config ABS --catalog ABS` supports reload.
+The request carries **no paths or overrides**: it rereads exactly those selected
+startup paths using the same bounded loaders, whole-config/catalog validation,
+default ValidationLimits and Store-compatible tier IDs/bounds. Legacy no-config
+mode refuses without discovering files. No watcher or automatic reload exists.
+
+Before publication, every retained tier (even desired0) must still be configured;
+positive desired must fit new min/max. Removing a retained tier, raising min above
+positive desired, or lowering max below it refuses. Old policy stays active and
+no desired/node/history is reset, clamped or stopped. Use explicit `down` or known
+tier `scale TIER 0` before retrying changed bounds; zero does not permit removal
+of a retained tier. A failed reload never publishes a partially validated policy.
+
+Successful publication is one snapshot assignment in the serial control loop;
+subsequent up/scale use new bounds, including disabled/minimum rules. Reload itself
+only reads files/current desired state: no Store writes, reconcile, provider call,
+model activation or startup scaling. The ordinary reconciliation timer continues
+independently, so this is not a global filesystem/state freeze. Compatible restart
+uses files normally. Mock stays hardwired, bootstrap unavailable/no Ready; reload
+is not provider choice, scheduling/DMS, budget/security or execution approval.
