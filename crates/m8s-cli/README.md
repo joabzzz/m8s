@@ -545,3 +545,35 @@ Text and JSON use the same bounded, fully rendered safe projection. Broken outpu
 is nonzero (partial bytes possible on device failure). No authorization/readiness
 or immutable-filesystem claim: the daemon reads selected files/SQLite state,
 SQLite bookkeeping and independent timer reconciliation are not globally frozen.
+
+### Explicit log follow (read-only polling)
+
+```sh
+m8s --socket /absolute/state/control.sock logs --follow --after 0 --limit 100 \
+  --poll-ms 250 --max-pages 10 --json
+m8s logs --follow --help
+```
+
+`--follow`, `--after` and `--limit` are mandatory once; optional flags also once,
+in any order after `logs`. Cursor is ASCII decimal 0..i64MAX, limit1..200.
+`--poll-ms` is 50..60000 (default250ms), solely a user-opted read-only UI polling
+interval, NOT an automated scaling policy. `--max-pages` is 1..10000 and counts
+EVERY successful emitted page, including empty pages; omitted means follow until
+externally stopped. No terminal/signal handling is installed. At max-pages, stop
+without another request or sleep. Each fetch has its own existing absolute3s
+API deadline, NOT a whole-session deadline or follow-duration cap.
+
+Each successful fetch emits one complete ASCII-escaped NDJSON page in BOTH text
+and `--json` modes, including empty checkpoints with stable cursor. The shared
+one-shot encoder caps each newline-inclusive page at65536 bytes and escapes
+controls/nonASCII/bidi, not raw terminal messages. Cursor advances only after
+complete output AND flush. `has_more=true` drains immediately; at end/empty wait
+poll interval. First transport/refusal/malformed/output failure stops nonzero with
+fixed stderr; no retry/fallback or further fetch. Earlier emitted pages remain;
+partial output-device writes are possible on failure.
+
+Local-history cursors are not authentication, currentness, cross-database history
+generations, globally exactly-once delivery or no-event-loss proof. Restart/reset
+is not magically detected. Follow performs only existing read-only log-page calls;
+legacy tail and one-shot paging are unchanged. Independent daemon reconciliation
+continues; no provider/inference/approval/readiness claim.

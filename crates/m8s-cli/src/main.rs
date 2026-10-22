@@ -1,6 +1,7 @@
 mod config;
 mod config_status;
 mod fit;
+mod log_follow;
 mod log_page;
 mod models;
 mod plan;
@@ -22,7 +23,7 @@ const HELP: &str = concat!(
     "  --socket PATH up TIER|down|shutdown|reload-config|status|logs|scale TIER N [--json]  Mock-only control\n",
     "  reload-config --help                   Explicit reload or check-only preflight\n",
     "  config-status --help                   Active Mock admission snapshot, not desired state\n",
-    "  logs --help                            One-shot durable history paging, Mock-only\n",
+    "  logs --help                            History paging/opt-in follow, Mock-only\n",
     "  top --socket PATH [--once] [--json]      Read-only daemon dashboard\n",
     "No model download, provider approval or runtime/security qualification is implied.\n",
 );
@@ -51,6 +52,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             && args.get(2).is_some_and(|a| a == "config-status"))
     {
         return config_status::run(&args).map_err(Into::into);
+    }
+    if (args.first().is_some_and(|a| a == "logs") && args[1..].iter().any(|a| a == "--follow"))
+        || (args.first().is_some_and(|a| a == "--socket")
+            && args.get(2).is_some_and(|a| a == "logs")
+            && args[3..].iter().any(|a| a == "--follow"))
+    {
+        return log_follow::run(&args).map_err(Into::into);
     }
     if args == ["logs", "--help"]
         || (args.first().is_some_and(|a| a == "--socket")
