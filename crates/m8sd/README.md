@@ -893,3 +893,12 @@ This limits transport waiting, not SQL, reconciliation, serialization or OS
 scheduling. A failed/timed-out reply can follow committed intent: no rollback or
 safe retry is implied. Confirmed shutdown still exits even if its reply fails.
 No peer authentication or filesystem trust policy is added by this deadline.
+
+Legacy responses are fully encoded into a bounded buffer before the socket write:
+MAX_FRAME (64 KiB) includes the final newline. Fitting responses keep their exact
+JSON field order/bytes; encoding/cap failures instead send a fixed refusal whose
+empty fields are explicitly not absence and whose outcome is uncertain. This
+bounds encoding/output only: Store snapshot queries still collect rows first.
+It is not atomic socket delivery; failed/partial output may follow committed
+intent. No retry/rollback is performed, and confirmed shutdown still exits after
+the write attempt, including when only a fallback refusal can be encoded.

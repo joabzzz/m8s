@@ -1,4 +1,5 @@
 mod control_io;
+mod control_response;
 mod log_page;
 mod mock_config;
 mod mock_shutdown;
@@ -360,10 +361,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 // Shutdown is already durable/confirmed. A disconnected client
                 // cannot undo it; all other request disconnect behavior is unchanged.
-                let _ = (|| -> std::io::Result<()> {
-                    serde_json::to_writer(&mut stream, &response)?;
-                    stream.write_all(b"\n")
-                })();
+                let frame = control_response::frame(&response);
+                let _ = stream.write_all(&frame);
                 if shutdown_complete {
                     return Ok(()); // Drop listener, Store and process lock; no unlink/reset.
                 }
