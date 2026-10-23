@@ -66,6 +66,7 @@ Choose Vast on-demand, one SM120 Blackwell GPU with at least 48,000 MiB VRAM,
 Compute must be <=2,000,000 micro-USD/hour; storage and transfer are additional.
 Both transfer directions must be <=4,000 micro-USD/GB, so low hourly pricing
 cannot select a host whose native-download fees exhaust the bounded run budget.
+The prototype explicitly supports reported host locations US, NL, CZ and FR.
 The existing SM120 CUDA build recipe requires CUDA driver support >=12.8.
 The 48 GB candidate leaves headroom above the 15.33 GiB weights for native
 buffers and cache. It is a conservative selection, not measured VRAM proof.

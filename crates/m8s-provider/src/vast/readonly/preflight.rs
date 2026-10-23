@@ -345,7 +345,7 @@ fn qualify(
             .map(str::trim)
             .ok_or(Error::Unavailable)?;
         // Bound the live experiment to explicitly supported host locations.
-        if !matches!(country, "US" | "NL" | "CZ") {
+        if !matches!(country, "US" | "NL" | "CZ" | "FR") {
             return Err(Error::Unavailable);
         }
     }
@@ -439,7 +439,7 @@ mod tests {
             assert!(qualify(&fractional, 1, requirements).is_err());
         }
         assert!(qualify(&row, 80, Requirements::default()).is_err());
-        for location in ["Netherlands, NL", "Czechia, CZ"] {
+        for location in ["Netherlands, NL", "Czechia, CZ", "France, FR"] {
             let mut fast_host = row.clone();
             fast_host["geolocation"] = json!(location);
             assert!(qualify(&fast_host, 80, requirements).is_ok());
