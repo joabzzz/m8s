@@ -108,17 +108,18 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         {
             return Err(Error::Unavailable);
         }
-        let mut query = json!({"limit":20,"type":"on-demand","verified":{"eq":true},"rentable":{"eq":true},"rented":{"eq":false},"cpu_cores_effective":{"gte":4},"cpu_ram":{"gte":8192},"disk_space":{"gte":disk_gb},"direct_port_count":{"gte":2},"dph_total":{"lte":0.30},"order":[["dph_total","asc"]]});
-        if let Some(id) = selected_offer {
-            query["id"] = json!({"eq":id.get()});
-        }
+        let query = json!({"limit":offer_read_limit(selected_offer),"type":"on-demand","verified":{"eq":true},"rentable":{"eq":true},"rented":{"eq":false},"cpu_cores_effective":{"gte":4},"cpu_ram":{"gte":8192},"disk_space":{"gte":disk_gb},"direct_port_count":{"gte":2},"dph_total":{"lte":0.30},"order":[["dph_total","asc"]]});
+        // The API's `id` search filter does not address the returned bundle ID:
+        // live observation returned no rows for an ID present in the same host
+        // search. Keep a bounded catalog read and match the exact bundle locally.
+        // Never substitute a different offer when a selected one is unavailable.
         self.stage = "vast-offer-read";
         let offers = self.read("/api/v0/bundles/", Some(query))?;
         self.stage = "vast-offer-price-qualification";
         let rows = offers
             .get("offers")
             .and_then(Value::as_array)
-            .filter(|r| r.len() <= 20)
+            .filter(|r| r.len() <= offer_read_limit(selected_offer))
             .ok_or(Error::Unavailable)?;
         let mut candidates = Vec::new();
         for row in rows {
@@ -147,6 +148,10 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         })
     }
 }
+fn offer_read_limit(selected: Option<NonZeroU64>) -> usize {
+    if selected.is_some() { 100 } else { 20 }
+}
+
 // Decimal dollars -> micro-USD, always round costs up. Reject exponent syntax,
 // negative values, overflow and non-finite provider values.
 fn micros(v: &Value) -> Result<u64> {
@@ -205,6 +210,11 @@ fn qualify(row: &Value, disk: u32) -> Result<(NonZeroU64, u64, u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn selected_offer_catalog_read_remains_bounded() {
+        assert_eq!(offer_read_limit(None), 20);
+        assert_eq!(offer_read_limit(NonZeroU64::new(42)), 100);
+    }
     #[test]
     fn decimal_cost_rounds_up_without_float_arithmetic() {
         for (s, n) in [
