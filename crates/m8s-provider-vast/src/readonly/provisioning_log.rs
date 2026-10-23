@@ -25,8 +25,9 @@ impl<S: FnMut() -> Result<SecretValue>> ProvisioningLog<S> {
             instance: access.instance_id(),
         })
     }
-    /// One exact log request and one download attempt. An unavailable log is
-    /// uncertainty. The coordinator owns its fixed overall polling deadline.
+    /// One exact log request, then bounded polling of that same object while
+    /// generation is pending. Authorization failures and redirects are not retried.
+    /// The coordinator additionally owns its fixed overall polling deadline.
     pub fn host_key(&mut self) -> Result<HostPublicKey> {
         let secret = (self.transport.supplier)().map_err(|_| Error::Unavailable)?;
         let bytes = secret.expose();
@@ -56,14 +57,27 @@ impl<S: FnMut() -> Result<SecretValue>> ProvisioningLog<S> {
         )?;
         // The fixed TLS/no-proxy/no-redirect/no-retry client has NO default auth.
         // Never attach the provider account header to the object-storage request.
-        let response = self
-            .transport
-            .backend
-            .0
-            .get(url)
-            .header(ACCEPT_ENCODING, "identity")
-            .send()
-            .map_err(|_| Error::Unavailable)?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(9);
+        let response = loop {
+            let left = deadline
+                .checked_duration_since(std::time::Instant::now())
+                .ok_or(Error::Unavailable)?;
+            let response = self
+                .transport
+                .backend
+                .0
+                .get(url.clone())
+                .header(ACCEPT_ENCODING, "identity")
+                .timeout(left.min(std::time::Duration::from_secs(3)))
+                .send()
+                .map_err(|_| Error::Unavailable)?;
+            if !log_generation_pending(response.status()) {
+                break response;
+            }
+            // The official provider CLI polls a newly requested log object.
+            // Keep the original URL and never resend request_logs here.
+            std::thread::sleep(std::time::Duration::from_millis(300).min(left));
+        };
         if response.status() != reqwest::StatusCode::OK
             || unique_header(response.headers(), "content-encoding")?
                 .is_some_and(|s| s != "identity")
@@ -83,6 +97,13 @@ impl<S: FnMut() -> Result<SecretValue>> ProvisioningLog<S> {
     }
 }
 
+fn log_generation_pending(status: reqwest::StatusCode) -> bool {
+    matches!(
+        status,
+        reqwest::StatusCode::ACCEPTED | reqwest::StatusCode::NOT_FOUND
+    )
+}
+
 fn log_url(text: &str) -> Result<reqwest::Url> {
     if text.len() > 8192 {
         return Err(Error::Unavailable);
@@ -91,7 +112,10 @@ fn log_url(text: &str) -> Result<reqwest::Url> {
     // Explicit object-store routes only, never a provider-controlled arbitrary
     // destination, IP literal, local network URL, redirect, or authenticated URI.
     let allowed = match url.host_str() {
-        Some("s3.amazonaws.com") => url.path().starts_with("/vast.ai/instance_logs/"),
+        Some("s3.amazonaws.com") => {
+            url.path().starts_with("/vast.ai/instance_logs/")
+                || url.path().starts_with("/public.vast.ai/instance_logs/")
+        }
         Some("vast.ai.s3.amazonaws.com") => url.path().starts_with("/instance_logs/"),
         _ => false,
     };
@@ -136,9 +160,20 @@ mod tests {
         super::host_key_from_log(bytes, NonZeroU64::new(42).unwrap())
     }
     #[test]
+    fn log_polling_is_only_for_pending_generation() {
+        assert!(log_generation_pending(reqwest::StatusCode::ACCEPTED));
+        assert!(log_generation_pending(reqwest::StatusCode::NOT_FOUND));
+        for code in [200, 301, 302, 307, 401, 403, 429, 500, 503] {
+            assert!(!log_generation_pending(
+                reqwest::StatusCode::from_u16(code).unwrap()
+            ));
+        }
+    }
+    #[test]
     fn only_fixed_https_object_storage_routes_are_accepted() {
         for url in [
             "https://s3.amazonaws.com/vast.ai/instance_logs/synthetic.log",
+            "https://s3.amazonaws.com/public.vast.ai/instance_logs/synthetic.log",
             "https://vast.ai.s3.amazonaws.com/instance_logs/synthetic.log",
         ] {
             assert!(log_url(url).is_ok());
@@ -148,6 +183,8 @@ mod tests {
             "https://127.0.0.1/vast.ai/instance_logs/x",
             "https://s3.amazonaws.com.evil.invalid/vast.ai/instance_logs/x",
             "https://s3.amazonaws.com/other-bucket/x",
+            "https://s3.amazonaws.com/public.vast.ai/other-path/x",
+            "https://s3.amazonaws.com/public.vast.ai.evil/instance_logs/x",
             "https://user@s3.amazonaws.com/vast.ai/instance_logs/x",
             "https://s3.amazonaws.com:444/vast.ai/instance_logs/x",
             "https://s3.amazonaws.com/vast.ai/instance_logs/x#fragment",

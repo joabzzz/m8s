@@ -219,6 +219,7 @@ fn run_with_client(
     client: &mut OwnerClient,
 ) -> Result<serde_json::Value> {
     let invite = runtime.block_on(client.invite())?;
+    eprintln!("prototype stage: certified-owner-client-ready");
     let ssh_public = ssh_key(&p.directory)?;
     let key = credential(&p.credential_file)?;
     let mut preflight = m8s_provider_vast::readonly::preflight::PreflightHttps::new(|| {
@@ -301,6 +302,7 @@ fn run_with_client(
     {
         return Err("prototype-cleanup-deadline-mismatch-before-claim");
     }
+    eprintln!("prototype stage: cleanup-armed");
     let claim = executor.claim(&store, "single-create").map_err(|_| ERROR)?;
     match executor
         .execute(&store, claim, &mut cleanup)
@@ -318,6 +320,7 @@ fn run_with_client(
         }
         std::thread::sleep(Duration::from_secs(3));
     };
+    eprintln!("prototype stage: exact-instance-network-observed");
     // Once positively bound, every subsequent outcome passes through independent
     // provider-confirmed cleanup before reporting success or inference content.
     let work = (|| {
@@ -333,6 +336,7 @@ fn run_with_client(
             }
             std::thread::sleep(Duration::from_secs(3));
         };
+        eprintln!("prototype stage: provisioning-host-key-pinned");
         let fresh_access = cleanup.observe_owned().map_err(|_| ERROR)?.ok_or(ERROR)?;
         if fresh_access.instance_id() != access.instance_id() {
             return Err(ERROR);
@@ -351,6 +355,7 @@ fn run_with_client(
         ))
     })();
     let _ = store.down();
+    eprintln!("prototype stage: cleanup-requested");
     cleanup.request_cleanup();
     let deadline = Instant::now() + Duration::from_secs(180);
     let absent = loop {
@@ -363,6 +368,7 @@ fn run_with_client(
         std::thread::sleep(Duration::from_secs(3));
     };
     private_file(&p.directory.join("cleanup-evidence.json"), &serde_json::to_vec_pretty(&serde_json::json!({"schema":"m8s.vast-removal/v1","instance_id":absent.instance_id().get(),"image":p.image,"creator_account_id":p.expected_account_id,"provider_confirmed_absent":true,"observed_at":utc()?})).map_err(|_| ERROR)?)?;
+    eprintln!("prototype stage: exact-instance-absence-confirmed");
     let binding = store
         .budget_reservations()
         .map_err(|_| ERROR)?
@@ -461,6 +467,7 @@ async fn bootstrap(
     )
     .await
     .map_err(|_| "prototype-ssh-provision-failed")?;
+    eprintln!("prototype stage: ssh-provision-sent");
     let pin =
         Mp001TrustPin::new(owner, *signer_key.verifying_key().as_bytes()).map_err(|_| ERROR)?;
     let mut signer = Mp001NodeSigner::new(signer_key, &pin, 1800, 5).map_err(|_| ERROR)?;
@@ -492,14 +499,17 @@ async fn bootstrap(
         .ok_or(ERROR)?;
     let work_deadline = Instant::now() + Duration::from_secs(remaining as u64);
     let result = store.with_bootstrapped_node(&endpoint,plan,&mut signer,&verifier,|_| async move {
+        eprintln!("prototype stage: certificate-delivered-control-established");
         tokio::task::spawn_blocking(move || {
             super::model_wait::wait(port,MODEL,(Instant::now()+Duration::from_secs(120)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            eprintln!("prototype stage: owner-routed-model-observed");
             let body = serde_json::to_vec(&serde_json::json!({"model":MODEL,"messages":[{"role":"user","content":"Reply with a short sentence explaining what a mesh network is."}],"stream":false,"max_tokens":48})).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let bytes = super::http::exchange(port,&body,(Instant::now()+Duration::from_secs(60)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let value = super::project(&bytes,MODEL).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            eprintln!("prototype stage: owner-routed-inference-completed");
             Ok(serde_json::json!({"content":value["content"],"finish_reason":value["finish_reason"]}))
         }).await.map_err(|_| m8s_bootstrap::Error::Unavailable)?
-    },std::future::pending(),|| utc().unwrap_or(-1)).await.map_err(|_| "prototype-bootstrap-or-inference-failed");
+    },std::future::pending(),|| utc().unwrap_or(-1)).await.map_err(|error| { eprintln!("prototype bootstrap category: {error}"); "prototype-bootstrap-or-inference-failed" });
     let _ = provision.stop().await;
     endpoint.close().await;
     result

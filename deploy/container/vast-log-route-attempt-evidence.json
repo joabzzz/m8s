@@ -1,0 +1,21 @@
+{
+  "schema": "m8s.vast-log-route-attempt/v1",
+  "instance_id": 57326047,
+  "provider_confirmed_absent": true,
+  "instance_inventory_empty": true,
+  "volume_inventory_empty": true,
+  "observed_at": 1792732933,
+  "bootstrap_completed": false,
+  "inference_completed": false,
+  "ports_observed": [
+    "2222/tcp",
+    "40100/udp"
+  ],
+  "failure": "host-key log route uses /public.vast.ai/instance_logs/; prior adapter refused this unknown route",
+  "reserved_micro_usd": 1688308,
+  "total_retained_micro_usd": 4986274,
+  "authorized_total_micro_usd": 16000000,
+  "remaining_micro_usd": 11013726,
+  "owned_local_processes_stopped": true,
+  "private_run_material_removed": true
+}
