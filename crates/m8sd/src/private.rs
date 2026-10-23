@@ -110,6 +110,10 @@ fn same_path(file: &File, path: &Path) -> Result<()> {
 fn open_checked(_path: &Path, _directory: bool) -> Result<File> {
     Err(Error::PrivateState)
 }
+
+pub(crate) fn check_directory(path: &Path) -> Result<()> {
+    open_checked(path, true).map(|_| ())
+}
 #[cfg(not(unix))]
 fn validate(_file: &File, _directory: bool) -> Result<()> {
     Err(Error::PrivateState)

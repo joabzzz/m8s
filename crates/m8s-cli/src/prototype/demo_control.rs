@@ -11,6 +11,7 @@ use std::{
 pub(super) fn validate(directory: &Option<PathBuf>) -> Result<(), &'static str> {
     use std::os::unix::fs::MetadataExt;
     if let Some(path) = directory {
+        m8sd::verify_private_directory(path).map_err(|_| "prototype-control-refused")?;
         let m = std::fs::symlink_metadata(path).map_err(|_| "prototype-control-refused")?;
         if !path.is_absolute()
             || path
@@ -62,6 +63,19 @@ pub(super) async fn hold(directory: Option<PathBuf>, complete: Arc<AtomicBool>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn control_requires_a_private_directory_and_no_prior_stop_marker() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().canonicalize().unwrap();
+        assert!(validate(&Some(directory.clone())).is_ok());
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(validate(&Some(directory.clone())).is_err());
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(directory.join("down-requested"), b"down\n").unwrap();
+        assert!(validate(&Some(directory)).is_err());
+        assert!(validate(&None).is_ok());
+    }
     #[test]
     fn stop_cancels_unfinished_work_but_preserves_the_completed_hold_path() {
         let temp = tempfile::tempdir().unwrap();

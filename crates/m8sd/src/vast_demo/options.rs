@@ -107,6 +107,7 @@ impl Options {
         {
             return Err(ERROR);
         }
+        m8sd::verify_private_directory(&self.root).map_err(|_| ERROR)?;
         let lock = fs::OpenOptions::new()
             .read(true)
             .write(true)
