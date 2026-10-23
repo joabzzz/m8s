@@ -183,8 +183,8 @@ qualification.
    provisioning and loading. At 500 Mbps the weights alone have an ideal lower
    bound of about 264 seconds; no throughput guarantee follows from that rate.
    The Qwen profile reserves 64 GB of transfer independently of its 64 GB
-   disk: two complete 16.465 GB download paths plus the <5 GB unpacked image
-   leave >26 GB for metadata/framing. The pinned native artifact resolver
+   disk: two complete 16.465 GB download paths plus the <13 GB unpacked image
+   leave >18 GB for metadata/framing. The pinned native artifact resolver
    downloads exactly the selected non-sharded GGUF, not all variants. Its native Hub and Xet request retry counts are fixed to zero, using
    the pinned clients' public settings, to prevent retry amplification. Include
    the immutable image's download size, weights, metadata and transfer overhead

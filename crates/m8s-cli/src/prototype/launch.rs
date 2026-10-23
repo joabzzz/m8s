@@ -558,7 +558,7 @@ async fn bootstrap(
     let result = store.with_bootstrapped_node(&endpoint,plan,&mut signer,&verifier,|_| async move {
         eprintln!("prototype stage: certificate-delivered-control-established");
         let completion = tokio::task::spawn_blocking(move || {
-            super::model_wait::wait(port,model.served(),(Instant::now()+Duration::from_secs(300)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            super::model_wait::wait(port,model.served(),if matches!(model, DemoModel::Qwen38) { work_deadline } else { (Instant::now()+Duration::from_secs(300)).min(work_deadline) }).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-model-observed");
             if matches!(model, DemoModel::Flint) {
                 return super::benchmark::run(port, model.served(), work_deadline, &directory)

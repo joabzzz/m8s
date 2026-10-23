@@ -55,7 +55,7 @@ impl DemoModel {
             // Cover native model/cache traffic, metadata, image pull and
             // transfer framing separately from the disk allocation. The pinned
             // non-sharded artifact has one 16.465 GB file. 64 GB covers two
-            // full download paths plus the <5 GB image and >26 GB headroom;
+            // full download paths plus the <13 GB unpacked image and >18 GB headroom;
             // native retries and draft-model downloads are disabled.
             Self::Qwen38 => 64,
             Self::Qwen | Self::Flint => u64::from(disk_gb),

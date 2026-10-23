@@ -3,7 +3,12 @@ import json
 import pathlib
 import tempfile
 import unittest
-from normalize_cuda_arch import normalize
+import importlib.util
+
+SPEC = importlib.util.spec_from_file_location('normalize_cuda_arch', pathlib.Path(__file__).parents[1] / 'normalize_cuda_arch.py')
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+normalize = MODULE.normalize
 
 
 class ArchitectureNormalization(unittest.TestCase):
