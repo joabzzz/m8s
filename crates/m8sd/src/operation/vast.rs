@@ -45,6 +45,8 @@ mod audit;
 pub use audit::{AttemptStage, RecoveryMetadata, VastAttemptStatus, VastAudit};
 mod recovery;
 pub use recovery::VastRecovery;
+mod reconcile;
+pub use reconcile::{Absence, CleanupTrigger, OperationReport, Outcome, RestartPort};
 mod removal;
 pub use removal::VastRemoval;
 #[cfg(test)]
