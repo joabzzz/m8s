@@ -202,9 +202,14 @@ not decoded, generated or treated as an owner key here. A canonical native-key
 endpoint match is still a mandatory BootGate prerequisite. The accepted mesh
 source has two important semantics: `--owner-required` demands an OWNER keystore,
 so is deliberately absent; a bad pre-signed certificate can warn and start
-Unsigned. Therefore `--node-ownership` alone is not a fail-closed admission proof.
-The coordinator must establish the real native key/endpoint before approving
-startup, and still verify actual served identity/model and owner-routed response.
+Unsigned. Therefore both supervised and container commands now require the
+additive `--node-ownership-required` flag alongside the certificate path. There
+is no compatibility fallback that drops the flag: an older native parser must
+refuse startup. The corresponding canonical implementation is source-reviewed
+and focused-test green, but its local commit and native consistency check remain
+blocked by tool policy; no qualified serving image is claimed here. The
+coordinator must establish the real native key/endpoint before approving startup,
+and still verify actual served identity/model and owner-routed response.
 No Ready assertion is produced by staging or spawning.
 
 `Supervisor::start_mesh` consumes and retains the material while using the same
@@ -381,3 +386,32 @@ NOT select that mode. The executor's native entrypoint override is permissible
 only after the separate qualified-image gate above. No such gate is wired here.
 No image build/run, real model request, TLS/owner canary or container removal has
 been runtime-qualified. Fake owned executable tests are not those results.
+
+### One-shot local demo lifecycle
+
+After actual-ID-bound seal, `ContainerSession::run_once_and_remove` uses the same
+canonical verifier, fresh DMS and external BootGate as `start`. It attempts start
+once and performs at most one inference request. Whether start/request succeeds
+or fails, it then takes the existing exact-ID-fenced stop/remove path. A model
+completion is returned only after fresh all-container lookup confirms that ID is
+absent. Failed start/request remains an error even after successful cleanup;
+failed stop/remove/absence observation withholds the completion and retains
+uncertainty. No create, start, request or destroy retry loop is added.
+
+This explicit local operation does not create a gate, start an automatic cleanup
+thread, survive caller/host loss, or qualify paid-provider destruction. Native
+required-certificate support, actual secure entrypoint and real inference still
+need their separate acceptance. Tests use owned fake Docker programs only.
+
+### Explicit restart cleanup custody
+
+`node::container::OwnedContainerStop::open` reopens only a caller-selected private
+run and exact explicit IDs. It accepts new transport-bound intent v2 plus the
+existing created-ID record, rechecks retained nofollow/ACL anchors and requires
+exact daemon ID/run/node/name/image matches. It cannot start, seal, request,
+adopt, prune or mint BootGate authority. One attempt per handle; lost replies,
+failed inspect and nonempty/failed absence queries remain errors. Missing v2
+transport evidence (including historical v1 intents) refuses recovery rather than
+silently trusting a newly selected daemon. Existing retained live-session cleanup
+continues to work independently of bootstrap/model material. Both paths share
+one fenced inspection/removal algorithm, not separate destructive implementations.

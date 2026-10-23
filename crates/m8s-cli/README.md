@@ -785,3 +785,37 @@ owner-routed origin, resource destruction and paid qualification remain explicit
 unverified. Successful synthetic fixtures or an HTTP completion alone cannot
 satisfy the afternoon prototype's full launch -> identity/model -> request ->
 owned teardown acceptance.
+
+### Explicit prototype owned-container stop (default OFF)
+
+Build with `--features prototype-container` on Unix. `prototype stop` never
+launches anything and does not need the model, join token or node private key:
+
+```sh
+m8s prototype stop --run-directory /absolute/private/run \
+  --run-id LOWERCASE_HEX32 --container-id LOWERCASE_HEX64 \
+  --docker /absolute/selected/docker --docker-socket /absolute/private/docker.sock \
+  --command-timeout-ms 3000 --stop-grace-seconds 1 --json
+```
+
+Requires existing private 0700 run directory, 0600 intent/created records and
+matching explicit IDs. New intent v2 binds the selected Docker executable and
+socket path/device/inode/owner/mode. Recovery refuses missing/old v1 records,
+changed transports, symlinks, unsafe modes/ACLs, inconsistent IDs or daemon
+run/node/name/image mismatch; never adopts by name or searches/prunes resources.
+One exact-ID stop (if running), stopped inspection, removal and fresh filtered
+absence query reuse the live-session cleanup algorithm. Per-command deadlines,
+bounded capture, no reconnect/retry. Failure produces no success JSON and leaves
+resource outcome uncertain; all private artifacts remain. Success proves only
+observed local-container absence, not provider destruction, billing cutoff,
+secret wipe or whole-system cleanup. Explicit trusted Docker selection and
+private local custody remain prerequisites; records are not an admission proof.
+Default-off builds refuse before filesystem/process access; standalone help is
+effect-free. Secure launch remains unfinished—this command does not mint a gate.
+
+After an uncertain/lost removal reply, an explicitly separate invocation with
+`--observe-only` performs one fresh exact-ID filtered absence query and no
+inspect/stop/remove. A present ID, malformed response or query failure produces
+no success output. This is read-only outcome resolution, not a destructive retry.
+The native source image recipe enables this optional CLI feature explicitly;
+the normal CLI build remains unchanged/default OFF.

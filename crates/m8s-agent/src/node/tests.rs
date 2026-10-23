@@ -137,6 +137,7 @@ fn exact_private_files_and_enforcing_native_command_never_expose_secret_bytes() 
             f.root().join("join-token").display().to_string(),
             "--node-ownership".into(),
             f.root().join("node-ownership.json").display().to_string(),
+            "--node-ownership-required".into(),
             "--config".into(),
             f.root().join("runtime.toml").display().to_string(),
             "--trust-policy".into(),

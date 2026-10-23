@@ -6,9 +6,11 @@ license.workspace = true
 
 [features]
 default = []
+prototype-container = ["dep:m8s-agent", "m8s-agent/sealed-node"]
 local-development = ["dep:m8sd", "m8sd/local-development"]
 
 [dependencies]
+m8s-agent = { path = "../m8s-agent", optional = true, default-features = false }
 m8s-core.workspace = true
 m8sd = { path = "../m8sd", optional = true, default-features = false }
 m8s-config = { path = "../m8s-config" }

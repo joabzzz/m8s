@@ -306,7 +306,14 @@ impl ContainerSession {
         prompt_anchor.len = prompt_bytes.len() as u64;
         prompt_anchor.check().map_err(|_| ContainerError)?;
         anchors.push(prompt_anchor);
-        let intent = serde_json::to_vec(&serde_json::json!({"schema":"m8s.container-intent/v1","image":spec.image,"run_id":spec.run_id,"node":endpoint(launch.node)})).map_err(|_| ContainerError)?;
+        let intent = serde_json::to_vec(&serde_json::json!({
+            "schema":"m8s.container-intent/v2","image":spec.image,"run_id":spec.run_id,"node":endpoint(launch.node),
+            "transport": {
+                "docker":spec.docker,"socket":spec.socket,
+                "docker_dev":docker.dev,"docker_ino":docker.ino,"docker_uid":docker.uid,"docker_mode":docker.mode,
+                "socket_dev":socket.dev(),"socket_ino":socket.ino(),"socket_uid":socket.uid(),"socket_mode":socket.mode()
+            }
+        })).map_err(|_| ContainerError)?;
         let mut session = Self {
             material: None,
             launch,
@@ -484,6 +491,7 @@ impl ContainerSession {
             "/bootstrap/material/join-token".into(),
             "--node-ownership".into(),
             "/bootstrap/material/node-ownership.json".into(),
+            "--node-ownership-required".into(),
             "--config".into(),
             "/bootstrap/material/runtime.toml".into(),
             "--trust-policy".into(),
@@ -534,22 +542,9 @@ impl ContainerSession {
         Ok(bytes)
     }
     fn inspect(&self) -> CResult<bool> {
-        let id = self.id.as_ref().ok_or(ContainerError)?;
-        let bytes = self.execute(&["container".into(), "inspect".into(), id.clone()])?;
-        let data: Vec<Inspection> = serde_json::from_slice(&bytes).map_err(|_| ContainerError)?;
-        let [data] = data.as_slice() else {
-            return Err(ContainerError);
-        };
-        if data.id != *id
-            || data.name != format!("/{}", self.name())
-            || data.config.image != self.spec.image
-            || data.config.labels.run != self.spec.run_id
-            || data.config.labels.node != endpoint(self.launch.node)
-        {
-            return Err(ContainerError);
-        }
-        Ok(data.state.running)
+        inspect_exact(self)
     }
+
     pub fn start(
         &mut self,
         gate: &mut impl BootGate,
@@ -571,6 +566,28 @@ impl ContainerSession {
             .and_then(|()| material.check_dms(dms, now))
             .map_err(|_| ContainerError)?;
         self.start_checked()
+    }
+    /// Explicit one-shot local qualification lifecycle after sealing. The same
+    /// canonical verifier, fresh DMS and external BootGate remain mandatory.
+    /// A failed/ambiguous start or request still gets one fenced teardown path;
+    /// no completion escapes unless fresh exact-ID absence was observed.
+    /// This is not a retry loop, admission grant or surviving provider watchdog.
+    pub fn run_once_and_remove(
+        &mut self,
+        gate: &mut impl BootGate,
+        dms: &crate::DeadManSwitch,
+        verifier: &Mp001CertificateVerifier,
+        now: i64,
+    ) -> CResult<LocalCompletion> {
+        let started = self.start(gate, dms, verifier, now);
+        self.finish_once(started)
+    }
+    fn finish_once(&mut self, started: CResult<()>) -> CResult<LocalCompletion> {
+        let completion = started.and_then(|()| self.request());
+        // Do not let `?` on start/request skip cleanup. Its uncertainty is
+        // retained even when cleanup succeeds; never retry the request.
+        self.stop_and_remove()?;
+        completion
     }
     fn start_checked(&mut self) -> CResult<()> {
         self.start_with_io(&mut SystemRecordIo)
@@ -658,49 +675,109 @@ impl ContainerSession {
             return Ok(());
         }
         self.state = ContainerState::TeardownUncertain;
-        let running = self.inspect()?;
-        let id = self.id.clone().ok_or(ContainerError)?;
-        if running {
-            self.execute(&[
-                "container".into(),
-                "stop".into(),
-                "--time".into(),
-                self.spec.stop_grace_seconds.to_string(),
-                id.clone(),
-            ])?;
-            if self.inspect()? {
-                return Err(ContainerError);
-            }
-        }
-        self.execute(&["container".into(), "rm".into(), id.clone()])?;
-        if !self.observe_removed()? {
-            return Err(ContainerError);
-        }
+        remove_exact(self)?;
+        self.state = ContainerState::RemovedObserved;
         Ok(())
     }
     /// Explicit read-only resolution after a lost teardown reply. One fresh
     /// query, no repeated destruction, name adoption or retry loop.
     pub fn observe_removed(&mut self) -> CResult<bool> {
-        let id = self.id.clone().ok_or(ContainerError)?;
-        let result = self.execute(&[
-            "container".into(),
-            "ls".into(),
-            "--all".into(),
-            "--no-trunc".into(),
-            "--filter".into(),
-            format!("id={id}"),
-            "--format".into(),
-            "{{.ID}}".into(),
-        ])?;
-        if result.is_empty() {
+        let absent = observe_absent(self)?;
+        if absent {
             self.state = ContainerState::RemovedObserved;
-            Ok(true)
-        } else if result == format!("{id}\n").as_bytes() {
-            Ok(false)
-        } else {
-            Err(ContainerError)
         }
+        Ok(absent)
     }
 }
 #[cfg(test)]
 mod tests;
+
+mod recovery;
+pub use recovery::{OwnedContainerStop, StopSpec};
+
+// One destructive algorithm for retained and explicitly recovered ownership.
+trait ExactTarget {
+    fn execute_exact(&self, args: &[String]) -> CResult<Vec<u8>>;
+    fn exact_id(&self) -> CResult<&str>;
+    fn run_id(&self) -> &str;
+    fn exact_image(&self) -> &str;
+    fn node_id(&self) -> String;
+    fn grace(&self) -> u16;
+}
+impl ExactTarget for ContainerSession {
+    fn execute_exact(&self, args: &[String]) -> CResult<Vec<u8>> {
+        self.execute(args)
+    }
+    fn exact_id(&self) -> CResult<&str> {
+        self.id.as_deref().ok_or(ContainerError)
+    }
+    fn run_id(&self) -> &str {
+        &self.spec.run_id
+    }
+    fn exact_image(&self) -> &str {
+        &self.spec.image
+    }
+    fn node_id(&self) -> String {
+        endpoint(self.launch.node)
+    }
+    fn grace(&self) -> u16 {
+        self.spec.stop_grace_seconds
+    }
+}
+fn inspect_exact(target: &impl ExactTarget) -> CResult<bool> {
+    let id = target.exact_id()?;
+    let bytes = target.execute_exact(&["container".into(), "inspect".into(), id.into()])?;
+    let data: Vec<Inspection> = serde_json::from_slice(&bytes).map_err(|_| ContainerError)?;
+    let [data] = data.as_slice() else {
+        return Err(ContainerError);
+    };
+    if data.id != id
+        || data.name != format!("/m8s-{}", target.run_id())
+        || data.config.image != target.exact_image()
+        || data.config.labels.run != target.run_id()
+        || data.config.labels.node != target.node_id()
+    {
+        return Err(ContainerError);
+    }
+    Ok(data.state.running)
+}
+fn remove_exact(target: &impl ExactTarget) -> CResult<()> {
+    let id = target.exact_id()?.to_owned();
+    if inspect_exact(target)? {
+        target.execute_exact(&[
+            "container".into(),
+            "stop".into(),
+            "--time".into(),
+            target.grace().to_string(),
+            id.clone(),
+        ])?;
+        if inspect_exact(target)? {
+            return Err(ContainerError);
+        }
+    }
+    target.execute_exact(&["container".into(), "rm".into(), id.clone()])?;
+    if !observe_absent(target)? {
+        return Err(ContainerError);
+    }
+    Ok(())
+}
+fn observe_absent(target: &impl ExactTarget) -> CResult<bool> {
+    let id = target.exact_id()?.to_owned();
+    let observed = target.execute_exact(&[
+        "container".into(),
+        "ls".into(),
+        "--all".into(),
+        "--no-trunc".into(),
+        "--filter".into(),
+        format!("id={id}"),
+        "--format".into(),
+        "{{.ID}}".into(),
+    ])?;
+    if observed.is_empty() {
+        Ok(true)
+    } else if observed == format!("{id}\n").as_bytes() {
+        Ok(false)
+    } else {
+        Err(ContainerError)
+    }
+}

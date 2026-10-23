@@ -10,6 +10,7 @@ mod log_page;
 mod models;
 mod plan;
 mod prototype;
+mod prototype_stop;
 mod queue;
 mod reload_check;
 mod safe_output;
@@ -18,6 +19,7 @@ mod secrets;
 use m8s_api::Request;
 const HELP: &str = concat!(
     "m8s command guide\n",
+    "  prototype stop --help                   Explicit owned-container cleanup (feature gated)\n",
     "  prototype request --help                Local mesh HTTP inference qualification only\n",
     "  init --mock --directory ABS [--json]     Fresh Unix Mock starter files only\n",
     "  models --catalog ABS list [--json]       Catalog-declared metadata only\n",

@@ -49,7 +49,7 @@ start) [ "$2" = '{id}' ] || exit 3; printf R > "$root/status"; [ '{fail}' = star
 exec) [ "$2" = '{id}' ] || exit 3; if [ '{fail}' = projection ]; then printf '%s\n' '{{"error":"private-marker-\u001b","readiness":"Ready"}}'; exit 0; fi; printf '%s\n' '{{"schema":"m8s.prototype-completion/v1","scope":"local-http-qualification-only","model":"synthetic-model","content":"synthetic-not-inference","finish_reason":"stop","identity":"not-verified","readiness":"not-assessed","owner_routing":"not-verified","provider_qualification":"not-performed","launch_performed":false}}' ;;
 stop) [ "$4" = '{id}' ] || exit 3; printf C > "$root/status"; printf '%s\n' '{id}' ;;
 rm) [ "$2" = '{id}' ] || exit 3; printf X > "$root/status"; [ '{fail}' = rm ] && exit 1; printf '%s\n' '{id}' ;;
-ls) read status < "$root/status" || :; [ "$status" = X ] || printf '%s\n' '{id}' ;;
+ls) [ '{fail}' = ls ] && exit 1; read status < "$root/status" || :; [ "$status" = X ] || printf '%s\n' '{id}' ;;
 *) exit 8 ;;
 esac
 exit 0
@@ -213,6 +213,16 @@ fn exact_owned_lifecycle_and_inside_container_request_without_port_widening() {
     assert!(lines[0].contains("--read-only"));
     assert!(lines[0].contains("dst=/model.gguf,readonly"));
     assert!(lines[0].contains("dst=/node-key,readonly"));
+    assert_eq!(
+        lines[0]
+            .split_whitespace()
+            .filter(|arg| *arg == "--node-ownership-required")
+            .count(),
+        1
+    );
+    assert!(lines[0].contains(
+        "--node-ownership /bootstrap/material/node-ownership.json --node-ownership-required --config"
+    ));
     for forbidden in [
         "--publish",
         "--listen-all",
@@ -234,6 +244,65 @@ fn exact_owned_lifecycle_and_inside_container_request_without_port_widening() {
             .starts_with("ls --all --no-trunc --filter id=")
     );
     assert!(f.path.join("run/request-prompt").is_file()); // Teardown is not a host wipe.
+}
+#[test]
+fn one_shot_returns_completion_only_after_confirmed_removal() {
+    // Same lifecycle engine, fake Docker only; no BootGate or crypto proof is
+    // fabricated by this private start_checked fixture.
+    for failure in ["", "start", "projection", "rm", "ls"] {
+        let f = Fixture::new(failure);
+        let mut session = ContainerSession::create_stopped_for_qualification(
+            &f.path.join("run"),
+            f.launch(),
+            f.spec(),
+        )
+        .unwrap();
+        f.seal(&mut session);
+        let started = session.start_checked();
+        let result = session.finish_once(started);
+        assert_eq!(result.is_ok(), failure.is_empty());
+        if let Ok(completion) = result {
+            assert_eq!(completion.content, "synthetic-not-inference");
+        }
+        assert_eq!(
+            session.state(),
+            if matches!(failure, "rm" | "ls") {
+                ContainerState::TeardownUncertain
+            } else {
+                ContainerState::RemovedObserved
+            }
+        );
+        let calls = f.calls();
+        for operation in ["start ", "stop ", "rm "] {
+            assert_eq!(
+                calls.lines().filter(|s| s.starts_with(operation)).count(),
+                1
+            );
+        }
+        assert_eq!(
+            calls.lines().filter(|s| s.starts_with("exec ")).count(),
+            usize::from(failure != "start")
+        );
+    }
+}
+#[test]
+fn one_shot_refusal_still_removes_own_stopped_container_without_start_or_request() {
+    let f = Fixture::new("");
+    let mut session = ContainerSession::create_stopped_for_qualification(
+        &f.path.join("run"),
+        f.launch(),
+        f.spec(),
+    )
+    .unwrap();
+    assert!(session.finish_once(Err(ContainerError)).is_err());
+    assert_eq!(session.state(), ContainerState::RemovedObserved);
+    let calls = f.calls();
+    assert!(
+        !calls
+            .lines()
+            .any(|s| s.starts_with("start ") || s.starts_with("exec "))
+    );
+    assert_eq!(calls.lines().filter(|s| s.starts_with("rm ")).count(), 1);
 }
 #[test]
 fn ambiguous_create_is_retained_without_id_adoption_or_retry() {
@@ -473,4 +542,99 @@ fn journal_positive_control_orders_write_file_sync_directory_sync_before_publish
     );
     assert_eq!(session.state(), ContainerState::RunningObserved);
     session.stop_and_remove().unwrap();
+}
+
+fn stop_spec(f: &Fixture) -> StopSpec {
+    let spec = f.spec();
+    StopSpec {
+        docker: spec.docker,
+        socket: spec.socket,
+        run_id: spec.run_id,
+        container_id: "a".repeat(64),
+        command_timeout: spec.command_timeout,
+        stop_grace_seconds: spec.stop_grace_seconds,
+    }
+}
+#[test]
+fn reopened_stop_uses_private_records_without_model_or_join_material() {
+    let f = Fixture::new("");
+    let session = ContainerSession::create_stopped_for_qualification(
+        &f.path.join("run"),
+        f.launch(),
+        f.spec(),
+    )
+    .unwrap();
+    drop(session);
+    fs::write(f.path.join("status"), b"R").unwrap();
+    fs::remove_file(f.path.join("model")).unwrap();
+    fs::remove_file(f.path.join("key")).unwrap();
+    let mut stop = OwnedContainerStop::open(&f.path.join("run"), stop_spec(&f)).unwrap();
+    stop.stop_and_remove().unwrap();
+    assert!(stop.stop_and_remove().is_err());
+    let calls = f.calls();
+    assert_eq!(calls.lines().filter(|s| s.starts_with("stop ")).count(), 1);
+    assert_eq!(calls.lines().filter(|s| s.starts_with("rm ")).count(), 1);
+    assert!(!calls.contains("prune"));
+    assert!(f.path.join("run/container-created.json").exists());
+}
+#[test]
+fn reopened_stop_refuses_bad_records_or_inspection_and_never_claims_rm_failure_as_absence() {
+    for failure in ["labels", "rm", "ls"] {
+        let f = Fixture::new(failure);
+        let session = ContainerSession::create_stopped_for_qualification(
+            &f.path.join("run"),
+            f.launch(),
+            f.spec(),
+        )
+        .unwrap();
+        drop(session);
+        // A failed initial inspect never produces a created record; recovery refuses.
+        let result = OwnedContainerStop::open(&f.path.join("run"), stop_spec(&f));
+        if failure == "labels" {
+            assert!(result.is_err());
+            continue;
+        }
+        let mut stop = result.unwrap();
+        assert!(stop.stop_and_remove().is_err());
+        assert!(stop.stop_and_remove().is_err());
+        assert_eq!(
+            f.calls().lines().filter(|s| s.starts_with("rm ")).count(),
+            1
+        );
+    }
+    let f = Fixture::new("");
+    let _session = ContainerSession::create_stopped_for_qualification(
+        &f.path.join("run"),
+        f.launch(),
+        f.spec(),
+    )
+    .unwrap();
+    let mut spec = stop_spec(&f);
+    spec.container_id = "f".repeat(64);
+    assert!(OwnedContainerStop::open(&f.path.join("run"), spec).is_err());
+}
+
+#[test]
+fn reopened_stop_rechecks_daemon_identity_before_destructive_calls() {
+    let f = Fixture::new("");
+    let session = ContainerSession::create_stopped_for_qualification(
+        &f.path.join("run"),
+        f.launch(),
+        f.spec(),
+    )
+    .unwrap();
+    drop(session);
+    // Modify the owned fake's response before opening the cleanup handle.
+    let script = fs::read_to_string(f.path.join("docker"))
+        .unwrap()
+        .replace(&format!("run='{}'", "c".repeat(32)), "run='wrong'");
+    fs::write(f.path.join("docker"), script).unwrap();
+    // Same inode/path and mode: the exact inspect fence must still reject the labels.
+    let mut stop = OwnedContainerStop::open(&f.path.join("run"), stop_spec(&f)).unwrap();
+    assert!(stop.stop_and_remove().is_err());
+    assert!(
+        !f.calls()
+            .lines()
+            .any(|s| s.starts_with("stop ") || s.starts_with("rm "))
+    );
 }

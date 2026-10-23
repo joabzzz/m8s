@@ -156,6 +156,10 @@ fn execute(_: &Options) -> Result<Vec<u8>, &'static str> {
     Err("prototype-request-platform-unavailable")
 }
 pub(super) fn run(args: &[String]) -> Result<(), &'static str> {
+    if args.first().is_some_and(|a| a == "stop") {
+        return crate::prototype_stop::run(&args[1..]);
+    }
+
     let mut out = std::io::stdout().lock();
     if args == ["request", "--help"] {
         return out

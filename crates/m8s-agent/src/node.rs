@@ -351,8 +351,9 @@ impl NodeMaterial {
 
         // No token/config/credential bytes in argv/environment. Native mesh still
         // checks ownership against its actual node key and enforcing trust store.
-        // Native bad-cert handling can downgrade to Unsigned: the BootGate MUST
-        // first establish native key/endpoint matching. This is not proof of it.
+        // Require the additive native hard-fail mode. Older binaries must reject
+        // the unknown flag, never silently select their unsigned fallback.
+        // BootGate must still establish native key/endpoint matching.
         // --owner-required demands an owner keystore and is deliberately absent.
         let spec = ChildSpec {
             program: self.launch.program.clone(),
@@ -364,6 +365,7 @@ impl NodeMaterial {
                 self.root.join("join-token").into_os_string(),
                 "--node-ownership".into(),
                 self.root.join("node-ownership.json").into_os_string(),
+                "--node-ownership-required".into(),
                 "--config".into(),
                 self.root.join("runtime.toml").into_os_string(),
                 "--trust-policy".into(),
