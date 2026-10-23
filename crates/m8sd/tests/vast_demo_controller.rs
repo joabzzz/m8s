@@ -96,7 +96,11 @@ esac
     }
     fn start(&mut self) {
         self.daemon = Some(self.command().spawn().unwrap());
-        let until = Instant::now() + Duration::from_secs(5);
+        // Startup hashes the selected executables. Linux CI's large unstripped
+        // debug daemon takes longer than the release binary, especially with
+        // parallel fixtures. This bounds only fixture startup, not serving or
+        // cleanup deadlines in the controller.
+        let until = Instant::now() + Duration::from_secs(30);
         loop {
             if let Ok(r) = m8s_api::call(&self.root.join("state/control.sock"), &Request::Status {})
             {
