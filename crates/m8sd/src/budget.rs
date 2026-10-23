@@ -154,6 +154,7 @@ pub enum BudgetState {
     Uncertain,
     BillingUnknown,
     Settled,
+    CancelledUninvoked,
 }
 /// Recovery metadata only: receiving this value never authorizes a second create.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +168,15 @@ pub struct BudgetReservation {
     pub binding: Option<ResourceBinding>,
     pub settlement: Option<SettlementEvidence>,
     pub billing_period: Option<CalendarPeriod>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uninvoked_cancellation: Option<UninvokedCancellation>,
+}
+/// Terminal local proof, not provider absence or billing evidence. Original
+/// reservation amounts/identity remain immutable and the request cannot launch.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UninvokedCancellation {
+    pub cancelled_at: i64,
+    pub authorization: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BudgetAccount {
@@ -323,6 +333,13 @@ fn aggregate_available(
     for r in rows(conn, &policy.owner)? {
         if proposed.is_some_and(|(uid, _, _)| r.request.node_uid == uid) {
             return Err(Error::Invalid);
+        }
+        if r.state == BudgetState::CancelledUninvoked {
+            validate_uninvoked_cancellation(conn, &r)?;
+            continue;
+        }
+        if r.uninvoked_cancellation.is_some() {
+            return Err(Error::Corrupt);
         }
         if r.state == BudgetState::Settled {
             let Some(SettlementEvidence {
@@ -716,6 +733,7 @@ impl Store {
             binding: None,
             settlement: None,
             billing_period: None,
+            uninvoked_cancellation: None,
         };
         tx.execute(
             "INSERT INTO budget_reservation(owner,request_id,node_uid,record) VALUES (?,?,?,?)",
@@ -739,7 +757,10 @@ impl Store {
         let mut a = account(&tx, &self.owner)?.ok_or(Error::Invalid)?;
         clock(&a, now)?;
         let mut r = get_row(&tx, &self.owner, request_id)?;
-        if r.state == BudgetState::Settled {
+        if matches!(
+            r.state,
+            BudgetState::Settled | BudgetState::CancelledUninvoked
+        ) {
             return Err(Error::Invalid);
         }
         if r.state != BudgetState::Reserved {
@@ -793,7 +814,10 @@ impl Store {
                 Err(Error::Invalid)
             };
         }
-        if r.state == BudgetState::Settled {
+        if matches!(
+            r.state,
+            BudgetState::Settled | BudgetState::CancelledUninvoked
+        ) {
             return Err(Error::Invalid);
         }
         r.binding = Some(binding.clone());
@@ -844,6 +868,9 @@ pub(crate) fn settle_in_transaction(
     if r.binding.as_ref() != Some(&evidence.binding) {
         return Err(Error::Invalid);
     }
+    if r.state == BudgetState::CancelledUninvoked {
+        return Err(Error::Invalid);
+    }
     if r.state == BudgetState::Settled || r.settlement.as_ref() == Some(evidence) {
         return if r.settlement.as_ref() == Some(evidence)
             && r.billing_period.as_ref() == Some(period)
@@ -869,3 +896,81 @@ pub(crate) fn settle_in_transaction(
 }
 #[cfg(test)]
 mod tests;
+
+// Cancellation is deliberately limited to an entirely uninvoked owner journal.
+// It cannot reinterpret Prepared, consumed, ambiguous or legacy operations.
+pub(crate) fn validate_uninvoked_cancellation(
+    conn: &Connection,
+    r: &BudgetReservation,
+) -> Result<()> {
+    let receipt = r.uninvoked_cancellation.as_ref().ok_or(Error::Corrupt)?;
+    if r.state != BudgetState::CancelledUninvoked
+        || receipt.cancelled_at < r.reserved_at
+        || r.binding.is_some()
+        || r.settlement.is_some()
+        || r.billing_period.is_some()
+    {
+        return Err(Error::Corrupt);
+    }
+    label(&receipt.authorization)?;
+    for table in [
+        "create_operation",
+        "launch_attempt",
+        "gpu_node",
+        "vast_launch",
+        "vast_removal",
+    ] {
+        // Tables without owner are confined to this owner-checked Store.
+        let count: i64 = conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+            row.get(0)
+        })?;
+        if count != 0 {
+            return Err(Error::Invalid);
+        }
+    }
+    Ok(())
+}
+impl Store {
+    /// Explicit operator-authorized cancellation of a reservation which NEVER
+    /// acquired an operation. No credential/provider call, claim reset, fabricated
+    /// absence/billing or deletion. The writer lock serializes against prepare.
+    pub fn cancel_uninvoked_budget(
+        &self,
+        request_id: &str,
+        authorization: &str,
+        now: i64,
+    ) -> Result<BudgetReservation> {
+        label(authorization)?;
+        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        owned(&tx, &self.owner)?;
+        let mut a = account(&tx, &self.owner)?.ok_or(Error::Invalid)?;
+        clock(&a, now)?;
+        let mut r = get_row(&tx, &self.owner, request_id)?;
+        if r.state == BudgetState::CancelledUninvoked {
+            validate_uninvoked_cancellation(&tx, &r)?;
+            return if r
+                .uninvoked_cancellation
+                .as_ref()
+                .is_some_and(|v| v.authorization == authorization)
+            {
+                Ok(r)
+            } else {
+                Err(Error::Invalid)
+            };
+        }
+        if r.state != BudgetState::Reserved {
+            return Err(Error::Invalid);
+        }
+        r.state = BudgetState::CancelledUninvoked;
+        r.uninvoked_cancellation = Some(UninvokedCancellation {
+            cancelled_at: now,
+            authorization: authorization.into(),
+        });
+        validate_uninvoked_cancellation(&tx, &r)?;
+        a.last_at = now;
+        save_row(&tx, &r)?;
+        save_account(&tx, &a)?;
+        tx.commit()?;
+        Ok(r)
+    }
+}

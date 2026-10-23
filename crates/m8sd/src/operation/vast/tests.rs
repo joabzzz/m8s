@@ -335,3 +335,62 @@ fn invalid_prototype_policy_refuses_before_reserving_new_request() {
     assert_eq!(store.budget_reservations().unwrap().len(), 1);
     assert!(store.create_operations().unwrap().is_empty());
 }
+
+#[test]
+fn uninvoked_cancellation_preserves_history_and_cannot_mint_dispatch() {
+    let (store, _directory) = setup(6_000_000, 1);
+    let before = store.budget_reservations().unwrap().remove(0);
+    let cancelled = store
+        .cancel_uninvoked_budget("request", "synthetic-authorization", 101)
+        .unwrap();
+    assert_eq!(cancelled.state, BudgetState::CancelledUninvoked);
+    assert_eq!(cancelled.request, before.request);
+    assert_eq!(cancelled.reserved_all_in, before.reserved_all_in);
+    assert_eq!(cancelled.reserved_at, before.reserved_at);
+    assert_eq!(
+        store
+            .cancel_uninvoked_budget("request", "synthetic-authorization", 102)
+            .unwrap(),
+        cancelled
+    );
+    assert!(
+        store
+            .cancel_uninvoked_budget("request", "different", 102)
+            .is_err()
+    );
+    assert!(store.mark_budget_uncertain("request", 102).is_err());
+    let executor = executor(42);
+    let intent = executor.intent("run", "request", "operation").unwrap();
+    assert!(executor.prepare_at(&store, &intent, || Ok(102)).is_err());
+    assert!(store.create_operations().unwrap().is_empty());
+    assert_eq!(store.budget_reservations().unwrap().len(), 1);
+    assert_eq!(
+        store.vast_audit().unwrap().attempts[0].stage,
+        AttemptStage::ReservationCancelledUninvoked
+    );
+}
+#[test]
+fn cancellation_refuses_prepared_consumed_and_uncertain_attempts() {
+    for stage in 0..4 {
+        let (store, _directory) = setup(6_000_000, 1);
+        let executor = executor(42);
+        let intent = executor.intent("run", "request", "operation").unwrap();
+        if stage < 3 {
+            executor.prepare_at(&store, &intent, || Ok(100)).unwrap();
+            if stage == 1 {
+                store.cancel_create("operation", 101).unwrap();
+            } else if stage == 2 {
+                store.claim_create("operation", 101).unwrap();
+            }
+        } else {
+            store.mark_budget_uncertain("request", 101).unwrap();
+        }
+        let original = store.budget_reservations().unwrap();
+        assert!(
+            store
+                .cancel_uninvoked_budget("request", "synthetic", 102)
+                .is_err()
+        );
+        assert_eq!(store.budget_reservations().unwrap(), original);
+    }
+}

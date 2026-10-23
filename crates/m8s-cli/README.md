@@ -1016,3 +1016,21 @@ Ready. Logs retain only exact static labels, not arbitrary child output or
 completion text. The original watchdog deadline cannot be renewed. Default
 mock behavior is unchanged; fleet replacement, live restart adoption and
 production readiness remain outside this one-attempt mode.
+
+### Explicit cancellation before any operation
+
+`prototype cancel-uninvoked --directory ABS --owner EXACT_OWNER --request EXACT_REQUEST --authorization AUTHORIZATION_LABEL`
+records an explicitly authorized terminal cancellation of an uninvoked reservation.
+Use it only after stopping the original controller/coordinator. It takes the
+Store writer lock and refuses if **any** CREATE operation, launch record, node,
+Vast recovery capsule or removal exists in that owner Store, or if the reservation
+is uncertain, bound or settled. It cannot cancel a prepared/consumed/ambiguous
+attempt or reconcile actual provider charges. It makes no provider call.
+
+The original request, timestamp and reserved amounts remain in the journal;
+`CancelledUninvoked` adds a cancellation timestamp and authorization label.
+Audit reports that terminal state. The controller claim is untouched, and the
+cancelled request cannot prepare or dispatch. Repeating the same authorization
+is idempotent; a different label refuses. Fresh account/inventory checks and a
+new bounded plan remain mandatory before any separately authorized attempt.
+Historical uncertain or billing-unknown holds must remain reserved.

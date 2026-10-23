@@ -10,6 +10,7 @@ const MAX_RECORD_BYTES: usize = 65_536;
 #[serde(rename_all = "snake_case")]
 pub enum AttemptStage {
     ReservationOnly,
+    ReservationCancelledUninvoked,
     Prepared,
     CancelledBeforeDispatch,
     ConsumedNotInvoked,
@@ -192,13 +193,21 @@ impl Store {
                 if budget.binding.is_some() {
                     return Err(Error::Corrupt);
                 }
-                (AttemptStage::ReservationOnly, RecoveryMetadata::NoOperation)
+                (
+                    if budget.state == BudgetState::CancelledUninvoked {
+                        AttemptStage::ReservationCancelledUninvoked
+                    } else {
+                        AttemptStage::ReservationOnly
+                    },
+                    RecoveryMetadata::NoOperation,
+                )
             };
             attempts.push(VastAttemptStatus {
                 request_id: budget.request.request_id.clone(),
                 operation_id: operation.map(|r| r.intent.operation_id.clone()),
                 stage,
-                cancelled: operation.is_some_and(|r| r.state == CreateState::Cancelled),
+                cancelled: budget.state == BudgetState::CancelledUninvoked
+                    || operation.is_some_and(|r| r.state == CreateState::Cancelled),
                 billing_state: budget.state,
                 reserved_micro_usd: budget.reserved_all_in,
                 metadata,
@@ -237,7 +246,14 @@ fn read_budgets(conn: &Connection, owner: &str) -> Result<Vec<BudgetReservation>
             return Err(Error::Corrupt);
         }
         match (&budget.state, &budget.settlement, &budget.billing_period) {
-            (BudgetState::Reserved | BudgetState::Uncertain, None, None) => {}
+            (BudgetState::CancelledUninvoked, None, None) => {
+                crate::budget::validate_uninvoked_cancellation(conn, &budget)?;
+            }
+            (BudgetState::Reserved | BudgetState::Uncertain, None, None) => {
+                if budget.uninvoked_cancellation.is_some() {
+                    return Err(Error::Corrupt);
+                }
+            }
             (BudgetState::BillingUnknown | BudgetState::Settled, Some(evidence), Some(period)) => {
                 if budget.binding.as_ref() != Some(&evidence.binding)
                     || evidence.status != EvidenceStatus::Complete

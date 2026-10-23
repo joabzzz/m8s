@@ -618,6 +618,37 @@ pub(super) fn preflight(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn cancel_uninvoked(args: &[String]) -> Result<()> {
+    if args.len() != 8
+        || args[0] != "--directory"
+        || args[2] != "--owner"
+        || args[4] != "--request"
+        || args[6] != "--authorization"
+    {
+        return Err("invalid-cancel-uninvoked-arguments");
+    }
+    let root = Path::new(&args[1]);
+    if !root.is_absolute() || root.canonicalize().map_err(|_| ERROR)? != root {
+        return Err(ERROR);
+    }
+    let path = root.join("state.db");
+    if !fs::symlink_metadata(&path).map_err(|_| ERROR)?.is_file() {
+        return Err(ERROR);
+    }
+    let store = Store::open(path, &args[3]).map_err(|_| ERROR)?;
+    let reservation = store
+        .cancel_uninvoked_budget(&args[5], &args[7], utc()?)
+        .map_err(|_| "prototype-uninvoked-cancellation-refused")?;
+    println!(
+        "{}",
+        serde_json::json!({"schema":"m8s.uninvoked-cancellation/v1",
+        "request_id":reservation.request.request_id,"state":reservation.state,
+        "original_reserved_micro_usd":reservation.reserved_all_in,
+        "cancellation":reservation.uninvoked_cancellation,"provider_calls":false,
+        "claim_reset":false,"provider_absence_claimed":false})
+    );
+    Ok(())
+}
 pub(super) fn audit(args: &[String]) -> Result<()> {
     if args.len() != 4 || args[0] != "--directory" || args[2] != "--owner" {
         return Err("invalid-prototype-audit-arguments");
@@ -631,7 +662,7 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
     let operations = snapshot.operations;
     let records: Vec<_> = operations.iter().map(|r|serde_json::json!({"operation_id":r.intent.operation_id,"state":r.state,"invocation_started_at":r.invocation_started_at,"provider_result_recorded":r.result.is_some(),"uncertainty_observed":r.uncertainty_observed})).collect();
     let removals = snapshot.removals;
-    let budgets: Vec<_> = snapshot.budgets.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
+    let budgets: Vec<_> = snapshot.budgets.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at,"uninvoked_cancellation":r.uninvoked_cancellation})).collect();
     let output = serde_json::to_vec(&serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"removals":removals,"attempts":snapshot.attempts,"provider_calls":false,"scope":"stored-journal-snapshot"})).map_err(|_| ERROR)?;
     // Refuse before writing any success bytes; no truncated audit can look empty.
     if output.len() >= 1_048_576 {
