@@ -86,13 +86,34 @@ fn mapped_port(row: &Value, name: &str) -> Result<u16> {
         .get("ports")
         .and_then(|v| v.get(name))
         .and_then(Value::as_array)
-        .filter(|v| v.len() == 1)
+        .filter(|v| (1..=2).contains(&v.len()))
         .ok_or(Error::Unavailable)?;
-    let port = mappings[0]
+    // Docker reports one wildcard IPv4 binding and may repeat the same port
+    // for wildcard IPv6. Accept that exact pair, not arbitrary duplicate or
+    // conflicting destinations. This adapter connects over public IPv4 only.
+    let ipv4 = mappings
+        .iter()
+        .find(|v| v.get("HostIp").and_then(Value::as_str) == Some("0.0.0.0"))
+        .ok_or(Error::Unavailable)?;
+    let port = ipv4
         .get("HostPort")
         .and_then(Value::as_str)
         .ok_or(Error::Unavailable)?;
     if port.is_empty() || port.len() > 5 || !port.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(Error::Unavailable);
+    }
+    let mut ipv4_count = 0;
+    for mapping in mappings {
+        match mapping.get("HostIp").and_then(Value::as_str) {
+            Some("0.0.0.0") => ipv4_count += 1,
+            Some("::") if mappings.len() == 2 => (),
+            _ => return Err(Error::Unavailable),
+        }
+        if mapping.get("HostPort").and_then(Value::as_str) != Some(port) {
+            return Err(Error::Unavailable);
+        }
+    }
+    if ipv4_count != 1 {
         return Err(Error::Unavailable);
     }
     port.parse::<u16>()
@@ -166,7 +187,7 @@ mod tests {
         let intent = intent();
         json!({"instances":{"id":42,"label":intent.label(),"image_uuid":intent.image(),
             "actual_status":"running","public_ipaddr":"8.8.8.8",
-            "ports":{"2222/tcp":[{"HostPort":"12000"}],"40100/udp":[{"HostPort":"13000"}]}}})
+            "ports":{"2222/tcp":[{"HostIp":"0.0.0.0","HostPort":"12000"}],"40100/udp":[{"HostIp":"0.0.0.0","HostPort":"13000"}]}}})
     }
     #[test]
     fn exact_public_access_is_not_a_readiness_grant() {
@@ -190,6 +211,30 @@ mod tests {
                     .is_none()
             );
         }
+    }
+    #[test]
+    fn dual_stack_same_port_is_unambiguous_but_missing_udp_refuses() {
+        let mut value = row();
+        value["instances"]["ports"]["2222/tcp"] = json!([
+            {"HostIp":"0.0.0.0","HostPort":"12000"},
+            {"HostIp":"::","HostPort":"12000"}
+        ]);
+        assert!(project(&value, NonZeroU64::new(42).unwrap(), &intent()).is_ok());
+        for pair in [
+            json!([{"HostIp":"0.0.0.0","HostPort":"12000"},{"HostIp":"::","HostPort":"12001"}]),
+            json!([{"HostIp":"0.0.0.0","HostPort":"12000"},{"HostIp":"0.0.0.0","HostPort":"12000"}]),
+            json!([{"HostIp":"::","HostPort":"12000"}]),
+            json!([{"HostIp":"127.0.0.1","HostPort":"12000"}]),
+        ] {
+            let mut bad = value.clone();
+            bad["instances"]["ports"]["2222/tcp"] = pair;
+            assert!(project(&bad, NonZeroU64::new(42).unwrap(), &intent()).is_err());
+        }
+        value["instances"]["ports"]
+            .as_object_mut()
+            .unwrap()
+            .remove("40100/udp");
+        assert!(project(&value, NonZeroU64::new(42).unwrap(), &intent()).is_err());
     }
     #[test]
     fn private_special_wrong_identity_and_ambiguous_ports_refuse() {
@@ -216,7 +261,7 @@ mod tests {
         }
         let mut value = row();
         value["instances"]["ports"]["2222/tcp"] =
-            json!([{"HostPort":"12000"},{"HostPort":"12001"}]);
+            json!([{"HostIp":"0.0.0.0","HostPort":"12000"},{"HostPort":"12001"}]);
         assert!(project(&value, NonZeroU64::new(42).unwrap(), &intent()).is_err());
     }
 }

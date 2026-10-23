@@ -1,0 +1,86 @@
+{
+  "schema": "m8s.vast-networking-attempt/v1",
+  "launch_commit": "42e7fe5",
+  "instance_id": 57325005,
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:660feef6604150c1d6586130ae502ea2778e5528eab68c6a898c3e7c889d9b73",
+  "container_observed_running": true,
+  "bootstrap_completed": false,
+  "inference_completed": false,
+  "failure": "Only TCP 2222 was mapped; UDP 40100 absent. TCP mapping had wildcard IPv4 and IPv6 entries. Adapter requires verified UDP control address.",
+  "source_corrections": [
+    "Use documented explicit host:container port syntax for TCP and UDP",
+    "Accept a single wildcard IPv4 binding plus optional wildcard IPv6 binding only at the same port; reject ambiguous or missing mappings"
+  ],
+  "corrections_live_qualified": false,
+  "cleanup_worker_events": [
+    {
+      "event": "armed",
+      "instance_id": null,
+      "observed_at": 1792732153,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "exact_resource_bound",
+      "instance_id": 57325005,
+      "observed_at": 1792732156,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "destroy_acknowledged",
+      "instance_id": 57325005,
+      "observed_at": 1792732325,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "provider_confirmed_absent",
+      "instance_id": 57325005,
+      "observed_at": 1792732328,
+      "schema": "m8s.vast-watchdog-event/v1"
+    }
+  ],
+  "independent_removal": {
+    "schema": "m8s.vast-attempt-removal/v1",
+    "instance_id": 57325005,
+    "observed_at": 1792732371,
+    "expected_account_id": 32349,
+    "provider_confirmed_absent": true,
+    "account_id": 32349,
+    "credit_after": 16.243430615806247,
+    "balance_after": 0
+  },
+  "cost_inventory": {
+    "schema": "m8s.vast-attempt-cost/v1",
+    "instance_id": 57325005,
+    "observed_at": 1792732445,
+    "reported_charge_usd": 0.003,
+    "billing_finality": "not-established",
+    "original_reservation_micro_usd": 1609658,
+    "attempt_reservation_micro_usd": 1688308,
+    "total_retained_micro_usd": 3297966,
+    "unallocated_cap_micro_usd": 2702034,
+    "inventory": {
+      "success": true,
+      "instances": [],
+      "next_token": null,
+      "instances_found": 0,
+      "total_instances": 0
+    },
+    "volumes_empty": true
+  },
+  "local_cleanup": {
+    "schema": "m8s.local-attempt-stop/v1",
+    "parent_terminated_after_provider_absence": true,
+    "owned_native_process_group_stopped": true,
+    "private_run_material_removed": true,
+    "journals_preserved": true
+  },
+  "source_validation": {
+    "command": "scripts/check --no-pty --no-acl-mutation",
+    "exit_code": 0,
+    "passed_tests": 728,
+    "fmt": "pass",
+    "clippy": "pass",
+    "log": "/private/tmp/m8s-vast-port-fix-check.log",
+    "historical_E_repeated": false
+  }
+}

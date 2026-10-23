@@ -7,7 +7,27 @@ and retains the runtime image's baked model and provisioning entrypoint.
 The registry and target caches are separate from the native mesh build caches;
 compilation runs with networking disabled and at most two jobs.
 
-## Current checkpoint (2026-10-22)
+## Latest live attempt (2026-10-23)
+
+The actual pinned image was published publicly and started on Vast as instance
+**57325005**. This is deployment proof, **not inference proof**. Secure bootstrap
+refused to proceed because the provider reported no UDP control mapping. Its TCP
+mapping also exposed a parser incompatibility with normal dual-stack responses.
+The launch now uses the documented explicit `host:container/protocol` syntax;
+the parser accepts the same wildcard port across IPv4/IPv6 and still rejects
+missing UDP or conflicting destinations. These corrections await live qualification.
+Port syntax follows the [official Vast Docker environment documentation](https://github.com/vast-ai/docs/blob/main/guides/instances/docker-environment.mdx).
+
+The independent cleanup worker destroyed the exact instance. A separate
+creator-account GET confirmed absence; complete inventories reported no instances
+or volumes. The latest observed charge was $0.003, with billing finality unknown.
+Both reservations remain retained: $1.609658 from the earlier uninvoked attempt
+and $1.688308 from this attempt, leaving $2.702034 unallocated within the $6 cap.
+No budget reset, replacement rental, plaintext downgrade, or source publication
+followed this failure. Local owner processes and run-private keys were removed;
+accounting journals remain. See `vast-networking-attempt-evidence.json`.
+
+## Image build checkpoint (2026-10-22)
 
 The Linux AMD64 CPU image **has built successfully**, including the actual mesh
 node and `m8s-agent --vast-node` entrypoint. Local tag:
@@ -36,7 +56,7 @@ owner-initiated bootstrap source must be qualified and packaged before use.
 That transport qualification has since passed as recorded below. A local
 agent-only refresh is now built as `m8s-prototype-vast:8388ce4`; its source,
 digest, 21-second warm-cache Rust build and unchanged base-layer evidence are recorded in
-`agent-refresh-evidence.json`. It has not been published or deployed.
+`agent-refresh-evidence.json`. It was subsequently published and deployed as recorded below.
 The Mac owner host-only build completed successfully; log:
 `/private/tmp/m8s-owner-host-build-3.log`. That is compilation evidence only.
 
@@ -232,7 +252,7 @@ binaries (supported machine types: amd64/arm64); this header check is not a
 signature/provenance check or a full dependency/architecture compatibility proof.
 The native owner remains responsible for composition and ABI verification.
 
-## 5 PM demo cutover — actual executable surface
+## Historical 5 PM demo cutover — superseded executable surface
 
 Optional scope is frozen; all uncommitted source above is preserved. There is
 **no qualified end-to-end launch/request/stop demo yet**. In particular, no qualified

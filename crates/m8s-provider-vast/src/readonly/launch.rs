@@ -104,7 +104,7 @@ fn dispatch_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
         "label":request.identity.label(), "disk":request.disk_gb,
         "runtype":"args", "cancel_unavail":true,
         "env": {"M8S_PROVISION_SSH_KEY":request.ssh_public_key,
-                "-p 2222/tcp":"1", "-p 40100/udp":"1"}
+                "-p 2222:2222/tcp":"1", "-p 40100:40100/udp":"1"}
     }))
     .map_err(|_| Error::Invalid)?;
     let secret = supplier().map_err(|_| Error::Unavailable)?;
@@ -177,6 +177,8 @@ mod tests {
         assert_eq!(body["label"], "m8s:v1:synthetic-owner:synthetic-node:smoke");
         assert_eq!(body["runtype"], "args");
         assert_eq!(body["env"].as_object().unwrap().len(), 3);
+        assert_eq!(body["env"]["-p 2222:2222/tcp"], "1");
+        assert_eq!(body["env"]["-p 40100:40100/udp"], "1");
         for field in [
             "onstart",
             "image_login",
