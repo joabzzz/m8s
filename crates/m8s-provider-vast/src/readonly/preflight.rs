@@ -12,6 +12,16 @@ pub struct DemoPreflight {
     pub storage_micro_usd_per_hour: u64,
     pub transfer_micro_usd_per_gb: u64,
     pub available_credit_micro_usd: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_reported_gpu: Option<GpuObservation>,
+}
+#[derive(serde::Serialize)]
+pub struct GpuObservation {
+    pub name: String,
+    pub memory_mib: u64,
+    pub host_memory_mib: u64,
+    pub advertised_download_mbps: u64,
+    pub driver_cuda_support: f64,
 }
 /// Explicit experiment sizing. Prices still enter the durable budget admission.
 #[derive(Clone, Copy)]
@@ -172,6 +182,21 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
             .into_iter()
             .find(|v| selected_offer.is_none_or(|id| id == v.0))
             .ok_or(Error::Unavailable)?;
+        let provider_reported_gpu = if requirements.blackwell_sm120 {
+            let row = rows
+                .iter()
+                .find(|row| row.get("id").and_then(Value::as_u64) == Some(offer_id.get()))
+                .ok_or(Error::Unavailable)?;
+            Some(GpuObservation {
+                name: row["gpu_name"].as_str().ok_or(Error::Unavailable)?.into(),
+                memory_mib: number(row, "gpu_ram", 1, false)?,
+                host_memory_mib: number(row, "cpu_ram", 1, false)?,
+                advertised_download_mbps: number(row, "inet_down", 1, false)?,
+                driver_cuda_support: row["cuda_max_good"].as_f64().ok_or(Error::Unavailable)?,
+            })
+        } else {
+            None
+        };
         let observed_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .ok()
@@ -185,6 +210,7 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
             storage_micro_usd_per_hour: storage,
             transfer_micro_usd_per_gb: transfer,
             available_credit_micro_usd: credit,
+            provider_reported_gpu,
         })
     }
 }
