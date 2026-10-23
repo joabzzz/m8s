@@ -14,7 +14,7 @@ metadata, address, path, key or config is emitted. Future narrowly authorized
 output is diagnostic information, **not proof of the past cause or a runtime fix**.
 Other `need()` redaction and all runtime lifecycle/case bodies are unchanged.
 
-This standalone package remains excluded from the 13-member root workspace and
+This standalone package remains excluded from the 10-member root workspace and
 owns its lockfile. Four normal pure `bind_diagnostic_` tests exercise typed errors,
 redaction, source depth and descriptor formatting without endpoint, mesh key,
 Store or platform operations. One current-thread Tokio test, `composed_bootstrap`,

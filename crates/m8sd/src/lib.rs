@@ -1,10 +1,13 @@
-//! Durable mock-first reconcile. No bootstrap admission or live provider is available.
+//! Durable lifecycle journals and coordinators. The default executable uses mock
+//! reconciliation; secure bootstrap and bounded Vast operations are feature gated.
 #[cfg(all(unix, feature = "local-development"))]
 pub mod local_demo;
 
+pub mod mock_provider;
+
 use m8s_core::policy::{LifecycleEvidence, transition};
+use m8s_core::provider::{LaunchSpec, Provider};
 use m8s_core::{GpuNode, InstanceState, Observation, Phase, Timestamp};
-use m8s_provider::{LaunchSpec, Provider};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
@@ -13,7 +16,7 @@ pub enum Error {
     #[error("state database error: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("provider outcome uncertain: {0}")]
-    Provider(#[from] m8s_provider::Error),
+    Provider(#[from] m8s_core::provider::Error),
     #[error("invalid state request or bootstrap binding")]
     Invalid,
     #[error("database belongs to another owner")]

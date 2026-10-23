@@ -197,9 +197,10 @@ fn bound_restart_cleanup_requires_invoked_binding_and_preserves_deadlines_and_jo
     let executor = executor(42);
     let intent = executor.intent("run", "request", "operation").unwrap();
     executor.prepare_at(&store, &intent, || Ok(100)).unwrap();
-    let supplier = || -> m8s_provider::Result<m8s_provider_vast::readonly::restart::SecretValue> {
-        panic!("construction must never request credentials")
-    };
+    let supplier =
+        || -> m8s_core::provider::Result<m8s_provider_vast::readonly::restart::SecretValue> {
+            panic!("construction must never request credentials")
+        };
     assert!(
         store
             .recover_vast("operation")

@@ -2,8 +2,8 @@
 //! Read-only transport never mutates or certifies snapshot completeness. Separately
 //! enabled scoped cleanup separates acknowledgement from exact absence lookup.
 //! API field assumptions come from the supplied S1 research; live validation is outstanding.
+use m8s_core::provider::{Error, LaunchSpec, Provider, Result};
 use m8s_core::{Instance, InstanceState, Observation, Offer};
-use m8s_provider::{Error, LaunchSpec, Provider, Result};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 

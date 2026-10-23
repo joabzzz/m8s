@@ -1,5 +1,6 @@
 //! Only the hardwired Mock lifecycle; not a generic/provider shutdown authority.
-use m8s_provider::{Mock, Provider};
+use m8s_core::provider::Provider;
+use m8sd::mock_provider::Mock;
 use m8sd::{Error, Result, Store};
 
 pub(super) fn shutdown(store: &mut Store, provider: &mut Mock, at: i64) -> Result<()> {
@@ -21,7 +22,7 @@ pub(super) fn shutdown(store: &mut Store, provider: &mut Mock, at: i64) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use m8s_provider::Fault;
+    use m8sd::mock_provider::Fault;
     use std::{
         fs,
         os::unix::fs::DirBuilderExt,

@@ -1,7 +1,7 @@
 //! Explicit opt-in executable adapter. Parsing/imports perform no I/O.
 //! Only `run` may connect the status socket or initialize terminal/signal scopes.
-use crate::terminal;
-use crate::{
+use crate::dashboard::terminal;
+use crate::dashboard::{
     client::StatusClient,
     view::{Dashboard, bounded_area, text_snapshot},
 };

@@ -150,8 +150,8 @@ fn cleanup_due(
 /// Call ONLY in the dedicated worker process: detaches its session, owns signal
 /// handlers, consumes credential stdin and runs through the original deadline.
 /// No runtime endpoint or provider create is performed here.
-pub fn run(path: &Path) -> m8s_provider::Result<()> {
-    run_inner(path).map_err(|_| m8s_provider::Error::Unavailable)
+pub fn run(path: &Path) -> m8s_core::provider::Result<()> {
+    run_inner(path).map_err(|_| m8s_core::provider::Error::Unavailable)
 }
 
 fn detach() -> Result<()> {

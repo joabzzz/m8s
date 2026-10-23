@@ -705,7 +705,7 @@ unknown bills, refund or authorize another create.
 ## Opt-in configuration-backed MOCK control
 
 ```sh
-m8sd /private/tmp/my-private-mock-state synthetic-mock-owner --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml
+m8sd /private/tmp/my-private-mock-state synthetic-mock-owner --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-core/models/examples.toml
 # In another terminal, using only the local mock control socket:
 m8s --socket /private/tmp/my-private-mock-state/control.sock up small
 m8s --socket /private/tmp/my-private-mock-state/control.sock scale small 2

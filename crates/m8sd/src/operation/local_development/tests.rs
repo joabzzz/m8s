@@ -704,7 +704,7 @@ fn drop_requests_stop_and_worker_retains_lock_until_owned_reap_without_pid_adopt
     let local = loop {
         match Local::open_development(&journal, "owner".into(), command()) {
             Ok(l) => break l,
-            Err(m8s_provider::Error::Unavailable) if Instant::now() < end => {
+            Err(m8s_core::provider::Error::Unavailable) if Instant::now() < end => {
                 thread::sleep(Duration::from_millis(5))
             }
             Err(e) => panic!("bounded lock/reap reopen failed:{e:?}"),
@@ -1134,7 +1134,9 @@ fn cleanup_submitted_failure_and_reopened_unresolved_journal_never_adopt_missing
     let mut e = loop {
         match LocalDevelopmentExecutor::open(plan(journal.clone()), "owner") {
             Ok(e) => break e,
-            Err(Error::Provider(m8s_provider::Error::Unavailable)) if Instant::now() < end => {
+            Err(Error::Provider(m8s_core::provider::Error::Unavailable))
+                if Instant::now() < end =>
+            {
                 thread::sleep(Duration::from_millis(5))
             }
             Err(e) => panic!("reopen:{e:?}"),
@@ -1248,7 +1250,9 @@ fn cleanup_valid_tombstone_reopens_for_new_uid_journal_only_not_old_uid_or_store
     let mut e = loop {
         match LocalDevelopmentExecutor::open(plan(journal.clone()), "owner") {
             Ok(e) => break e,
-            Err(Error::Provider(m8s_provider::Error::Unavailable)) if Instant::now() < end => {
+            Err(Error::Provider(m8s_core::provider::Error::Unavailable))
+                if Instant::now() < end =>
+            {
                 thread::sleep(Duration::from_millis(5))
             }
             Err(e) => panic!("reopen:{e:?}"),
@@ -1306,9 +1310,11 @@ fn cleanup_valid_tombstone_reopens_for_new_uid_journal_only_not_old_uid_or_store
     );
     assert!(f.s.claim_create("op-a", f.now).is_err());
     // Test-only exact owned journal finalization of this direct Local launch.
-    m8s_provider::Provider::destroy(e.local.as_mut().unwrap(), &launch.instance().id).unwrap();
+    m8s_core::provider::Provider::destroy(e.local.as_mut().unwrap(), &launch.instance().id)
+        .unwrap();
     assert_eq!(
-        m8s_provider::Provider::describe(e.local.as_mut().unwrap(), &launch.instance().id).unwrap(),
+        m8s_core::provider::Provider::describe(e.local.as_mut().unwrap(), &launch.instance().id)
+            .unwrap(),
         m8s_core::Observation::Absent
     );
 }

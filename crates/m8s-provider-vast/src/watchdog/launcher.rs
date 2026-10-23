@@ -62,8 +62,8 @@ impl ArmedCleanup {
     /// route. The already-private plan and original budget must be durable first.
     /// The account key travels solely through anonymous stdin, with an empty
     /// child environment. No provider create is performed by either process.
-    pub fn arm_cli(path: &Path, secret: SecretValue) -> m8s_provider::Result<Self> {
-        Self::arm_inner(path, secret).map_err(|_| m8s_provider::Error::Unavailable)
+    pub fn arm_cli(path: &Path, secret: SecretValue) -> m8s_core::provider::Result<Self> {
+        Self::arm_inner(path, secret).map_err(|_| m8s_core::provider::Error::Unavailable)
     }
 
     fn arm_inner(path: &Path, secret: SecretValue) -> Result<Self> {
@@ -122,13 +122,13 @@ impl ArmedCleanup {
         &mut self,
         intent: &RecoveryIntent,
         destroy_at: u64,
-    ) -> m8s_provider::Result<bool> {
+    ) -> m8s_core::provider::Result<bool> {
         let same = self.intent.label() == intent.label()
             && self.intent.image() == intent.image()
             && self.destroy_at == destroy_at;
         self.live()
             .map(|live| same && live)
-            .map_err(|_| m8s_provider::Error::Unavailable)
+            .map_err(|_| m8s_core::provider::Error::Unavailable)
     }
 
     pub fn request_cleanup(&mut self) {
@@ -148,9 +148,12 @@ impl ArmedCleanup {
     #[cfg(feature = "launch-https")]
     pub fn observe_owned(
         &mut self,
-    ) -> m8s_provider::Result<Option<crate::readonly::access::NodeAccess>> {
-        if !self.live().map_err(|_| m8s_provider::Error::Unavailable)? {
-            return Err(m8s_provider::Error::Unavailable);
+    ) -> m8s_core::provider::Result<Option<crate::readonly::access::NodeAccess>> {
+        if !self
+            .live()
+            .map_err(|_| m8s_core::provider::Error::Unavailable)?
+        {
+            return Err(m8s_core::provider::Error::Unavailable);
         }
         let identity = self.intent.clone();
         let mut lookup = RecoveryLookup::new(identity, || {
@@ -170,9 +173,9 @@ impl ArmedCleanup {
     pub fn provisioning_host_key(
         &self,
         access: &crate::readonly::access::NodeAccess,
-    ) -> m8s_provider::Result<crate::readonly::provisioning_log::HostPublicKey> {
+    ) -> m8s_core::provider::Result<crate::readonly::provisioning_log::HostPublicKey> {
         if !access.matches(&self.intent) {
-            return Err(m8s_provider::Error::Unavailable);
+            return Err(m8s_core::provider::Error::Unavailable);
         }
         crate::readonly::provisioning_log::ProvisioningLog::new(access, || {
             Ok(SecretValue::new(self.secret.expose().to_vec()))
@@ -187,9 +190,9 @@ impl ArmedCleanup {
         &self,
         access: &crate::readonly::access::NodeAccess,
         creator_account_id: std::num::NonZeroU64,
-    ) -> m8s_provider::Result<Option<OwnedResourceAbsence>> {
+    ) -> m8s_core::provider::Result<Option<OwnedResourceAbsence>> {
         if !access.matches(&self.intent) {
-            return Err(m8s_provider::Error::Unavailable);
+            return Err(m8s_core::provider::Error::Unavailable);
         }
         // Check the original account before interpreting exact-ID visibility.
         // Both reads use the same retained credential that this handle dispatched.
@@ -207,7 +210,7 @@ impl ArmedCleanup {
                     .duration_since(std::time::UNIX_EPOCH)
                     .ok()
                     .and_then(|d| i64::try_from(d.as_secs()).ok())
-                    .ok_or(m8s_provider::Error::Unavailable)?;
+                    .ok_or(m8s_core::provider::Error::Unavailable)?;
                 Ok(OwnedResourceAbsence {
                     creator_account_id,
                     instance: receipt.instance_id(),
@@ -225,9 +228,9 @@ impl ArmedCleanup {
     pub fn dispatch_once(
         &mut self,
         request: crate::readonly::launch::LaunchRequest,
-    ) -> m8s_provider::Result<crate::readonly::launch::CreatedCandidate> {
+    ) -> m8s_core::provider::Result<crate::readonly::launch::CreatedCandidate> {
         if self.submitted || !self.guards(request.identity(), self.destroy_at)? {
-            return Err(m8s_provider::Error::Unavailable);
+            return Err(m8s_core::provider::Error::Unavailable);
         }
         self.submitted = true;
         crate::readonly::launch::OneShotLaunch::new(request, || {

@@ -1,11 +1,12 @@
 # m8s development
 
-## Current roadmap continuation (2026-10-23)
-The latest user-supplied instructions restrict this continuation to local source
-work: no real provider calls (including searches), credentials, spend, pushes,
-publishing, or upstream filing. Never read/request/set Vast credentials. Tests
-use deterministic mocks and synthetic fixtures. Earlier authorizations below
-record the completed prototype session; they do not override this current scope.
+## Session scope
+Use the current user's instructions to determine source, provider and publication
+scope. Earlier session restrictions and demo budgets are historical, not standing
+authorization or a prohibition on a newly requested live run. A new paid run needs
+a current bounded budget and explicitly selected credential file. Never print
+credentials or read unrelated credential stores. Tests use deterministic mocks
+and synthetic fixtures.
 
 ## Historical prototype authorization and continuing safety rules
 - User-authorized Vast prototype work may consult public provider documentation and use VAST_API_KEY only from the explicitly selected working-directory .env. Never print the key, put it in argv/logs, copy it into build contexts, or use real credentials in tests.

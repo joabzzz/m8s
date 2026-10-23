@@ -230,7 +230,7 @@ impl ChildScope {
                     drop(local);
                     return true;
                 }
-                Err(m8s_provider::Error::Unavailable) => {} // Expected retained-worker lock.
+                Err(m8s_core::provider::Error::Unavailable) => {} // Expected retained-worker lock.
                 Err(_) => return false, // Never hide storage/validation failures behind retry.
             }
             if Instant::now() >= end {

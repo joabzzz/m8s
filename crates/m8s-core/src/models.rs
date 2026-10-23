@@ -1,7 +1,7 @@
 //! Owner-selected model fit arithmetic, not recommendations or runtime guarantees.
 //! All capacities are bytes (never implicit GB/GiB). Profiles and KV estimates
 //! must be validated against the selected runtime before real deployment.
-use m8s_core::Offer;
+use crate::Offer;
 use serde::{Deserialize, Serialize};
 
 /// Illustrative, untested profiles; no model is selected automatically. Consumers

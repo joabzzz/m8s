@@ -151,17 +151,17 @@ fn legacy_mock_reconcile_cannot_delete_managed_nodes_or_launch_replacements() {
     let (mut store, _directory) = setup(6_000_000, 1);
     let executor = executor(42);
     let intent = bind(&store, &executor);
-    let mut mock = m8s_provider::Mock::default();
-    mock.faults.push(m8s_provider::Fault::List);
+    let mut mock = crate::mock_provider::Mock::default();
+    mock.faults.push(crate::mock_provider::Fault::List);
     assert!(store.reconcile(&mut mock, 102).is_err());
-    assert_eq!(mock.faults, vec![m8s_provider::Fault::List]);
+    assert_eq!(mock.faults, vec![crate::mock_provider::Fault::List]);
     assert_eq!(store.nodes().unwrap().len(), 1);
     let original = store.budget_reservations().unwrap().remove(0);
     executor
         .finalize_removal_at(&store, &intent, "42", 102, &original.period, 102)
         .unwrap();
     assert!(store.reconcile(&mut mock, 103).is_err());
-    assert_eq!(mock.faults, vec![m8s_provider::Fault::List]);
+    assert_eq!(mock.faults, vec![crate::mock_provider::Fault::List]);
     assert!(store.nodes().unwrap().is_empty());
     assert!(mock.destroy_calls.is_empty());
 }

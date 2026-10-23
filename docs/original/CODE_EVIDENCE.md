@@ -1,6 +1,7 @@
 # Code evidence and documentation drift for the original ADRs
 
-Audit aid written against `main` at `4837d4d` (2026-10-23), by reading source
+Initially audited against `main` at `4837d4d` (2026-10-23); updated for the
+crate consolidation and Keychain documentation correction by reading source
 layout, public items and crate READMEs. It supports, and does not replace,
 [`../ORIGINAL_PLAN_STATUS.md`](../ORIGINAL_PLAN_STATUS.md), which is the status
 authority for each ADR. This file adds (a) a crate-to-ADR map with pointers to
@@ -15,14 +16,14 @@ established only by the receipts under
 | Crate / area | ADRs | Evidence to read |
 | --- | --- | --- |
 | [`m8s-core`](../../crates/m8s-core) | 0005, 0008, 0009 | `src/policy.rs` (location, bandwidth, launch-rate and budget admission), `src/queue.rs` |
-| [`m8s-provider`](../../crates/m8s-provider), [`-local`](../../crates/m8s-provider-local), [`-vast`](../../crates/m8s-provider-vast) | 0003, 0004, 0007 | `Provider` trait and mock; Vast adapter, exact-resource destroy and watchdog |
+| [`core::provider`](../../crates/m8s-core/src/provider.rs), [`-local`](../../crates/m8s-provider-local), [`-vast`](../../crates/m8s-provider-vast) | 0003, 0004, 0007 | `Provider` trait and daemon `mock_provider`; Vast adapter, exact-resource destroy and watchdog |
 | [`m8s-bootstrap`](../../crates/m8s-bootstrap) | 0006 | `BOOT_ALPN`/`CONTROL_ALPN`, `NONCE_TTL_SECONDS`, `ControlAcl`, `src/mp001` |
 | [`m8s-agent`](../../crates/m8s-agent) | 0006, 0007 | `DeadManSwitch`, control bridge, `vast_node.rs` (per-instance container key) |
 | [`m8sd`](../../crates/m8sd) | 0008 | SQLite store, budget ledger, nonce ledger, operation claims |
 | [`m8s-config`](../../crates/m8s-config) | 0009, 0005 | Draft schema 1 and schedule projection |
-| [`m8s-models`](../../crates/m8s-models) | 0016, 0017 | `ModelCatalog`, `ModelProfile`, `plan()`, `estimate_download()`, `models/examples.toml` |
+| [`core::models`](../../crates/m8s-core/src/models.rs) | 0016, 0017 | `ModelCatalog`, `ModelProfile`, `plan()`, `estimate_download()`, `models/examples.toml` |
 | [`m8s-secrets`](../../crates/m8s-secrets) | 0012 | TOML file backend, ACL checks, experimental binary codec, Keychain driver behind a lock domain |
-| [`m8s-cli`](../../crates/m8s-cli), [`m8s-api`](../../crates/m8s-api), [`m8s-top`](../../crates/m8s-top) | 0012, 0015, 0017 | CLI grammar (secrets requires explicit `--file`), local protocol, dashboard |
+| [`m8s-cli`](../../crates/m8s-cli), [`m8s-api`](../../crates/m8s-api), [dashboard](../../crates/m8s-cli/src/dashboard) | 0012, 0015, 0017 | CLI grammar (secrets requires explicit `--file`), local protocol, dashboard |
 | [`deploy/container`](../../deploy/container) | 0002, 0006 | Image recipes, `native-source.json`, receipts |
 
 ## Where the sketch and the code differ
@@ -45,11 +46,9 @@ recorded, and the code is the current contract.
 
 ## Documentation drift found
 
-- [`crates/m8s-secrets/README.md`](../../crates/m8s-secrets/README.md) says the
-  Gate 1 harness is ready for technical qualification "(ADR-0012 v8)". The
-  recovered ADR-0012 is v9 and records the single synthetic OS attempt as failed
-  and qualification incomplete. The README is older than the ADR; it was left
-  unchanged here.
+- Corrected [`crates/m8s-secrets/README.md`](../../crates/m8s-secrets/README.md)
+  to match ADR-0012 v9: the synthetic OS attempt failed and qualification remains
+  incomplete. Source tests do not establish successful Keychain qualification.
 - Several crate READMEs cite "ADR-00NN". Those mean the originals in
   [`decisions/`](decisions/index.md), not the prototype records `P00N` in
   [`../decisions`](../decisions/README.md).

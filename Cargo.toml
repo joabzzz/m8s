@@ -12,7 +12,6 @@ serde_json = { version = "1", features = ["arbitrary_precision"] }
 thiserror = "2"
 rusqlite = { version = "0.38", features = ["bundled"] }
 m8s-core = { path = "crates/m8s-core" }
-m8s-provider = { path = "crates/m8s-provider" }
 m8s-api = { path = "crates/m8s-api" }
 m8sd = { path = "crates/m8sd" }
 fs2 = "0.4"

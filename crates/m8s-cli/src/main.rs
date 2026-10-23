@@ -196,8 +196,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
     if let Some(top_args) = top_args {
-        let options = m8s_top::app::Options::parse(&top_args)?;
-        return m8s_top::app::run(options).map_err(Into::into);
+        let options = m8s_cli::dashboard::app::Options::parse(&top_args)?;
+        return m8s_cli::dashboard::app::run(options).map_err(Into::into);
     }
     let json = if let Some(i) = args.iter().position(|a| a == "--json") {
         args.remove(i);

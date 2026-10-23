@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 const OWNER: &str = "synthetic-configured-mock-owner";
-const CATALOG: &str = include_str!("../../m8s-models/models/examples.toml");
+const CATALOG: &str = include_str!("../../m8s-core/models/examples.toml");
 const CONFIG: &str = "schema=1\n[tier.bounded]\nmodel='example-27b-q4km'\nreplicas={min=2,max=3}\n[tier.optional]\nmodel='example-27b-q4km'\nreplicas={min=0,max=1}\n[tier.disabled]\nmodel='example-27b-q4km'\nreplicas={min=0,max=0}\n";
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture {
@@ -452,9 +452,9 @@ fn wait_for_mock_nodes(f: &Fixture) {
 }
 
 fn assert_stopped_and_restart_zero(f: &Fixture) {
-    use m8s_provider::Provider;
+    use m8s_core::provider::Provider;
     let mut provider =
-        m8s_provider::Mock::persistent(f.state().join("mock-provider.json")).unwrap();
+        m8sd::mock_provider::Mock::persistent(f.state().join("mock-provider.json")).unwrap();
     assert!(provider.list_owned(OWNER).unwrap().is_empty());
     let (tiers, nodes, events) = f.store_snapshot();
     assert_eq!(tiers, vec![("bounded".into(), 0)]);

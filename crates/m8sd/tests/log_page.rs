@@ -1,7 +1,7 @@
 #![cfg(unix)]
 use m8s_api::{LogEvent, Request};
-use m8s_provider::Mock;
 use m8sd::Store;
+use m8sd::mock_provider::Mock;
 use std::{
     fs,
     io::Write,

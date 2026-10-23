@@ -111,7 +111,7 @@ mod batch_tests {
         use nonce::{LaunchIdentity, ObservationStatus};
         let f = Fixture::new();
         let mut s = f.store();
-        let mut provider = m8s_provider::Mock::default();
+        let mut provider = crate::mock_provider::Mock::default();
         s.scale("first", 1).unwrap();
         s.reconcile(&mut provider, 0).unwrap();
         let node = s.nodes().unwrap().remove(0);

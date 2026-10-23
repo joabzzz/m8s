@@ -1,7 +1,7 @@
 //! Explicit real LOCAL developer child only. No cloud, admission, billing or
 //! readiness proof; no main/reconcile wiring. Trusted executable/UTC/ancestors.
 use super::*;
-use m8s_provider::LaunchSpec;
+use m8s_core::provider::LaunchSpec;
 use m8s_provider_local::{DevelopmentCommand, Local, LocalDeadlines, LocalLaunch, LocalStopHandle};
 use sha2::{Digest, Sha256};
 use std::{
@@ -425,10 +425,10 @@ impl LocalDevelopmentExecutor {
         // Concrete fixed backend only, never a generic Provider input. A destroy
         // acknowledgment alone is NOT absence. Even a previous terminal poll
         // must revalidate the actual journal/anchor via these calls, not cache.
-        if m8s_provider::Provider::destroy(local, &expected.id).is_err() {
+        if m8s_core::provider::Provider::destroy(local, &expected.id).is_err() {
             return LocalCleanupStatus::Uncertain;
         }
-        match m8s_provider::Provider::describe(local, &expected.id) {
+        match m8s_core::provider::Provider::describe(local, &expected.id) {
             Ok(observation) => cleanup_observation(
                 &expected,
                 self.launch.as_ref().expect("validated retained launch"),

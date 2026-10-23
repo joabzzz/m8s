@@ -132,11 +132,11 @@ fn legacy_managed_or_orphan_history_blocks_mock_before_provider_access() {
         let mut store = directory.open();
         store.conn.execute(insert, []).unwrap();
         assert!(store.require_unmanaged_state().is_err());
-        let mut mock = m8s_provider::Mock::default();
-        mock.faults.push(m8s_provider::Fault::List);
+        let mut mock = crate::mock_provider::Mock::default();
+        mock.faults.push(crate::mock_provider::Fault::List);
         assert!(store.reconcile(&mut mock, 100).is_err());
         assert!(mock.destroy_calls.is_empty());
-        assert_eq!(mock.faults, vec![m8s_provider::Fault::List]);
+        assert_eq!(mock.faults, vec![crate::mock_provider::Fault::List]);
         select(&store, Domain::Managed).unwrap();
     }
 }

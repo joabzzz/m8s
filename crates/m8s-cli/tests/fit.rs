@@ -1,6 +1,6 @@
 //! Actual binary, offline explicit capacities and shipped/synthetic catalogs only.
 #![cfg(unix)]
-use m8s_models::{Layout, ModelCatalog, PlanRequest};
+use m8s_core::models::{Layout, ModelCatalog, PlanRequest};
 use serde_json::Value;
 use std::{
     ffi::OsString,
@@ -20,7 +20,7 @@ impl Fixture {
             .canonicalize()
             .unwrap()
             .join("sensitive-catalog-path");
-        fs::write(&catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+        fs::write(&catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
         Self { _dir: dir, catalog }
     }
     fn args(&self, layout: &str) -> Vec<OsString> {
@@ -91,7 +91,7 @@ fn refused(out: &Output, error: &str) {
     }
 }
 fn catalog() -> ModelCatalog {
-    toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap()
+    toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap()
 }
 #[test]
 fn each_layout_cross_checks_actual_library_and_explicit_projection() {
@@ -112,7 +112,7 @@ fn each_layout_cross_checks_actual_library_and_explicit_projection() {
             interruptible: false,
             reliability_bps: 0,
         };
-        let fit = m8s_models::plan(
+        let fit = m8s_core::models::plan(
             &catalog().models[0],
             &capacity,
             PlanRequest {

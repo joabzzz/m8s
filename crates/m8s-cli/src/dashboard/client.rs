@@ -1,5 +1,5 @@
 //! Strict v1 status reader with one absolute connect/write/read deadline.
-use crate::{NodeStatus, StatusSnapshot, display_text};
+use crate::dashboard::{NodeStatus, StatusSnapshot, display_text};
 use m8s_api::{MAX_FRAME, Request};
 use m8s_core::{Phase, Timestamp};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
@@ -180,13 +180,13 @@ impl StatusClient {
             if !response.ok {
                 return Err(ReadError::Rejected);
             }
-            Ok(crate::ConfigObservation::Available {
+            Ok(crate::dashboard::ConfigObservation::Available {
                 configured: response.configured,
                 tiers: response.tiers,
                 atomic_with_status: false,
             })
         })()
-        .unwrap_or(crate::ConfigObservation::Unknown {
+        .unwrap_or(crate::dashboard::ConfigObservation::Unknown {
             atomic_with_status: false,
         });
         snapshot.config_observation = Some(config);

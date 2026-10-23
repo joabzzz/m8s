@@ -1,5 +1,5 @@
 //! Explicit bounded catalog metadata discovery; no model/runtime authority.
-use m8s_models::ModelCatalog;
+use m8s_core::models::ModelCatalog;
 use serde_json::{Value, json};
 use std::{io::Write, path::PathBuf};
 
@@ -201,7 +201,7 @@ mod tests {
     use super::*;
     #[test]
     fn maximum_valid_projection_fits_and_oversized_render_refuses() {
-        let mut catalog: ModelCatalog = toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap();
+        let mut catalog: ModelCatalog = toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap();
         let mut profile = catalog.models.remove(0);
         profile.params_billions = u32::MAX;
         profile.weights_bytes = 10_000_000_000_000_000_000;

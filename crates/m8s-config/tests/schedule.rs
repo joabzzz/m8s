@@ -8,7 +8,7 @@ fn config(zone: &str, rules: &[(&str, &str)]) -> Config {
     for (open, close) in rules {
         text += &format!("[[tier.t.schedule]]\nopen='{open}'\nclose='{close}'\n");
     }
-    let catalog = toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap();
+    let catalog = toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap();
     Config::parse(text.as_bytes(), &catalog, &ValidationLimits::default()).unwrap()
 }
 fn ts(text: &str) -> i64 {

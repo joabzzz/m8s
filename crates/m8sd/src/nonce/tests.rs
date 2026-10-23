@@ -2,7 +2,7 @@
 //! No production authenticated-session constructor is forged; TLS/MP signing and
 //! provider effects are NOT qualified by these SQL tests.
 use super::*;
-use m8s_provider::Mock;
+use crate::mock_provider::Mock;
 use std::{
     path::PathBuf,
     sync::{
@@ -511,7 +511,7 @@ fn private_directory_db_and_sidecar_symlinks_are_refused() {
 
 #[test]
 fn observed_owner_mismatch_invalidates_grant_without_mutating_foreign_instance() {
-    use m8s_provider::Provider;
+    use m8s_core::provider::Provider;
     let (_, mut s, mut p, uid, b) = fixture();
     issue(&s, &uid, &b);
     let m8s_core::Observation::Present(mut instance) = p.describe(&b.instance_id).unwrap() else {

@@ -5,8 +5,8 @@ mod mock_config;
 mod mock_shutdown;
 use fs2::FileExt;
 use m8s_api::{Request, Response};
-use m8s_provider::Mock;
 use m8sd::Store;
+use m8sd::mock_provider::Mock;
 use std::{
     fs,
     io::Write,

@@ -601,7 +601,7 @@ fn settlement_race_restart_never_double_debits_or_changes_final_cost() {
 #[test]
 fn mock_history_refuses_managed_budget_without_mutating_resources() {
     let (_, mut s) = fixture();
-    let mut mock = m8s_provider::Mock::default();
+    let mut mock = crate::mock_provider::Mock::default();
     s.scale("tier", 1).unwrap();
     s.reconcile(&mut mock, 0).unwrap();
     let mut r = request("a");

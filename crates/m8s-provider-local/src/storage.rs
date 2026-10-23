@@ -1,6 +1,6 @@
 //! Private descriptor-anchored journal. No repair or stale-lock replacement.
 use fs2::FileExt;
-use m8s_provider::{Error, Result};
+use m8s_core::provider::{Error, Result};
 use std::{
     ffi::CStr,
     fs::{File, Metadata, OpenOptions},
