@@ -1,6 +1,7 @@
 # m8s development
-- No real provider calls (including searches), credentials, spend, pushes, publishing, or upstream filing.
-- Never read/request/set Vast credentials. Tests use deterministic mocks and synthetic fixtures.
+- User-authorized Vast prototype work may consult public provider documentation and use VAST_API_KEY only from the explicitly selected working-directory .env. Never print the key, put it in argv/logs, copy it into build contexts, or use real credentials in tests.
+- Provider spend is capped at USD6 cumulatively, with at most one rented instance. No account top-ups, budget resets, rerents, or open-ended storage. Establish bounded liability and independently surviving exact-resource destruction before renting; do not rent while source/image integration is unfinished.
+- No pushes, publishing, or upstream filing without separate authorization. Tests use deterministic mocks and synthetic fixtures.
 - Core has no provider dependencies. Use micro-USD, byte capacities, Mbps and injected seconds.
 - Keep secret values out of Debug, Serialize, argv, logs, fixtures and the repository.
 - Launch intent precedes effects; uncertainty is not absence; stopped is not destroyed.
