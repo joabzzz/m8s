@@ -20,6 +20,44 @@ pull with an empty login configuration succeeded for the exact index digest abov
 full-network download). Receipt: `publication-evidence.json`. Earlier registry
 denials are historical; no permission settings were changed by the agent.
 
+The subsequent `vast-qwen-cpu-63e3645` image also contains the pinned Qwen
+0.5B GGUF and restricted SSH provisioning service. Its public digest and prior
+anonymous-pull evidence are recorded in `vast-publication-evidence.json`.
+The isolated SSH qualification used synthetic keys and no provider network.
+This image still contains the original node-initiated bootstrap binary; the new
+owner-initiated bootstrap source must be qualified and packaged before use.
+The Mac owner host-only build completed successfully; log:
+`/private/tmp/m8s-owner-host-build-3.log`. That is compilation evidence only.
+
+### Pending owner-initiated transport check
+
+The owner can now initiate bootstrap to the provider-observed node UDP address,
+so the owner's Mac does not need an inbound port mapping. The node authenticates
+the pinned owner before opening its redemption stream. The owner still checks
+the authenticated node's direct IP against the provider binding, burns the nonce
+and delivers on that original stream. Relay-only bootstrap remains refused.
+
+The new ignored transport test covers the changed direction, wrong-owner
+rejection before nonce disclosure, exact resource receipt, and nonce replay.
+It is **not yet runtime-qualified**. Historical E PASS remains separate and is
+not rerun. The current tool session cannot request an approval; run this bounded
+check in ordinary Terminal after other Cargo work finishes (two jobs maximum):
+
+```sh
+cd /private/tmp/m8s-root-integration.VSK0VT
+env PATH="/private/tmp/mp001-rustup/toolchains/1.98.0-aarch64-apple-darwin/bin:$PATH" \
+  CARGO_HOME=/private/tmp/mp017-primary-cargo RUSTC_WRAPPER= CARGO_NET_OFFLINE=true \
+  cargo test --locked --offline -j 2 -p m8s-bootstrap \
+  --features iroh-transport --test iroh_loopback \
+  owner_initiated_bootstrap_preserves_identity_and_single_use \
+  -- --ignored --exact
+```
+
+Required capabilities: local UDP socket binding and normal iroh/macOS network
+monitor access (BSD AF_ROUTE). Synthetic keys only; no provider requests,
+credentials, spend or security-setting changes. The test runtime is capped at
+25 seconds after compilation. A permission failure must be reported, not bypassed.
+
 No Vast instance has been rented by these steps. Secure owner-side LAUNCH,
 independent cleanup process qualification, owner-routed model inference, and
 provider-confirmed removal remain unfinished. No end-to-end success is claimed.

@@ -1,6 +1,6 @@
 //! Real iroh QUIC/TLS adapter. No provider calls or plaintext fallback.
-//! Tests requiring endpoint bind are separately runtime-qualified: BSD AF_ROUTE
-//! netmon capability is denied in the current managed sandbox.
+//! Tests requiring endpoint bind are separately runtime-qualified. Historical
+//! BSD AF_ROUTE denials are not evidence of the current environment's capabilities.
 use crate::{wire, *};
 use iroh::{
     Endpoint, EndpointAddr,
@@ -106,6 +106,41 @@ pub async fn accept_boot(incoming: Incoming, owner: EndpointId) -> Result<BootCo
     Ok(BootConnection {
         connection,
         session,
+        send: None,
+        received: false,
+    })
+}
+/// Owner initiates full TLS to the provider-observed node address. The node
+/// still opens the redemption stream; changing the dial direction does not
+/// change nonce, identity, source-IP, or original-stream delivery checks.
+pub async fn connect_boot_to_node(
+    endpoint: &Endpoint,
+    node: EndpointAddr,
+) -> Result<BootConnection> {
+    let expected_node = EndpointId(*node.id.as_bytes());
+    let connection = bounded(async {
+        endpoint
+            .connect(node, BOOT_ALPN)
+            .await
+            .map_err(|_| Error::Transport)
+    })
+    .await?;
+    let source_ip = direct_ip(&connection)?;
+    if connection.alpn() != BOOT_ALPN
+        || EndpointId(*connection.remote_id().as_bytes()) != expected_node
+    {
+        connection.close(1u32.into(), b"refused");
+        return Err(Error::Refused);
+    }
+    Ok(BootConnection {
+        session: IrohSession {
+            delivery_binding: None,
+            owner: EndpointId(*endpoint.id().as_bytes()),
+            peer: expected_node,
+            source_ip,
+            alpn: BOOT_ALPN.to_vec(),
+        },
+        connection,
         send: None,
         received: false,
     })
@@ -255,6 +290,52 @@ pub async fn redeem_verified_over_iroh(
             .map_err(|_| Error::Transport)
     })
     .await?;
+    redeem_on_connection(connection, expected_owner, request, verifier, clock).await
+}
+
+/// Receive an owner-initiated, direct, pinned TLS connection before disclosing
+/// the nonce. At most eight unrelated handshakes and sixty seconds are allowed.
+pub async fn accept_verified_from_owner(
+    endpoint: &Endpoint,
+    expected_owner: EndpointId,
+    request: Redemption,
+    verifier: &impl CertificateVerifier,
+    clock: impl Fn() -> i64,
+) -> Result<VerifiedBootstrap> {
+    if EndpointId(*endpoint.id().as_bytes()) != request.node {
+        return Err(Error::Refused);
+    }
+    let connection = tokio::time::timeout(Duration::from_secs(60), async {
+        for _ in 0..8 {
+            let incoming = endpoint.accept().await.ok_or(Error::Transport)?;
+            let origin = match incoming.remote_addr() {
+                IncomingAddr::Ip(address) => address.ip(),
+                _ => continue,
+            };
+            let Ok(connection) = handshake(incoming, BOOT_ALPN).await else {
+                continue;
+            };
+            if EndpointId(*connection.remote_id().as_bytes()) == expected_owner
+                && direct_ip(&connection).is_ok_and(|ip| ip == origin)
+            {
+                return Ok(connection);
+            }
+            connection.close(1u32.into(), b"refused");
+        }
+        Err(Error::Refused)
+    })
+    .await
+    .map_err(|_| Error::Transport)??;
+    redeem_on_connection(connection, expected_owner, request, verifier, clock).await
+}
+
+async fn redeem_on_connection(
+    connection: Connection,
+    expected_owner: EndpointId,
+    request: Redemption,
+    verifier: &impl CertificateVerifier,
+    clock: impl Fn() -> i64,
+) -> Result<VerifiedBootstrap> {
     let result = async {
         if connection.alpn() != BOOT_ALPN
             || EndpointId(*connection.remote_id().as_bytes()) != expected_owner

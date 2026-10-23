@@ -6,7 +6,7 @@ use iroh::{Endpoint, EndpointAddr};
 use m8s_bootstrap::{
     CONTROL_ALPN, EndpointId, Error, NodeSigner, Result,
     mp001::Mp001CertificateVerifier,
-    transport::{accept_boot, send_heartbeat},
+    transport::{accept_boot, connect_boot_to_node, send_heartbeat},
 };
 use std::{future::Future, time::Duration};
 use tokio::time::{Instant, MissedTickBehavior};
@@ -15,8 +15,14 @@ use tokio::time::{Instant, MissedTickBehavior};
 /// This is not a Ready grant or a substitute for a surviving cleanup watchdog.
 pub struct OwnerSessionPlan<'a> {
     pub node_address: EndpointAddr,
+    pub direction: BootstrapDirection,
     pub delivery: DeliveryPlan<'a>,
     pub bootstrap_timeout: Duration,
+}
+
+pub enum BootstrapDirection {
+    NodeInitiates,
+    OwnerInitiates,
 }
 
 fn heartbeat_period(ttl: u64) -> Result<Duration> {
@@ -80,6 +86,12 @@ impl Store {
         }
         tokio::pin!(shutdown);
         let bootstrap = async {
+            if matches!(plan.direction, BootstrapDirection::OwnerInitiates) {
+                let connection = connect_boot_to_node(endpoint, plan.node_address.clone()).await?;
+                return self
+                    .deliver_bootstrap(connection, plan.delivery, signer, verifier, &clock)
+                    .await;
+            }
             // A bounded number of unrelated peers cannot consume an unbounded
             // listener lifetime. No nonce is read or burned for a wrong peer.
             for _ in 0..8 {

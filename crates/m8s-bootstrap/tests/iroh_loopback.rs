@@ -21,6 +21,91 @@ fn id(endpoint: &Endpoint) -> EndpointId {
     EndpointId(*endpoint.id().as_bytes())
 }
 mod support;
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires UDP loopback and BSD netmon; new owner-initiated direction, not historical E qualification"]
+async fn owner_initiated_bootstrap_preserves_identity_and_single_use() {
+    tokio::time::timeout(Duration::from_secs(25), async {
+        let owner = endpoint().await;
+        let node = endpoint().await;
+        let stranger = endpoint().await;
+        let binding = LaunchBinding {
+            owner: id(&owner),
+            instance_id: "synthetic-reverse-i".into(),
+            container_id: "synthetic-reverse-c".into(),
+            provider_ip: Ipv4Addr::LOCALHOST.into(),
+            image_sha256: [3; 32],
+        };
+        let ledger = Ledger::new(rusqlite::Connection::open_in_memory().unwrap()).unwrap();
+        ledger
+            .issue(&BootNonce::new([42; 32]), &binding, 100)
+            .unwrap();
+        let (mut signing, verifier) = support::authority();
+        let (_, client_verifier) = support::authority();
+        for replay in [false, true] {
+            let request = Redemption {
+                nonce: BootNonce::new([42; 32]),
+                instance_id: binding.instance_id.clone(),
+                container_id: binding.container_id.clone(),
+                node: id(&node),
+                image_sha256: binding.image_sha256,
+                self_destruct_present: true,
+            };
+            let server = async {
+                if !replay {
+                    // A completed handshake from an unpinned owner receives no
+                    // redemption stream, and does not consume the nonce.
+                    let wrong = stranger.connect(addr(&node), BOOT_ALPN).await.unwrap();
+                    assert!(wrong.accept_bi().await.is_err());
+                }
+                let mut boot = connect_boot_to_node(&owner, addr(&node)).await.unwrap();
+                assert_eq!(boot.peer_endpoint(), id(&node));
+                let request = boot.receive().await.unwrap();
+                let pending = ledger.redeem(
+                    boot.session(),
+                    request,
+                    &binding,
+                    100,
+                    1000,
+                    Zeroizing::new(vec![9]),
+                    &mut signing,
+                    &verifier,
+                );
+                if replay {
+                    assert!(matches!(pending, Err(Error::Refused)));
+                } else {
+                    let pending = pending
+                        .unwrap()
+                        .with_settings(BundleSettings {
+                            model: "synthetic-model".into(),
+                            config: Zeroizing::new(vec![]),
+                            heartbeat_ttl_seconds: 30,
+                        })
+                        .unwrap();
+                    boot.deliver(pending, 100).await.unwrap();
+                }
+            };
+            let client =
+                accept_verified_from_owner(&node, id(&owner), request, &client_verifier, || 100);
+            let (_, receipt) = tokio::join!(server, client);
+            if replay {
+                assert!(receipt.is_err());
+            } else {
+                assert!(receipt.unwrap().matches_resource(
+                    &binding.instance_id,
+                    &binding.container_id,
+                    &binding.image_sha256,
+                ));
+            }
+        }
+        stranger.close().await;
+        node.close().await;
+        owner.close().await;
+    })
+    .await
+    .expect("bounded owner-initiated TLS qualification");
+}
+
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires approved UDP + BSD AF_ROUTE/RAW runtime or supported separate runner; test-only Ed25519 certificate encoding, not MP001 admission"]
 async fn real_tls_bootstrap_and_single_use_control_frame() {

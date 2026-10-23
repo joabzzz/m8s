@@ -4,7 +4,10 @@ use super::{RuntimeExit, RuntimePlan};
 use crate::node::{Error, Result};
 use crate::{Effect, Outcome, supervisor::TeardownDriver};
 use iroh::{Endpoint, EndpointAddr};
-use m8s_bootstrap::{Redemption, transport::redeem_verified_over_iroh};
+use m8s_bootstrap::{
+    Redemption,
+    transport::{accept_verified_from_owner, redeem_verified_over_iroh},
+};
 use std::future::Future;
 
 struct BorrowedDriver<'a, D>(&'a mut D);
@@ -31,6 +34,40 @@ pub async fn redeem_and_run<D: TeardownDriver>(
     shutdown: impl Future<Output = ()>,
     clock: impl Fn() -> i64,
 ) -> Result<RuntimeExit> {
+    bootstrap_and_run(
+        endpoint, owner, request, plan, driver, shutdown, clock, false,
+    )
+    .await
+}
+
+/// Provider node accepts an outbound connection from its pinned owner, allowing
+/// the owner to operate behind NAT. Cleanup and receipt requirements are identical.
+pub async fn accept_owner_and_run<D: TeardownDriver>(
+    endpoint: &Endpoint,
+    owner: EndpointAddr,
+    request: Redemption,
+    plan: RuntimePlan<'_>,
+    driver: &mut D,
+    shutdown: impl Future<Output = ()>,
+    clock: impl Fn() -> i64,
+) -> Result<RuntimeExit> {
+    bootstrap_and_run(
+        endpoint, owner, request, plan, driver, shutdown, clock, true,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn bootstrap_and_run<D: TeardownDriver>(
+    endpoint: &Endpoint,
+    owner: EndpointAddr,
+    request: Redemption,
+    plan: RuntimePlan<'_>,
+    driver: &mut D,
+    shutdown: impl Future<Output = ()>,
+    clock: impl Fn() -> i64,
+    owner_initiates: bool,
+) -> Result<RuntimeExit> {
     tokio::pin!(shutdown);
     let attempt = async {
         super::validate_plan(endpoint, &plan)?;
@@ -40,10 +77,24 @@ pub async fn redeem_and_run<D: TeardownDriver>(
         {
             return Err(Error::Policy);
         }
+        let redeem = async {
+            if owner_initiates {
+                accept_verified_from_owner(
+                    endpoint,
+                    plan.launch.owner,
+                    request,
+                    plan.verifier,
+                    &clock,
+                )
+                .await
+            } else {
+                redeem_verified_over_iroh(endpoint, owner, request, plan.verifier, &clock).await
+            }
+        };
         let receipt = tokio::select! {
             biased;
             () = &mut shutdown => return Err(Error::Policy),
-            receipt = redeem_verified_over_iroh(endpoint, owner, request, plan.verifier, &clock) =>
+            receipt = redeem =>
                 receipt.map_err(|_| Error::Policy)?,
         };
         super::run(

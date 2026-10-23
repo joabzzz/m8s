@@ -4,7 +4,7 @@ use m8s_agent::{
     Effect, Outcome,
     node::{
         MeshLaunch,
-        runtime::{RuntimePlan, redeem_and_run},
+        runtime::{RuntimePlan, accept_owner_and_run},
     },
     supervisor::{TeardownDriver, worker::WorkerTeardown},
 };
@@ -329,7 +329,7 @@ fn run_supervised(
             native_id_timeout: Duration::from_secs(10),
             cleanup_timeout: Duration::from_secs(30),
         };
-        let result = redeem_and_run(
+        let result = accept_owner_and_run(
             &endpoint,
             owner_address,
             request,

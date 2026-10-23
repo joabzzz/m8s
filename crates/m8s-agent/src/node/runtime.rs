@@ -18,7 +18,7 @@ use std::{cell::RefCell, future::Future, path::Path, time::Duration};
 use tokio::time::Instant;
 
 mod bootstrap;
-pub use bootstrap::redeem_and_run;
+pub use bootstrap::{accept_owner_and_run, redeem_and_run};
 
 pub struct RuntimePlan<'a> {
     pub material_root: &'a Path,

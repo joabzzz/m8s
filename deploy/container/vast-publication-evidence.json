@@ -1,0 +1,27 @@
+{
+  "schema": "m8s.prototype-publication-evidence/v1",
+  "platform": "linux/amd64",
+  "repository": "ghcr.io/joabzzz/m8s-prototype",
+  "tag": "vast-qwen-cpu-63e3645",
+  "index_digest": "sha256:4eb8934be463aa207501fed5403e4efbc638fac51fd1060e0d7983ade55953c2",
+  "packaging_commit": "63e3645",
+  "m8s_binary_commit": "a6e5a235c1eb26475437234ff3c53805b16270ff",
+  "mesh_commit": "f2cbf8fd8159a16401040a3536550d49a3da8ce2",
+  "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+  "build": "passed",
+  "publication": "passed",
+  "anonymous_digest_pull": "passed_with_cached_local_layers",
+  "offline_restricted_ssh_qualification": "passed_synthetic_credentials",
+  "owner_initiated_bootstrap_included": false,
+  "vast_deployment": "not_run",
+  "real_model_inference": "not_run",
+  "provider_confirmed_removal": "not_run",
+  "provider_spend_micro_usd_this_work": 0,
+  "cumulative_provider_cap_micro_usd": 6000000,
+  "local_logs": {
+    "build": "/private/tmp/m8s-vast-final-build.log",
+    "push": "/private/tmp/m8s-vast-final-push.log",
+    "anonymous_pull": "/private/tmp/m8s-vast-final-anonymous.log",
+    "restricted_ssh": "/private/tmp/m8s-provision-runtime-check-2.log"
+  }
+}
