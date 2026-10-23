@@ -1,5 +1,11 @@
 # From proven prototype to production
 
+Design authority: [original roadmap](original/plans/roadmap.md),
+[architecture](original/designs/architecture-v0.md), and
+[ADRs](original/decisions/index.md). These are recovered original records;
+[reconciliation notes](original/README.md) distinguish later user direction and
+the narrower proven demo from original P0–P3 acceptance.
+
 ## Completed acceptance
 
 The opt-in CLI deployed Vast instance 57330173, securely bootstrapped the actual

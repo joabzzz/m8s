@@ -1,8 +1,8 @@
 # Prototype decisions
 
 These records describe decisions implemented and demonstrated on 2026-10-23.
-They do not replace or reconstruct the historical numbered ADRs mentioned in
-crate documentation; those original documents are not present in this checkout.
+They do not replace the [original numbered ADRs](../original/decisions/index.md),
+now recovered with source versions and hashes in `docs/original/`.
 Their scope is the opt-in prototype, not an approved production fleet design.
 
 | Record | Status | Decision |

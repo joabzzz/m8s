@@ -1,0 +1,190 @@
+{
+  "source": "read-only local Agor Knowledge snapshot",
+  "retrieved_at": "2026-10-23",
+  "documents": [
+    {
+      "path": "decisions/index.md",
+      "title": "m8s \u2014 ADR index",
+      "source_uri": "agor://kb/document/01a1575c-3c01-775e-b5cb-4dab3b09c054",
+      "version_id": "01a15e63-80a4-706b-ab01-2ffcc598dee0",
+      "version": 10,
+      "sha256": "6eae6a51d07fce46eaf39417c2c1d1565a8de918567095f2be6bcfbefc670605"
+    },
+    {
+      "path": "decisions/0001-local-workspace-and-repo.md",
+      "title": "ADR-0001 \u2014 Local workspace and repo, no remote",
+      "source_uri": "agor://kb/document/01a1576c-8eee-73e9-806c-d99a0e071e05",
+      "version_id": "01a1576c-8eee-73c8-b821-e46f785a6355",
+      "version": 1,
+      "sha256": "7205af17840e726b7049135ddbd9c2d134dc9ec941af53bd2169cc60a8381770"
+    },
+    {
+      "path": "plans/charter.md",
+      "title": "m8s \u2014 Project charter",
+      "source_uri": "agor://kb/document/01a15b4b-ef89-75c0-a303-99bca9255a42",
+      "version_id": "01a15c8b-4377-732a-8170-dbecdddb51ee",
+      "version": 3,
+      "sha256": "99f273eb9f0517a7afb342a98d2c5dd287040090b2cee6313d477b9f499d985e"
+    },
+    {
+      "path": "decisions/0002-rust-and-mesh-llm-as-black-box.md",
+      "title": "ADR-0002 \u2014 Rust, with mesh-llm consumed as an unmodified dependency",
+      "source_uri": "agor://kb/document/01a15b4c-e13e-72a9-8cef-7554c25c0a12",
+      "version_id": "01a15c1a-fde9-7059-bc43-1d7b64cbac8f",
+      "version": 2,
+      "sha256": "c5cd2bbfc42b2904752b8c8c54561f91b5a2610e4111bd879653ec97c57743a1"
+    },
+    {
+      "path": "decisions/0003-owner-node-scope-and-single-mesh.md",
+      "title": "ADR-0003 \u2014 m8s extends one owner node; one mesh for all tiers",
+      "source_uri": "agor://kb/document/01a15b4c-e163-71d4-97c1-e66da2bbb578",
+      "version_id": "01a15b4c-e163-74fa-a943-7e1420e2fc7c",
+      "version": 1,
+      "sha256": "f67995698a88c8cb5f9ac7ce179a7df1e37f42885ad6f4bfbbd47e282c026a75"
+    },
+    {
+      "path": "decisions/0004-provider-and-harness-adapters.md",
+      "title": "ADR-0004 \u2014 Open Provider and Harness adapters; Vast community and Vast secure are separate providers",
+      "source_uri": "agor://kb/document/01a15b4c-e18c-7445-a243-d3f2a4985da2",
+      "version_id": "01a15b4c-e18c-71e2-b0c1-fecfaff5e4b5",
+      "version": 1,
+      "sha256": "d4ec08d77e3a51c19bf194650c4b4a7d294062590ab18204754eb06fa479418e"
+    },
+    {
+      "path": "decisions/0005-placement-policy.md",
+      "title": "ADR-0005 \u2014 Placement policy: sanctions denylist, bandwidth floor, our images only",
+      "source_uri": "agor://kb/document/01a15b4c-e1bf-7475-a333-a7ae1c135dc0",
+      "version_id": "01a15c08-e814-73f6-b322-d468ab0085c2",
+      "version": 2,
+      "sha256": "f7bcf2a7887a89d56f650c42ab1566ea080e04cb8d7e19212703ddd40338f8f3"
+    },
+    {
+      "path": "decisions/0006-bootstrap-and-control-channel.md",
+      "title": "ADR-0006 \u2014 Bootstrap handshake and control channel (sealed bootstrap + m8s-agent)",
+      "source_uri": "agor://kb/document/01a15b4d-b4ae-765a-ba27-4491ae240bf9",
+      "version_id": "01a15c1a-a538-7381-b349-48f150696c0f",
+      "version": 3,
+      "sha256": "6cc500ed58631d6ef3bbfb8c04bedbdb7d0e073de3df82e9f6acdd429e7611d1"
+    },
+    {
+      "path": "decisions/0008-orchestration-substrate.md",
+      "title": "ADR-0008 \u2014 Orchestration substrate: Rust daemon + SQLite by default; kube-rs operator optional later",
+      "source_uri": "agor://kb/document/01a15b4d-b4f9-7254-adfb-37d41a4297e1",
+      "version_id": "01a15c88-4272-709e-8f98-4c3933857059",
+      "version": 2,
+      "sha256": "71a35d2aefc0fa824511fd843e999c123d3a98a67fce79d280719f05a403dc82"
+    },
+    {
+      "path": "decisions/0009-scaling-policy-as-config.md",
+      "title": "ADR-0009 \u2014 Scaling is owner-defined config; v0 triggers are manual, schedule and queue",
+      "source_uri": "agor://kb/document/01a15b4d-b51a-7030-8be7-0c5368cbff72",
+      "version_id": "01a15b4d-b51a-7317-95c3-10882398a105",
+      "version": 1,
+      "sha256": "bb318bd5eba0e38915a86c7b6a576dace90a7545355b1523b6e1616ac4848d44"
+    },
+    {
+      "path": "decisions/0007-dead-mans-switch.md",
+      "title": "ADR-0007 \u2014 Dead man's switch: provisioned instances terminate when the owner is gone",
+      "source_uri": "agor://kb/document/01a15b4e-5bfc-72c9-a718-77a74f349922",
+      "version_id": "01a15c8a-cf57-723e-9cdb-a1d6878afe6a",
+      "version": 2,
+      "sha256": "c6cb9e10a0011f137eb792727b88ff7ff19ef62356dbfde0431905a038be3ce5"
+    },
+    {
+      "path": "decisions/0010-inference-over-the-mesh.md",
+      "title": "ADR-0010 \u2014 Inference goes over the mesh (iroh); the m8s API is control-only",
+      "source_uri": "agor://kb/document/01a15b4e-5c1f-7453-bd9a-c455fd58a1ee",
+      "version_id": "01a15b4e-5c1f-7361-bed0-63579bff34f6",
+      "version": 1,
+      "sha256": "fd11d7e95c25d5269ad330b4506df6f63695ae7089257999969a7f526f9b99b8"
+    },
+    {
+      "path": "decisions/0011-privacy-posture-and-zdr-levels.md",
+      "title": "ADR-0011 \u2014 Privacy posture: threat model, ZDR levels, node tags, audit suite, signed images",
+      "source_uri": "agor://kb/document/01a15b4e-5c46-729d-bb8f-7b1aaf99793a",
+      "version_id": "01a15c8e-d9a9-7229-9d38-c0ad8aa9fa40",
+      "version": 3,
+      "sha256": "23daa3770b2eb24af222f817b46d484797e4e7970d1fabcd4774d7ce83838c9f"
+    },
+    {
+      "path": "decisions/0012-secret-store.md",
+      "title": "ADR-0012 \u2014 SecretStore trait; macOS Keychain by default, 0600 file fallback",
+      "source_uri": "agor://kb/document/01a15b4e-5c77-7297-bffc-cbcf31a63efc",
+      "version_id": "01a160cc-1c06-72d1-8df0-1104f3d9c9fb",
+      "version": 9,
+      "sha256": "e8affc7d4648c9a51a8662dcaee9a2f7ccf02e483fa2ca817bdb3984c0b39b1d"
+    },
+    {
+      "path": "decisions/0013-payments-out-of-scope.md",
+      "title": "ADR-0013 \u2014 Payments are out of scope for the prototype; m8s only gates admission",
+      "source_uri": "agor://kb/document/01a15b4e-cb32-77ff-afa6-bb74960a1048",
+      "version_id": "01a15b4e-cb32-742c-aa23-6d78863da500",
+      "version": 1,
+      "sha256": "bf680a4be9fb046a81dc2cd97669b6d43a1d3db075e31aca6196d47a4865e872"
+    },
+    {
+      "path": "decisions/0014-evals.md",
+      "title": "ADR-0014 \u2014 Evals: reuse mesh-llm tooling; throughput at N concurrent users first; on-demand only",
+      "source_uri": "agor://kb/document/01a15b4e-cb60-7391-baf0-388348c9db02",
+      "version_id": "01a15b52-bcc2-71ac-b692-621304951345",
+      "version": 2,
+      "sha256": "a3455c3eeec60f2f15746266abd02e3d41ead1f7327572477a1846091471bf14"
+    },
+    {
+      "path": "decisions/0015-interfaces-observability-alerts.md",
+      "title": "ADR-0015 \u2014 Interfaces (CLI, TUI, web, API, k9s); stock observability; Alerter adapter",
+      "source_uri": "agor://kb/document/01a15b4e-cb84-7557-9c37-1faf9857c247",
+      "version_id": "01a15c8a-cf36-7752-bc39-88cff8981164",
+      "version": 2,
+      "sha256": "0482bba4e3da8af027fec4b2af2c8dee02aea7a2a83e82a54bb8da72f3368f4e"
+    },
+    {
+      "path": "decisions/0016-one-model-per-host.md",
+      "title": "ADR-0016 \u2014 Each served model fits on one rented host; scale up with NVLinked GPUs, scale out with replicas",
+      "source_uri": "agor://kb/document/01a15b4e-cba5-72d2-8b24-019d3dc26fec",
+      "version_id": "01a15c08-e840-7261-822c-5524336f84c8",
+      "version": 3,
+      "sha256": "ee242e91b4e1dc8476f9ef5049ce5968361808e358d79c29364a944c1bf87984"
+    },
+    {
+      "path": "designs/architecture-v0.md",
+      "title": "m8s \u2014 Architecture v0",
+      "source_uri": "agor://kb/document/01a15b4f-6f37-76b2-8ac8-e3c1be618392",
+      "version_id": "01a15c8a-cefa-7282-8ebe-5dea08d32ce4",
+      "version": 4,
+      "sha256": "6b2264b57b12bba4091a08db4a7f226d678f36bce1a96bb891c1a19e3e6fd867"
+    },
+    {
+      "path": "plans/cost-model.md",
+      "title": "m8s \u2014 Cost model v0",
+      "source_uri": "agor://kb/document/01a15b4f-b222-7153-ab6f-b55ace211d3e",
+      "version_id": "01a15c09-4027-70a8-a62c-bdd8b77bab09",
+      "version": 2,
+      "sha256": "0748f064d561d78553125ac0e9ba5ad796592ee3b9040378bcc65f327757e859"
+    },
+    {
+      "path": "plans/roadmap.md",
+      "title": "m8s \u2014 Roadmap v1",
+      "source_uri": "agor://kb/document/01a15b50-4bb9-758e-82ee-345e0e560c90",
+      "version_id": "01a15c8b-1be4-7406-9c54-a88cd82fd91b",
+      "version": 3,
+      "sha256": "8d164f39f392698be67a8bb3e4e81b65bcac51fe110e6da653556cefb7863f45"
+    },
+    {
+      "path": "decisions/0017-model-profiles-not-mandated-models.md",
+      "title": "ADR-0017 \u2014 m8s doesn't pick models; it describes them with model profiles",
+      "source_uri": "agor://kb/document/01a15c08-e7bf-701e-a0e4-d203a169c2c2",
+      "version_id": "01a15c08-e7bf-7096-874f-385464b04c11",
+      "version": 1,
+      "sha256": "0868f3f4f559d85ec299564fae8cfb62502f93850604bd45b3b74c2be3e79533"
+    },
+    {
+      "path": "plans/mesh-llm-patch-queue.md",
+      "title": "m8s \u2014 mesh-llm patch queue",
+      "source_uri": "agor://kb/document/01a15c1a-14c0-7750-9cc2-2ede1ad0ad25",
+      "version_id": "01a160e1-6b94-7793-810f-1de4959606a3",
+      "version": 6,
+      "sha256": "f6dfff3cccd6d544f669e866ec6b958d7f0ff6f68e23e08d173a482bc7277aee"
+    }
+  ]
+}
