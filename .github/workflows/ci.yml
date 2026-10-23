@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+
+jobs:
+  check:
+    name: Checks and mock demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake clang pkg-config libssl-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Check test profiles
+        run: python3 -B scripts/test-check-profiles
+
+      - name: Check formatting, tests, and Clippy
+        run: ./scripts/check --no-pty --no-acl-mutation
+
+      - name: Test container tooling
+        run: python3 -B -m unittest discover -s deploy/container/tests -v
+
+      - name: Run mock demo
+        run: |
+          export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          ./scripts/mock-e2e
