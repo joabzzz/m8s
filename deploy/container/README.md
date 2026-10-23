@@ -103,7 +103,7 @@ The operator must explicitly have the selected images provisioned; this source
 packet does not authorize registry pulls.
 
 Both native build output and final runtime must successfully answer bounded
-`serve --help` with the exact `--node-ownership-required` option. Unsupported
+`--help-advanced` with the exact `--node-ownership-required` option. Unsupported
 binaries refuse; no flag-removal fallback. This compatibility check does not
 prove security enforcement, start an endpoint, mint admission or advertise Ready.
 The runtime model check is explicit, **not yet wired into a secure entrypoint**;

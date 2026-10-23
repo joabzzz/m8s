@@ -114,7 +114,7 @@ class Artifacts(unittest.TestCase):
         return str(binary)
 
     def test_native_capability_and_failures(self):
-        A.check_help(self.native('printf "%s\\n" --node-ownership-required\n'))
+        A.check_help(self.native('[ "$#" = 1 ] && [ "$1" = --help-advanced ] || exit 2\nprintf "%s\\n" --node-ownership-required\n'))
         for body in ('printf "%s\\n" --node-ownership-required-extra\n',
                      'printf "%s\\n" --node-ownership-required; exit 1\n',
                      'exit 0\n'):

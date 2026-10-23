@@ -89,7 +89,7 @@ def check_native(binary):
 
 def check_help(binary):
     # Help is a compatibility check only: it does not start an endpoint or prove enforcement.
-    child = subprocess.Popen([binary, 'serve', '--help'], stdin=subprocess.DEVNULL,
+    child = subprocess.Popen([binary, '--help-advanced'], stdin=subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                              env={'PATH': '/usr/bin:/bin', 'MESH_LLM_ANALYTICS': '0', 'DO_NOT_TRACK': '1'})
     output = bytearray()
