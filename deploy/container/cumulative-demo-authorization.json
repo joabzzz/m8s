@@ -1,0 +1,15 @@
+{
+  "schema": "m8s.cumulative-demo-authorization/v1",
+  "authorized_total_micro_usd": 16000000,
+  "prior_total_micro_usd": 6000000,
+  "user_added_micro_usd": 10000000,
+  "serial_replacement_attempts_authorized": true,
+  "maximum_concurrent_instances": 1,
+  "retained_reservations_micro_usd": [
+    1609658,
+    1688308
+  ],
+  "current_attempt_cap_micro_usd": 2702034,
+  "prior_claims_reset": false,
+  "recorded_at": 1792732725
+}
