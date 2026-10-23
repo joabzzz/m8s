@@ -68,6 +68,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let temp = tempfile::tempdir().unwrap();
         let directory = temp.path().canonicalize().unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
         assert!(validate(&Some(directory.clone())).is_ok());
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(validate(&Some(directory.clone())).is_err());
