@@ -62,7 +62,11 @@ fn load(path: &Path) -> Result<Plan> {
         || p.node_uid != p.request.node_uid
         || p.policy.trial_all_in > 6_000_000
         || p.policy.max_instances != 1
-        || p.request.quote.runtime_seconds + p.request.quote.cleanup_seconds > 1800
+        || p.request
+            .quote
+            .runtime_seconds
+            .checked_add(p.request.quote.cleanup_seconds)
+            .is_none_or(|v| v > 1800)
         || !p.directory.is_absolute()
         || !p.credential_file.is_absolute()
     {
@@ -258,8 +262,8 @@ fn run_with_client(
     )?;
     let identity =
         RecoveryIntent::new(&p.owner, &p.node_uid, &p.tier, &p.image).map_err(|_| ERROR)?;
-    let request =
-        LaunchRequest::new(fresh.offer_id, identity, ssh_public, p.disk_gb).map_err(|_| ERROR)?;
+    let request = LaunchRequest::new(fresh.offer_id, identity.clone(), ssh_public, p.disk_gb)
+        .map_err(|_| ERROR)?;
     let mut executor =
         VastExecutor::new(request, &p.owner, &p.node_uid, &p.tier).map_err(|_| ERROR)?;
     let store = Store::open(p.directory.join("state.db"), &p.owner).map_err(|_| ERROR)?;
@@ -273,22 +277,30 @@ fn run_with_client(
             now,
         )
         .map_err(|_| "prototype-budget-refused")?;
-    let destroy_at = now
-        .checked_add(p.request.quote.runtime_seconds as i64)
-        .and_then(|v| v.checked_add(p.request.quote.cleanup_seconds as i64))
-        .ok_or(ERROR)?;
-    let serving_at = destroy_at - p.request.quote.cleanup_seconds as i64;
     let intent = executor
         .intent(&p.request.run_id, &p.request.request_id, "single-create")
         .map_err(|_| ERROR)?;
     executor
         .prepare_managed(&store, &intent)
         .map_err(|_| ERROR)?;
-    let plan = serde_json::json!({"schema":"m8s.vast-watchdog/v1","owner":p.owner,"node_uid":p.node_uid,"tier":p.tier,"image":p.image,"created_at":now,"destroy_at":destroy_at});
+    let serving_at = i64::try_from(
+        executor
+            .cleanup_starts_at(&store, &intent)
+            .map_err(|_| ERROR)?,
+    )
+    .map_err(|_| ERROR)?;
+    let plan = serde_json::json!({"schema":"m8s.vast-watchdog/v1","owner":p.owner,"node_uid":p.node_uid,"tier":p.tier,"image":p.image,"created_at":now,"destroy_at":serving_at});
     let plan_path = p.directory.join("watchdog-plan.json");
     private_file(&plan_path, &serde_json::to_vec(&plan).map_err(|_| ERROR)?)?;
     let mut cleanup =
         ArmedCleanup::arm_cli(&plan_path, key).map_err(|_| "prototype-cleanup-arm-failed")?;
+    // Check the exact guard BEFORE consuming the durable one-use claim.
+    if !cleanup
+        .guards(&identity, u64::try_from(serving_at).map_err(|_| ERROR)?)
+        .map_err(|_| ERROR)?
+    {
+        return Err("prototype-cleanup-deadline-mismatch-before-claim");
+    }
     let claim = executor.claim(&store, "single-create").map_err(|_| ERROR)?;
     match executor
         .execute(&store, claim, &mut cleanup)
@@ -513,5 +525,24 @@ pub(super) fn preflight(args: &[String]) -> Result<()> {
         client.transport_failure().unwrap_or(client.last_stage())
     })?;
     println!("{}", serde_json::to_string(&proof).map_err(|_| ERROR)?);
+    Ok(())
+}
+
+pub(super) fn audit(args: &[String]) -> Result<()> {
+    if args.len() != 4 || args[0] != "--directory" || args[2] != "--owner" {
+        return Err("invalid-prototype-audit-arguments");
+    }
+    let path = Path::new(&args[1]).join("state.db");
+    if !fs::symlink_metadata(&path).map_err(|_| ERROR)?.is_file() {
+        return Err(ERROR);
+    }
+    let store = Store::open(path, &args[3]).map_err(|_| "prototype-audit-unavailable")?;
+    let operations = store.create_operations().map_err(|_| ERROR)?;
+    let records: Vec<_> = operations.iter().map(|r|serde_json::json!({"operation_id":r.intent.operation_id,"state":r.state,"invocation_started_at":r.invocation_started_at,"provider_result_recorded":r.result.is_some(),"uncertainty_observed":r.uncertainty_observed})).collect();
+    let budgets: Vec<_> = store.budget_reservations().map_err(|_| ERROR)?.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
+    println!(
+        "{}",
+        serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"provider_calls":false})
+    );
     Ok(())
 }

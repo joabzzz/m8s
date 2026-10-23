@@ -1,0 +1,12 @@
+{
+  "schema": "m8s.demo-remainder-authorization/v1",
+  "original_directory": "/private/tmp/m8s-vast-demo-20261023-bounded",
+  "original_hold_micro_usd": 1609658,
+  "original_invocation_started_at": null,
+  "original_hold_released": false,
+  "user_authorized_one_fresh_attempt": true,
+  "new_cap_micro_usd": 4390342,
+  "cumulative_ceiling_micro_usd": 6000000,
+  "new_directory": "/private/tmp/m8s-vast-demo-20261023-authorized",
+  "new_owner": "m8s-demo-20261023-authorized"
+}

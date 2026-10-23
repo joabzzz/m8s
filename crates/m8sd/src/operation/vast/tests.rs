@@ -160,3 +160,33 @@ fn changed_offer_and_cancelled_desired_do_not_prepare() {
     assert!(first.prepare_at(&s, &intent, || Ok(100)).is_err());
     assert!(s.create_operations().unwrap().is_empty());
 }
+
+#[test]
+fn cleanup_plan_uses_the_claims_original_serving_deadline() {
+    let (store, _directory) = setup(6_000_000, 1);
+    let executor = executor(42);
+    let intent = executor.intent("run", "request", "operation").unwrap();
+    executor.prepare_at(&store, &intent, || Ok(100)).unwrap();
+    let deadline = executor
+        .cleanup_starts_at_with_clock(&store, &intent, || Ok(100))
+        .unwrap();
+    let claim = store
+        .claim_create_bound(
+            "operation",
+            100,
+            Some((
+                executor.token.clone(),
+                executor.fingerprint(&intent).unwrap(),
+                "smoke",
+            )),
+        )
+        .unwrap();
+    assert_eq!(deadline, 160);
+    assert_eq!(deadline, claim.serving_deadline() as u64);
+    assert_ne!(deadline, claim.cleanup_deadline() as u64);
+    assert!(
+        executor
+            .cleanup_starts_at_with_clock(&store, &intent, || Ok(100))
+            .is_err()
+    );
+}

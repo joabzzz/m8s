@@ -166,6 +166,33 @@ impl VastExecutor {
         Ok(operation)
     }
 
+    /// The cleanup worker must start at the original serving deadline, leaving
+    /// the separately reserved cleanup window for destruction. Read this from
+    /// the same durable budget used by claim; coordinators must not reconstruct
+    /// it from a fresh clock or confuse it with the final cleanup deadline.
+    pub fn cleanup_starts_at(&self, store: &Store, intent: &CreateIntent) -> Result<u64> {
+        self.cleanup_starts_at_with_clock(store, intent, wall_utc)
+    }
+    fn cleanup_starts_at_with_clock(
+        &self,
+        store: &Store,
+        intent: &CreateIntent,
+        clock: impl FnOnce() -> Result<i64>,
+    ) -> Result<u64> {
+        self.available(store, intent)?;
+        let tx = Transaction::new_unchecked(&store.conn, TransactionBehavior::Immediate)?;
+        let now = clock()?;
+        owned(&tx, &store.owner)?;
+        let a = account(&tx, &store.owner, now)?;
+        let operation = get(&tx, &store.owner, &intent.operation_id)?.ok_or(Error::Invalid)?;
+        if operation.intent != *intent || operation.state != CreateState::Prepared {
+            return Err(Error::Invalid);
+        }
+        let b = budget(&tx, intent)?;
+        let (serving, _) = crate::budget::validate_create_dispatch(&tx, &b, &a, now)?;
+        u64::try_from(serving).map_err(|_| Error::Invalid)
+    }
+
     pub fn claim(&self, store: &Store, operation_id: &str) -> Result<CreateClaim> {
         let r = get(&store.conn, &store.owner, operation_id)?.ok_or(Error::Invalid)?;
         self.available(store, &r.intent)?;

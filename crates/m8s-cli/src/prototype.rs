@@ -196,6 +196,10 @@ Requires prototype-vast. One durable paid attempt, fresh account/price checks, p
     }
 
     #[cfg(all(unix, feature = "prototype-vast"))]
+    if args.first().is_some_and(|a| a == "audit") {
+        return launch::audit(&args[1..]);
+    }
+    #[cfg(all(unix, feature = "prototype-vast"))]
     if args.first().is_some_and(|a| a == "vast-preflight") {
         return launch::preflight(&args[1..]);
     }
