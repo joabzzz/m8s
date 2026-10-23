@@ -1,9 +1,12 @@
 # m8s-bootstrap
 
 Owner-side ADR-0006 policy plus optional **real iroh QUIC/TLS adapter**.
-Implementation compiles; this crate's transport and composed bootstrap runtime
-remain unqualified. Separate external MP-001 endpoint PASS at cc08962a does not
-qualify this integration. This is not a working provider/admission integration.
+The opt-in prototype now composes this adapter with Store nonce custody and the
+actual native runtime. The 2026-10-23 live demo verified canonical admission and
+owner-routed Qwen inference; see `deploy/container/demo-proof.json` in the repo.
+This narrower acceptance does not complete permanent owner signing or live-daemon
+integration. Historical milestone notes below retain their original qualification
+scope; existing endpoint/E PASS was reused, not rerun for this documentation.
 
 ## Policy core
 
@@ -161,9 +164,9 @@ inventory; no temporary Cargo path or duplicate encoder is used. The immutable
 trusted pin explicitly maps the owner iroh endpoint to a mesh signing public key
 and canonical-derived signing owner ID; certificate milliseconds bind exactly to
 expected times. Do not equate endpoint bytes to signing-owner ID or trust a public
-key supplied inside an untrusted certificate. Owner/machine signer integration
-remains unwired behind the existing injection boundary on the owner host; only
-signatures/certs may leave it. The legacy `iroh_loopback` test authority is real
+key supplied inside an untrusted certificate. Permanent native-owner machine
+signing remains unwired; the prototype uses an already-custodied ephemeral owner
+through the exact-time signer below. Only signatures/certs may leave the owner. The legacy `iroh_loopback` test authority is real
 Ed25519 but not MP-001. In contrast, `mp001_public` and separate public adversarial
 fixtures exercise canonical MP-001 signatures, not runtime admission readiness.
 
@@ -217,10 +220,12 @@ The portable vendor snapshot is the full identity package described by its
 crypto/signing source is included unchanged; no authority/key access is wired. See vendor/mesh-llm-identity/UPSTREAM.md
 and SHA256SUMS. It is explicitly workspace-excluded, with default-features=false
 and no host-io forwarding. Root lock integration/full checks remain primary-owned.
-Exact-time machine signer, TLS/Store integration, current-policy provenance,
-served model/canary and Ready gates remain separate and incomplete. Existing
-Keychain failed qualification/defaultOFF and endpoint PASS at cc08962a are not
-changed or rerun by this source milestone.
+At that earlier source milestone, exact-time machine signing, TLS/Store
+composition, current-policy provenance and model/canary gates remained separate.
+The later prototype demonstrated TLS/Store admission and an owner-routed model
+canary. Permanent owner machine signing and production policy/revocation remain
+unfinished. Keychain qualification/defaultOFF and endpoint PASS at cc08962a are
+not changed or rerun by this documentation update.
 
 ### Primary-reviewed current-time public fixtures (synthetic TEST DATA)
 

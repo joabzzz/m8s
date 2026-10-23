@@ -98,7 +98,7 @@ scripts/check --no-pty --no-acl-mutation
 python3 -B -m unittest discover -s deploy/container/tests -v
 ```
 
-The latest Rust run passed **735 tests**, formatting, and strict Clippy. The
+The latest Rust run passed **772 tests**, formatting, and strict Clippy. The
 selected profile excludes four synthetic PTY tests and three ACL-mutation tests;
 it is not an unfiltered OS qualification. Existing operator endpoint evidence is
 retained and was not rerun. `scripts/check` without flags retains the normal
@@ -121,9 +121,13 @@ its liability. The live prototype is not yet a production fleet scheduler.
 
 ## Architecture and next work
 
-The [decision index](docs/decisions/README.md) records the implemented prototype
-choices and their evidence. The [production roadmap](docs/ROADMAP.md) separates
+The [original roadmap and ADRs](docs/original/README.md) are preserved with source
+versions and hashes; the [implementation map](docs/ORIGINAL_PLAN_STATUS.md) tracks
+their remaining acceptance criteria. The [decision index](docs/decisions/README.md)
+records the prototype choices and subsequent source integration with their evidence. The [production roadmap](docs/ROADMAP.md) separates
 completed acceptance from remaining integration and operational qualification.
+A [continuation handoff](docs/CONTINUATION_HANDOFF.md) records the latest local
+checkpoint, validation, current restrictions and a ready-to-use session prompt.
 
 ## Agent demo skill
 

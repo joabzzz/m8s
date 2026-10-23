@@ -28,7 +28,7 @@ development controller; this live result does not promote it to a fleet manager.
 
 ## Qualification boundaries
 
-The latest selected Rust profile passed 735 tests, fmt and strict Clippy. Four
+The latest selected Rust profile passed 772 tests, fmt and strict Clippy. Four
 synthetic PTY and three ACL-mutation tests were excluded by the documented
 profile. Existing endpoint/E PASS evidence remains valid and was not repeated.
 No additional rentals are needed for documentation or deterministic source work.
@@ -57,3 +57,13 @@ wrong-node requests before reservation, and retained liability after preparation
 failure or claim consumption. This is the first extraction toward priority 1;
 it does not yet connect real Vast reconciliation to the daemon's control socket.
 The demo workflow is available to agents in `.agents/skills/m8s-demo/SKILL.md`.
+
+The [original-plan implementation map](ORIGINAL_PLAN_STATUS.md) records P0–P4
+exit criteria, all 17 ADR boundaries, and the next P1 integration order.
+
+Subsequent local integration adds an atomic absence/node/accounting finalizer,
+immutable recovery inputs including the original creator-account pin, a bounded
+consistent audit snapshot, and durable mock/managed execution-domain isolation.
+These are source-tested boundaries. Authenticated restart transport, permanent
+native-owner signing, the live daemon loop and safe fleet replacement remain
+unfinished; see [P004](decisions/P004-restart-and-execution-domains.md).
