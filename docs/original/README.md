@@ -8,7 +8,9 @@ The source database was not modified. Agor links remain original links.
 
 Start with [Roadmap v1](plans/roadmap.md), [Architecture v0](designs/architecture-v0.md),
 and the [ADR index](decisions/index.md). The [current integration roadmap](../ROADMAP.md)
-tracks implementation against them. These snapshots are historical design inputs,
+tracks implementation against them. The [catalog](CATALOG.md) inventories every Knowledge
+document, including the design rationale (research spikes, primers, MP-001 brief)
+that is cited by these records but not yet in the repository, and why. These snapshots are historical design inputs,
 not automatically current provider facts, permission grants or completed tests.
 
 ## Reconciliation with later user direction and evidence
