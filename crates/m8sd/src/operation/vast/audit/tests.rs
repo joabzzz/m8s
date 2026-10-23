@@ -49,6 +49,7 @@ fn projects_reservation_preparation_consumption_and_invocation_without_effects()
     assert_eq!(
         status.metadata,
         RecoveryMetadata::Verified {
+            creator_account_id: NonZeroU64::new(7).unwrap(),
             cleanup_starts_at: 160,
             cleanup_deadline: 400
         }

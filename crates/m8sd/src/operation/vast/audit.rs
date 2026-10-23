@@ -24,6 +24,7 @@ pub enum RecoveryMetadata {
     NoOperation,
     MissingLegacy,
     Verified {
+        creator_account_id: NonZeroU64,
         cleanup_starts_at: i64,
         cleanup_deadline: i64,
     },
@@ -149,6 +150,7 @@ impl Store {
                         return Err(Error::Corrupt);
                     }
                     RecoveryMetadata::Verified {
+                        creator_account_id: recovered.creator_account_id(),
                         cleanup_starts_at: recovered.cleanup_starts_at()?,
                         cleanup_deadline: recovered.cleanup_deadline()?,
                     }

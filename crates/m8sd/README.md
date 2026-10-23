@@ -1058,3 +1058,19 @@ node intent, matching the reservation-before-launch ordering. A missing or empty
 journal is not permission to erase history. The existing process lock remains
 required across provider effects within one domain; this is not multi-reconciler
 support or live-daemon enablement.
+
+### Original creator-account pin
+
+New Vast intents include the nonzero creator account ID in their v2 fingerprint.
+The CLI supplies the ID from its existing authenticated preflight, using the
+same retained credential later passed to the cleanup/dispatch handle. The
+bounded recovery envelope stores this public ID with the canonical request.
+`VastRecovery::creator_account_id` and audit metadata expose the original
+expected account; changing it fails fingerprint verification.
+
+This is an expected identity, not a fresh account observation. Restart transport
+must still authenticate that same account before any observation can establish
+absence. No new credential lookup or provider operation is introduced here.
+Older live journals without capsules remain auditable as `missing_legacy`;
+unversioned intermediate capsules refuse recovery rather than guessing an
+account or upgrading an old fingerprint. Existing proof artifacts are unchanged.

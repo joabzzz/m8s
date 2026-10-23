@@ -915,7 +915,8 @@ with these stages:
 Cancellation and billing state remain separate fields. None of the stages is a
 current provider lookup, live Ready result, safe-retry permit or final invoice.
 `metadata.status=verified` reports fingerprint-checked public recovery inputs
-and original cleanup times; it does not claim a recovery worker is running.
+the original expected creator account ID, and original cleanup times. It does
+not authenticate the current account or claim a recovery worker is running.
 `missing_legacy` preserves older records without inventing new metadata.
 
 The query refuses malformed/cross-linked records and more than 128 rows per

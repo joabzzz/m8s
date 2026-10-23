@@ -15,6 +15,10 @@ impl VastRecovery {
     pub fn identity(&self) -> &RecoveryIntent {
         &self.executor.identity
     }
+    /// Expected original account, not a fresh authenticated account observation.
+    pub fn creator_account_id(&self) -> NonZeroU64 {
+        self.executor.creator_account_id
+    }
     pub fn tier(&self) -> &str {
         &self.executor.tier
     }
@@ -49,14 +53,40 @@ impl VastRecovery {
     }
 }
 
-fn read(conn: &rusqlite::Connection, owner: &str, id: &str) -> Result<(String, Vec<u8>)> {
-    conn.query_row(
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Inputs {
+    schema: String,
+    creator_account_id: NonZeroU64,
+    launch_intent: String,
+}
+
+fn encode_inputs(executor: &VastExecutor) -> Result<Vec<u8>> {
+    let encoded = serde_json::to_vec(&Inputs {
+        schema: "m8s.vast-recovery-inputs/v1".into(),
+        creator_account_id: executor.creator_account_id,
+        launch_intent: String::from_utf8(executor.canonical.clone()).map_err(|_| Error::Invalid)?,
+    })
+    .map_err(|_| Error::Invalid)?;
+    if encoded.len() > 4096 {
+        return Err(Error::Invalid);
+    }
+    Ok(encoded)
+}
+
+fn read(conn: &rusqlite::Connection, owner: &str, id: &str) -> Result<(String, Inputs)> {
+    let (tier, bytes): (String, Vec<u8>) = conn.query_row(
         "SELECT CASE WHEN typeof(tier)='text' AND length(CAST(tier AS BLOB)) BETWEEN 1 AND 64 THEN tier ELSE NULL END,
          CASE WHEN typeof(canonical)='blob' AND length(canonical) BETWEEN 1 AND 4096 THEN canonical ELSE NULL END
          FROM vast_launch WHERE owner=? AND operation_id=?",
         params![owner, id],
         |r| Ok((r.get(0)?, r.get(1)?)),
-    ).map_err(|_| Error::Corrupt)
+    ).map_err(|_| Error::Corrupt)?;
+    let inputs: Inputs = serde_json::from_slice(&bytes).map_err(|_| Error::Corrupt)?;
+    if inputs.schema != "m8s.vast-recovery-inputs/v1" {
+        return Err(Error::Corrupt);
+    }
+    Ok((tier, inputs))
 }
 
 pub(super) fn persist(
@@ -64,16 +94,14 @@ pub(super) fn persist(
     executor: &VastExecutor,
     intent: &CreateIntent,
 ) -> Result<()> {
-    if executor.canonical.len() > 4096 {
-        return Err(Error::Invalid);
-    }
+    let canonical = encode_inputs(executor)?;
     tx.execute(
         "INSERT INTO vast_launch(owner,operation_id,tier,canonical) VALUES (?,?,?,?)",
         params![
             executor.owner,
             intent.operation_id,
             executor.tier,
-            executor.canonical
+            canonical
         ],
     )?;
     Ok(())
@@ -84,8 +112,11 @@ pub(super) fn validate_persisted(
     executor: &VastExecutor,
     intent: &CreateIntent,
 ) -> Result<()> {
-    let (tier, canonical) = read(conn, &executor.owner, &intent.operation_id)?;
-    if tier != executor.tier || canonical != executor.canonical {
+    let (tier, inputs) = read(conn, &executor.owner, &intent.operation_id)?;
+    if tier != executor.tier
+        || inputs.launch_intent.as_bytes() != executor.canonical
+        || inputs.creator_account_id != executor.creator_account_id
+    {
         return Err(Error::Corrupt);
     }
     Ok(())
@@ -110,10 +141,31 @@ pub(super) fn restore(
     owner: &str,
     operation_id: &str,
 ) -> Result<VastRecovery> {
+    // Bound the accompanying JSON and row keys before the shared decoders copy
+    // them into Rust. Capsule bounds alone do not bound these older journals.
+    let bounded: bool = conn.query_row(
+        "SELECT typeof(c.record)='text' AND length(CAST(c.record AS BLOB)) BETWEEN 1 AND 65536
+         AND typeof(b.record)='text' AND length(CAST(b.record AS BLOB)) BETWEEN 1 AND 65536
+         AND typeof(c.request_id)='text' AND length(CAST(c.request_id AS BLOB)) BETWEEN 1 AND 256
+         AND typeof(c.node_uid)='text' AND length(CAST(c.node_uid AS BLOB)) BETWEEN 1 AND 256
+         AND typeof(b.node_uid)='text' AND length(CAST(b.node_uid AS BLOB)) BETWEEN 1 AND 256
+         FROM create_operation c JOIN budget_reservation b ON b.owner=c.owner AND b.request_id=c.request_id
+         WHERE c.owner=? AND c.operation_id=?",
+        params![owner, operation_id], |r| r.get(0),
+    ).map_err(|_| Error::Corrupt)?;
+    if !bounded {
+        return Err(Error::Corrupt);
+    }
     let operation = get(conn, owner, operation_id)?.ok_or(Error::Invalid)?;
-    let (tier, canonical) = read(conn, owner, operation_id)?;
-    let request = LaunchRequest::from_canonical_intent(&canonical)?;
-    let mut executor = VastExecutor::new(request, owner, &operation.intent.node_uid, &tier)?;
+    let (tier, inputs) = read(conn, owner, operation_id)?;
+    let request = LaunchRequest::from_canonical_intent(inputs.launch_intent.as_bytes())?;
+    let mut executor = VastExecutor::new(
+        request,
+        owner,
+        &operation.intent.node_uid,
+        &tier,
+        inputs.creator_account_id,
+    )?;
     if executor.fingerprint(&operation.intent)? != operation.intent.launch_fingerprint {
         return Err(Error::Corrupt);
     }

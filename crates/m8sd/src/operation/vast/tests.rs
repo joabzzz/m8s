@@ -31,6 +31,7 @@ pub(super) fn executor(offer: u64) -> VastExecutor {
         "owner",
         "node",
         "smoke",
+        NonZeroU64::new(7).unwrap(),
     )
     .unwrap()
 }

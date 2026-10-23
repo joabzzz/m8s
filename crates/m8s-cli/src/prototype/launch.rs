@@ -268,8 +268,14 @@ fn run_with_client(
         RecoveryIntent::new(&p.owner, &p.node_uid, &p.tier, &p.image).map_err(|_| ERROR)?;
     let request = LaunchRequest::new(fresh.offer_id, identity.clone(), ssh_public, p.disk_gb)
         .map_err(|_| ERROR)?;
-    let mut executor =
-        VastExecutor::new(request, &p.owner, &p.node_uid, &p.tier).map_err(|_| ERROR)?;
+    let mut executor = VastExecutor::new(
+        request,
+        &p.owner,
+        &p.node_uid,
+        &p.tier,
+        NonZeroU64::new(fresh.account_id).ok_or(ERROR)?,
+    )
+    .map_err(|_| ERROR)?;
     let store = Store::open(p.directory.join("state.db"), &p.owner).map_err(|_| ERROR)?;
     store.scale(&p.tier, 1).map_err(|_| ERROR)?;
     let prepared = executor
