@@ -1902,13 +1902,16 @@ dependencies = [
  "libc",
  "m8s-bootstrap",
  "m8s-core",
+ "m8s-provider-vast",
  "m8s-secrets",
+ "mesh-llm-identity",
  "nix",
  "serde",
  "serde_json",
  "signal-hook",
  "thiserror 2.0.21",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -1919,7 +1922,7 @@ dependencies = [
  "nix",
  "serde",
  "serde_json",
- "socket2 0.6.5",
+ "socket2",
 ]
 
 [[package]]

@@ -206,3 +206,11 @@ through the owned-container library. See `crates/m8s-cli/README.md` for exact
 execution result. New v2 run intents persist the original selected transport
 identity before create; older v1 intents cannot be safely resumed by this path.
 The secure LAUNCH executable coordinator is still not implemented.
+
+### Agent process initialization
+
+The images run `/usr/bin/tini -- /usr/local/bin/m8s-agent`; the agent must not be
+PID 1. The online smoke recipe installs Debian Tini. Offline prepared runtime
+bases must already contain `/usr/bin/tini`, and packaging refuses if it is absent.
+Both source recipes enable `vast-node`, whose explicit private input contract is
+documented in the agent README. This does not provide owner-side LAUNCH or Ready.

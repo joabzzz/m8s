@@ -1,5 +1,5 @@
 //! Sealed bootstrap material -> enforcing mesh argv, not admission or Ready proof.
-//! This library seam is unwired to the agent binary. The trusted coordinator must
+//! The optional vast-node binary composes this seam. The trusted coordinator must
 //! obtain a real TLS bundle, bind its actual local endpoint/key and current policy,
 //! and retain control/DMS plus scoped destruction. No owner key is loaded here.
 pub mod container;

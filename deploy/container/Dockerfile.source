@@ -43,7 +43,7 @@ RUN --network=none mkdir -p /src \
     && python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
 ENV CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1
-RUN --network=none cargo build --release --locked --offline -j1 -p m8s-cli -p m8s-agent --features m8s-agent/sealed-node,m8s-cli/prototype-container
+RUN --network=none cargo build --release --locked --offline -j1 -p m8s-cli -p m8s-agent --features m8s-agent/vast-node,m8s-cli/prototype-container
 
 FROM ${RUNTIME_BASE}
 COPY --from=mesh-build /out/product/mesh-bundle/ /opt/mesh/
@@ -56,7 +56,8 @@ ENV MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR=/opt/mesh/native-runtimes \
     MESH_LLM_ANALYTICS=0 DO_NOT_TRACK=1
 USER 65532:65532
 # Refuse unsupported binaries in their final runtime environment as well.
-RUN --network=none python3 /usr/local/lib/m8s/artifacts.py check-contract /etc/m8s/model-artifact.json \
+RUN --network=none test -x /usr/bin/tini \
+    && python3 /usr/local/lib/m8s/artifacts.py check-contract /etc/m8s/model-artifact.json \
     && python3 /usr/local/lib/m8s/artifacts.py check-native /opt/mesh/mesh-llm
-# Secure binary route is still unwired: retain the existing fail-closed agent.
-ENTRYPOINT ["/usr/local/bin/m8s-agent"]
+# Explicit --vast-node configuration is required; no unsigned/default startup.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/m8s-agent"]

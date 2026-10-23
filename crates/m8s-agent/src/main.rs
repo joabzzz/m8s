@@ -5,6 +5,9 @@ use m8s_agent::supervisor::{
 use m8s_agent::{DeadManSwitch, Effect, Outcome};
 use std::time::{Duration, Instant};
 
+#[cfg(all(unix, feature = "vast-node"))]
+mod vast_node;
+
 // Binary-only: importing or using the library never changes signal dispositions.
 #[cfg(unix)]
 mod termination {
@@ -65,6 +68,10 @@ impl TeardownDriver for UnavailableDestroy {
     }
 }
 fn run() -> Result<(), &'static str> {
+    #[cfg(all(unix, feature = "vast-node"))]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--vast-node")) {
+        return vast_node::run();
+    }
     let mut args = std::env::args_os().skip(1);
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--local")) {
         return Err(

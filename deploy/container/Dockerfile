@@ -7,7 +7,8 @@ FROM ${RUNTIME_BASE}
 COPY product/ /opt/mesh/
 COPY --chmod=0555 cli/m8s /usr/local/bin/m8s
 COPY --chmod=0555 cli/m8s-agent /usr/local/bin/m8s-agent
-RUN --network=none test -x /opt/mesh/mesh-llm \
+RUN --network=none test -x /usr/bin/tini \
+    && test -x /opt/mesh/mesh-llm \
     && test -f /opt/mesh/product-manifest.json \
     && test -d /opt/mesh/native-runtimes
 ENV MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR=/opt/mesh/native-runtimes \
@@ -16,4 +17,4 @@ ENV MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR=/opt/mesh/native-runtimes \
 # mesh as an implicit admission workaround. The library Docker adapter overrides
 # only after the caller's qualified BootGate; no such production gate is wired.
 USER 65532:65532
-ENTRYPOINT ["/usr/local/bin/m8s-agent"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/m8s-agent"]

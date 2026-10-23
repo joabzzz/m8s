@@ -1,3 +1,9 @@
+> Current prototype status: `vast-node` now supplies an explicit secure node
+> entrypoint and scoped provider cleanup; see the final section. Earlier sections
+> describe the local exerciser and library checkpoints. Owner-side LAUNCH,
+> independent watchdog wiring, live inference and provider qualification remain
+> unfinished. Container recipes run the agent under Tini, never directly as PID 1.
+
 # m8s-agent local lifecycle slice
 
 The default-off `secure-runtime` feature exposes
@@ -435,3 +441,54 @@ Dropping the dispatch handle does not join the worker or cancel queued cleanup.
 This worker does not survive process death and is not the independent owner
 watchdog required before a rental. Only explicit `ConfirmAbsent` evidence can
 produce a confirmed-absence outcome.
+
+## Explicit Vast node entrypoint
+
+Build with `--features vast-node`. This adds:
+
+```text
+m8s-agent --vast-node CONFIG NONCE_FILE NODE_KEY_FILE
+```
+
+This is a node-side entrypoint, not an owner-side LAUNCH command or Ready claim.
+The launching owner must first journal the resource, reserve the full cost
+liability and arm independently surviving cleanup. The node reads only Vast's
+`CONTAINER_ID` and per-instance `CONTAINER_API_KEY`; it never loads `VAST_API_KEY`
+or an owner signing key. Provider and native errors remain opaque.
+
+All three inputs must be explicitly selected canonical absolute regular files,
+mode 0600, owned by the effective user, with one link and no extended ACL. Their
+parent directories must be private mode 0700 with no extended ACL. The nonce is
+exactly 32 raw bytes; the node key uses the canonical 64-character lowercase hex
+format (one trailing newline is accepted). The key must be the same fresh node
+key associated with the owner's nonce. Secret bytes are not accepted in argv or
+JSON. Unknown JSON properties are refused.
+
+The bounded public config schema is `m8s.vast-node/v1`:
+
+| Field | Meaning |
+|---|---|
+| `instance_id`, `container_id` | Positive Vast instance ID and its identical decimal string; must match `CONTAINER_ID` |
+| `image_sha256` | Owner-admitted image digest, 64 lowercase hex characters |
+| `owner_endpoint`, `owner_signing_key`, `mesh_owner_id` | Pinned public iroh identity, public MP001 signing key and canonical owner ID |
+| `owner_address`, `bind_address` | Explicit direct UDP addresses with nonzero ports; owner address cannot be unspecified |
+| `trust` | Current canonical public trust/revocation snapshot |
+| `program`, `gguf`, `material_root` | Absolute native binary, exact GGUF, and new private material directory; its private parent must already exist |
+| `model` | Exact GGUF basename without `.gguf`; split-model naming is refused |
+| `heartbeat_ttl_seconds`, `max_lifetime_seconds` | Positive bounded lease; TTL cannot exceed lifetime, lifetime cannot exceed 1800 seconds |
+| `port`, `console_port` | Distinct nonzero native listener ports |
+
+Before redemption, an authenticated exact-instance GET must observe the supplied
+instance as present. This establishes credential presence, not cryptographic proof
+of DELETE permission. The control endpoint uses direct authenticated iroh, keeping
+netmon and TLS enabled; it does not register a competing relay endpoint under the
+native node's identity. The original transport receipt, exact canonical signature
+verification and native node-ID check precede model-process startup.
+
+Cleanup runs through the bounded worker. The supervisor handles child drain;
+material wipe remains unconfirmed until provider destruction removes the ephemeral
+filesystem. A dead per-instance key cannot certify owner-visible absence. The
+external owner must independently confirm removal with its own credential and
+reconcile the journal. The node never emits Ready or a successful inference claim.
+
+Live endpoint, inference and destructive-provider qualification remain pending.

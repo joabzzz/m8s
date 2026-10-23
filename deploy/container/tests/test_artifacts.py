@@ -68,7 +68,7 @@ class Artifacts(unittest.TestCase):
         self.assertIn('just release-bundle "v${version#v}" /out/release cuda x86_64', recipe)
         self.assertIn('check-native /opt/mesh/mesh-llm', recipe)
         self.assertIn('check-contract /etc/m8s/model-artifact.json', recipe)
-        self.assertIn('ENTRYPOINT ["/usr/local/bin/m8s-agent"]', recipe)
+        self.assertIn('ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/m8s-agent"]', recipe)
         self.assertIn('RUN --network=none mkdir -p /src', recipe)
         self.assertNotIn('local-model-only', recipe)
         for line in recipe.splitlines():
