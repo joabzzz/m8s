@@ -78,7 +78,9 @@ class Artifacts(unittest.TestCase):
     def test_smoke_preparation_keeps_product_build_offline(self):
         recipe = (Path(__file__).parents[1] / 'Dockerfile.smoke').read_text()
         self.assertIn('RUN --network=none mkdir -p /src', recipe)
-        self.assertIn('RUN --network=none just bundle /out/mesh-bundle.tar.gz', recipe)
+        self.assertIn('just bundle /out/mesh-bundle.tar.gz', recipe)
+        self.assertIn('RUN --network=none \\\n    --mount=type=cache', recipe)
+        self.assertIn('install -y --no-install-recommends patchelf', recipe)
         self.assertIn('RUN --network=none cargo build --release --locked --offline -j2', recipe)
         self.assertIn('CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2', recipe)
         for line in recipe.splitlines():
@@ -93,6 +95,7 @@ class Artifacts(unittest.TestCase):
         self.assertEqual(len(sources['model']['revision']), 40)
         self.assertIn('/resolve/' + sources['model']['revision'] + '/', sources['model']['url'])
         self.assertTrue(sources['model']['url'].endswith('/' + sources['model']['filename']))
+        self.assertEqual(sources['model']['filename'], sources['model']['served_model_id'] + '.gguf')
         self.assertEqual(sources['platform'], 'linux/amd64')
         for name in ('cuda_devel_base', 'cuda_runtime_base'):
             A.main(['check-base', sources[name]])

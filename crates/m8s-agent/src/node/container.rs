@@ -62,6 +62,21 @@ fn hex(s: &str, n: usize) -> bool {
 fn endpoint(id: EndpointId) -> String {
     id.0.iter().map(|b| format!("{b:02x}")).collect()
 }
+// Native raw-GGUF serving derives its routable model ID from the filename.
+// Keep that basename exactly equal to the admitted single-file model ID.
+fn model_mount(model: &str) -> CResult<String> {
+    if model.is_empty()
+        || model.len() > 128
+        || !model.as_bytes()[0].is_ascii_alphanumeric()
+        || !model
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        || model.contains("-of-")
+    {
+        return Err(ContainerError);
+    }
+    Ok(format!("/models/{model}.gguf"))
+}
 fn selected_path(p: &Path) -> bool {
     p.to_str().is_some_and(|s| {
         s.len() <= 4096
@@ -72,6 +87,12 @@ fn selected_path(p: &Path) -> bool {
         && p.canonicalize().ok().as_deref() == Some(p)
 }
 fn image(s: &str) -> bool {
+    // Locally built images have a content-addressed config ID without a registry
+    // RepoDigest. Full IDs remain immutable and work with --pull=never. This
+    // local qualification adapter does not infer signing/provenance from either.
+    if let Some(id) = s.strip_prefix("sha256:") {
+        return hex(id, 64);
+    }
     let Some((repo, digest)) = s.split_once("@sha256:") else {
         return false;
     };
@@ -182,6 +203,7 @@ impl ContainerSession {
         spec: ContainerSpec,
         io: &mut impl RecordIo,
     ) -> CResult<Self> {
+        model_mount(&launch.model)?;
         if !image(&spec.image)
             || !hex(&spec.run_id, 32)
             || !(1..=128).contains(&spec.max_tokens)
@@ -463,8 +485,10 @@ impl ContainerSession {
             ),
             "--mount".into(),
             format!(
-                "type=bind,src={},dst=/model.gguf,readonly",
-                self.launch.gguf.display()
+                "type=bind,src={},dst=/models/{}.gguf,readonly",
+                self.launch.gguf.display(),
+                // Validated before the first create effect; launch is immutable.
+                self.launch.model
             ),
             "--mount".into(),
             format!(
@@ -486,7 +510,7 @@ impl ContainerSession {
             self.spec.image.clone(),
             "serve".into(),
             "--gguf".into(),
-            "/model.gguf".into(),
+            format!("/models/{}.gguf", self.launch.model),
             "--join-file".into(),
             "/bootstrap/material/join-token".into(),
             "--node-ownership".into(),

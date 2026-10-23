@@ -1,5 +1,44 @@
 //! Fake owned Docker processes only. No Docker daemon/image/model/mesh is run.
 use super::*;
+#[test]
+fn local_image_ids_are_immutable_and_tags_still_refuse() {
+    assert!(image(&format!("sha256:{}", "a".repeat(64))));
+    assert!(image(&format!(
+        "example.invalid/node@sha256:{}",
+        "a".repeat(64)
+    )));
+    for value in [
+        "node:latest",
+        "node:sha256-deadbeef",
+        "sha256:deadbeef",
+        "sha256:",
+    ] {
+        assert!(!image(value));
+    }
+    assert!(!image(&format!("sha256:{}", "A".repeat(64))));
+}
+#[test]
+fn model_mount_preserves_single_file_served_name_without_path_injection() {
+    assert_eq!(
+        model_mount("qwen2.5-0.5b-instruct-q4_k_m").unwrap(),
+        "/models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    );
+    for model in [
+        "",
+        ".",
+        "..",
+        "../model",
+        "org/model",
+        "bad:name",
+        "bad,name",
+        "bad\nname",
+        "model-00001-of-00002",
+        "-model",
+    ] {
+        assert!(model_mount(model).is_err());
+    }
+    assert!(model_mount(&"x".repeat(129)).is_err());
+}
 use m8s_bootstrap::{BundleSettings, CertificateVerifier};
 use std::{
     os::unix::net::UnixListener,
@@ -211,7 +250,8 @@ fn exact_owned_lifecycle_and_inside_container_request_without_port_widening() {
     );
     assert!(lines[0].contains("--pull=never"));
     assert!(lines[0].contains("--read-only"));
-    assert!(lines[0].contains("dst=/model.gguf,readonly"));
+    assert!(lines[0].contains("dst=/models/synthetic-model.gguf,readonly"));
+    assert!(lines[0].contains("--gguf /models/synthetic-model.gguf"));
     assert!(lines[0].contains("dst=/node-key,readonly"));
     assert_eq!(
         lines[0]

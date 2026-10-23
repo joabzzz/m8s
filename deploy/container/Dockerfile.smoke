@@ -28,9 +28,16 @@ RUN cargo fetch --locked \
     && scripts/prepare-llama.sh pinned
 WORKDIR /src/m8s
 RUN cargo fetch --locked
+RUN apt-get update && apt-get install -y --no-install-recommends patchelf \
+    && rm -rf /var/lib/apt/lists/*
 ENV CARGO_NET_OFFLINE=true
 WORKDIR /src/mesh
-RUN --network=none just bundle /out/mesh-bundle.tar.gz
+ARG TARGETARCH
+RUN --network=none \
+    --mount=type=cache,id=m8s-mesh-cpu-target-${TARGETARCH},target=/src/mesh/target,sharing=locked \
+    --mount=type=cache,id=m8s-mesh-cpu-native-${TARGETARCH},target=/src/mesh/.deps/llama-build,sharing=locked \
+    --mount=type=cache,id=m8s-mesh-cpu-sccache-${TARGETARCH},target=/root/.cache/sccache,sharing=locked \
+    just bundle /out/mesh-bundle.tar.gz
 RUN --network=none mkdir /out/product && tar -xzf /out/mesh-bundle.tar.gz -C /out/product \
     && python3 /checks/artifacts.py check-native /out/product/mesh-bundle/mesh-llm
 WORKDIR /src/m8s

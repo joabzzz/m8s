@@ -67,6 +67,12 @@ The selected model is Apache-2.0 licensed. Inputs must be GGUF version 2/3, betw
 automatic model download. This bound targets a small CPU smoke model and does
 not prove inference fit or full GGUF validity. Before any qualified start:
 
+For launch and inference, use the exact `served_model_id` in
+`artifact-sources.json`: `qwen2.5-0.5b-instruct-q4_k_m`. The model contract's
+repository name identifies the artifact, not the HTTP model name. Native raw
+GGUF serving derives its name from the filename; the container adapter mounts
+the file at `/models/<admitted-model-id>.gguf` and requires a safe single filename.
+
 ```sh
 python3 artifacts.py check-model /explicit/selected/model.gguf model-artifact.json
 ```
