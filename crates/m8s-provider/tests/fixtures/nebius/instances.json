@@ -1,0 +1,70 @@
+{
+  "items": [
+    {
+      "metadata": {
+        "id": "computeinstance-one",
+        "parentId": "project-fixture",
+        "labels": {
+          "m8s-owner": "owner-fixture",
+          "m8s-node-uid": "node-one",
+          "m8s-tier": "interactive",
+          "m8s-version": "1"
+        }
+      },
+      "spec": {
+        "resources": {
+          "platform": "gpu-h100-sxm",
+          "preset": "1gpu-16vcpu-200gb"
+        },
+        "cloudInitUserData": "synthetic-sensitive-content-discarded"
+      },
+      "status": {
+        "state": "RUNNING"
+      }
+    },
+    {
+      "metadata": {
+        "id": "computeinstance-other",
+        "parentId": "project-fixture",
+        "labels": {
+          "m8s-owner": "owner-other",
+          "m8s-node-uid": "node-other",
+          "m8s-tier": "interactive",
+          "m8s-version": "1"
+        }
+      },
+      "spec": {
+        "resources": {
+          "platform": "gpu-h100-sxm",
+          "preset": "1gpu-16vcpu-200gb"
+        },
+        "cloudInitUserData": "synthetic-sensitive-content-discarded"
+      },
+      "status": {
+        "state": "RUNNING"
+      }
+    },
+    {
+      "metadata": {
+        "id": "computeinstance-stopped",
+        "parentId": "project-fixture",
+        "labels": {
+          "m8s-owner": "owner-fixture",
+          "m8s-node-uid": "node-stopped",
+          "m8s-tier": "interactive",
+          "m8s-version": "1"
+        }
+      },
+      "spec": {
+        "resources": {
+          "platform": "gpu-h100-sxm",
+          "preset": "1gpu-16vcpu-200gb"
+        },
+        "cloudInitUserData": "synthetic-sensitive-content-discarded"
+      },
+      "status": {
+        "state": "STOPPED"
+      }
+    }
+  ]
+}

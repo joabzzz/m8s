@@ -7,6 +7,7 @@ autobins = false
 
 [features]
 default = []
+nebius-readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
 local = ["dep:m8s-agent", "dep:libc", "dep:fs2", "dep:sha2"]
 vast-readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
 vast-scoped-destroy-https = ["vast-readonly-https"]

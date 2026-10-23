@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "metadata": {
+        "id": "quotaallowance-fixture",
+        "parentId": "project-fixture",
+        "name": "synthetic.compute.h100.count"
+      },
+      "spec": {
+        "region": "eu-north1",
+        "limit": "16"
+      },
+      "status": {
+        "state": "STATE_ACTIVE",
+        "usageState": "USAGE_STATE_USED",
+        "usage": "1"
+      }
+    }
+  ]
+}

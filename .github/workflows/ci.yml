@@ -55,6 +55,9 @@ jobs:
       - name: Test container tooling
         run: python3 -B -m unittest discover -s deploy/container/tests -v
 
+      - name: Test Nebius smoke safety without credentials
+        run: python3 -B -m unittest discover -s tools/nebius-smoke -v
+
       - name: Run mock demo
         run: |
           export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
