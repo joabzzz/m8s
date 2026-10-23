@@ -478,7 +478,7 @@ The bounded public config schema is `m8s.vast-node/v1`:
 | `owner_endpoint`, `owner_signing_key`, `mesh_owner_id` | Pinned public iroh identity, public MP001 signing key and canonical owner ID |
 | `owner_address`, `bind_address` | Explicit direct UDP addresses with nonzero ports; owner address cannot be unspecified |
 | `trust` | Current canonical public trust/revocation snapshot |
-| `program`, `gguf`, `material_root` | Absolute native binary, optional local GGUF, and new private material directory; its private parent must already exist. Flint uses `gguf: null` and a pinned native model reference. |
+| `program`, `gguf`, `material_root` | Absolute native binary, optional local GGUF, and new private material directory; its private parent must already exist. Flint uses `gguf: null` and a pinned native model reference; `model_pin` (bytes + SHA-256) is then mandatory, the child's `HF_HUB_CACHE` is `<material_root>/hf-cache`, and a size/digest mismatch stops the child, drives teardown and deletes that cache. |
 | `model` | Exact GGUF basename for local fixtures, or the admitted immutable Hugging Face reference when `gguf` is null. MeshLLM downloads the latter after bootstrap. |
 | `heartbeat_ttl_seconds`, `max_lifetime_seconds` | Positive bounded lease; TTL cannot exceed lifetime, lifetime cannot exceed 1800 seconds |
 | `port`, `console_port` | Distinct nonzero native listener ports |

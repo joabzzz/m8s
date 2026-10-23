@@ -411,6 +411,7 @@ impl ContainerSession {
             heartbeat_ttl_seconds: self.launch.heartbeat_ttl_seconds,
             port: self.launch.port,
             console_port: self.launch.console_port,
+            model_pin: self.launch.model_pin,
         }
     }
     fn recheck_material(&self) -> CResult<()> {

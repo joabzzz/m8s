@@ -333,6 +333,15 @@ fn run_supervised(
             image_sha256: *decode32(config.image_sha256.as_bytes())?,
             self_destruct_present: true,
         };
+        // Null-gguf nodes must have a pinned size/digest; unknown refs never serve.
+        let model_pin = match config.gguf {
+            Some(_) => None,
+            None => Some(
+                m8s_provider::vast::provision_protocol::pinned_model(&config.model)
+                    .map(|(bytes, sha256)| m8s_agent::node::model::ModelPin { bytes, sha256 })
+                    .ok_or(REFUSED)?,
+            ),
+        };
         let plan = RuntimePlan {
             material_root: &config.material_root,
             launch: MeshLaunch {
@@ -346,6 +355,7 @@ fn run_supervised(
                 heartbeat_ttl_seconds: config.heartbeat_ttl_seconds,
                 port: config.port,
                 console_port: config.console_port,
+                model_pin,
             },
             verifier: &verifier,
             max_lifetime_seconds: config.max_lifetime_seconds,

@@ -164,6 +164,7 @@ exit 0
             heartbeat_ttl_seconds: 10,
             port: 9337,
             console_port: 3131,
+            model_pin: None,
         }
     }
     fn spec(&self) -> ContainerSpec {
