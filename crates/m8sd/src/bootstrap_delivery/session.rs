@@ -29,7 +29,10 @@ fn heartbeat_period(ttl: u64) -> Result<Duration> {
     if ttl == 0 || ttl > 1800 {
         return Err(Error::Refused);
     }
-    Ok(Duration::from_millis((ttl * 1000 / 3).max(1)))
+    // The authenticated stream receiver bounds idle reads to five seconds.
+    // A TTL-derived ten-second period (TTL=30) loses the control connection
+    // during model warmup even though the DMS lease itself has not expired.
+    Ok(Duration::from_millis((ttl * 1000 / 3).clamp(1, 1000)))
 }
 
 fn remaining_lifetime(now: i64, expires: i64) -> Result<Duration> {
@@ -157,9 +160,17 @@ impl Store {
 mod tests {
     use super::*;
     #[test]
+    fn every_valid_ttl_sends_before_control_idle_timeout() {
+        for ttl in 1..=1800 {
+            let interval = heartbeat_period(ttl).unwrap();
+            assert!(interval <= Duration::from_secs(1));
+            assert!(interval < Duration::from_secs(ttl));
+        }
+    }
+    #[test]
     fn heartbeat_and_certificate_deadlines_are_bounded() {
         assert_eq!(heartbeat_period(1).unwrap(), Duration::from_millis(333));
-        assert_eq!(heartbeat_period(30).unwrap(), Duration::from_secs(10));
+        assert_eq!(heartbeat_period(30).unwrap(), Duration::from_secs(1));
         for ttl in [0, 1801, u64::MAX] {
             assert!(heartbeat_period(ttl).is_err());
         }

@@ -1,0 +1,15 @@
+{
+  "schema": "m8s.offline-native-model/v1",
+  "model": "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+  "real_native_inference": true,
+  "owner_routed": false,
+  "network": "none",
+  "completion": "Hello! It's a pleasure to meet you!",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9",
+  "certificate_mode": "required-canonical-fresh-fixture",
+  "owner_signing_key_persisted": false,
+  "provider_calls": false,
+  "container_removed": true,
+  "response_model_contract_verified": true,
+  "log": "/private/tmp/m8s-native-model-contract.log"
+}

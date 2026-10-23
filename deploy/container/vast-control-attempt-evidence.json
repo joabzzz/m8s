@@ -1,0 +1,28 @@
+{
+  "schema": "m8s.vast-control-attempt/v1",
+  "instance_id": 57328141,
+  "provisioned_listener_confirmed": true,
+  "certificate_delivery_completed": true,
+  "authenticated_control_established": true,
+  "owner_routed_inference_completed": false,
+  "failure": "Control receiver idle timeout 5s was shorter than owner heartbeat period 10s. Model API uses GGUF content-addressed ID instead of filename.",
+  "removal": {
+    "creator_account_id": 32349,
+    "image": "ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9",
+    "instance_id": 57328141,
+    "observed_at": 1792734317,
+    "provider_confirmed_absent": true,
+    "schema": "m8s.vast-removal/v1"
+  },
+  "reserved_micro_usd": 1716037,
+  "total_retained_micro_usd": 10134385,
+  "authorized_total_micro_usd": 16000000,
+  "unallocated_micro_usd": 5865615,
+  "private_run_material_removed": true,
+  "source_validation": {
+    "tests_passed": 731,
+    "fmt": "pass",
+    "clippy": "pass",
+    "log": "/private/tmp/m8s-control-model-check.log"
+  }
+}

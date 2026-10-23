@@ -33,6 +33,9 @@ use zeroize::Zeroizing;
 type Result<T> = std::result::Result<T, &'static str>;
 const ERROR: &str = "prototype-launch-refused";
 const MODEL: &str = "qwen2.5-0.5b-instruct-q4_k_m";
+// Native mesh identifies a local GGUF by its bytes, not its filename alias.
+const SERVED_MODEL: &str =
+    "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db";
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Plan {
@@ -391,7 +394,7 @@ fn run_with_client(
         .map_err(|_| ERROR)?;
     let completion = work?;
     Ok(
-        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":MODEL,"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","completion":completion}),
+        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":SERVED_MODEL,"artifact_name":MODEL,"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","completion":completion}),
     )
 }
 #[allow(clippy::too_many_arguments)]
@@ -499,11 +502,11 @@ async fn bootstrap(
     let result = store.with_bootstrapped_node(&endpoint,plan,&mut signer,&verifier,|_| async move {
         eprintln!("prototype stage: certificate-delivered-control-established");
         tokio::task::spawn_blocking(move || {
-            super::model_wait::wait(port,MODEL,(Instant::now()+Duration::from_secs(120)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            super::model_wait::wait(port,SERVED_MODEL,(Instant::now()+Duration::from_secs(120)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-model-observed");
-            let body = serde_json::to_vec(&serde_json::json!({"model":MODEL,"messages":[{"role":"user","content":"Reply with a short sentence explaining what a mesh network is."}],"stream":false,"max_tokens":48})).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            let body = serde_json::to_vec(&serde_json::json!({"model":SERVED_MODEL,"messages":[{"role":"user","content":"Reply with a short sentence explaining what a mesh network is."}],"stream":false,"max_tokens":48})).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let bytes = super::http::exchange(port,&body,(Instant::now()+Duration::from_secs(60)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
-            let value = super::project(&bytes,MODEL).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            let value = super::project(&bytes,SERVED_MODEL).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-inference-completed");
             Ok(serde_json::json!({"content":value["content"],"finish_reason":value["finish_reason"]}))
         }).await.map_err(|_| m8s_bootstrap::Error::Unavailable)?

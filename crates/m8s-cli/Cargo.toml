@@ -63,3 +63,7 @@ optional = true
 path = "../m8s-bootstrap"
 features = ["iroh-transport", "mp001-owner-signing"]
 optional = true
+
+[[example]]
+name = "native_model_fixture"
+required-features = ["prototype-vast"]
