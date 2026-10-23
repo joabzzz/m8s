@@ -1,0 +1,16 @@
+{
+  "schema": "m8s.listener-agent-image/v1",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9",
+  "agent_source_revision": "78e1ed59be9d117036d787bbbfde178797f1a9c1",
+  "archive_sha256": "72c8bfe115e75aef09fe9b8774e941dc10579d06cbfe43344ae0fae98bea6425",
+  "native_mesh_rebuilt": false,
+  "model_replaced": false,
+  "rust_build_seconds": 20.0,
+  "platform": "linux/amd64",
+  "anonymous_digest_pull": "pass-existing-layer-cache",
+  "offline_valid_ssh_frame_agent_inputs": "pass-no-network-synthetic-credential",
+  "source_check_passed_tests": 730,
+  "fmt": "pass",
+  "clippy": "pass",
+  "log": "/private/tmp/m8s-agent-listener-build.log"
+}
