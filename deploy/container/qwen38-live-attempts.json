@@ -147,10 +147,14 @@
     }
   ],
   "historical_holds_micro_usd": 13355168,
-  "new_paid_holds_micro_usd": 8896504,
-  "total_holds_micro_usd": 22251672,
+  "new_paid_holds_micro_usd": 10573241,
+  "total_holds_micro_usd": 23928409,
   "remaining_action": "Original journal allowances remain recorded; effective new baseline follows explicitly authorized conservative reconciliation receipts. Diagnose native child exit vs control failure; no completion claimed.",
-  "totals_scope": "original journal allowances, not effective reconciled exposure; see authorized reconciliation receipts",
+  "totals_scope": "Cumulative original journal allowances of all seven Qwen runs plus older holds; these are NOT effective reconciled exposure. See final account evidence for conservative liabilities.",
   "reproduced_offline_blocker": "Normalized runtime manifest changed without enclosing product manifest/tree digests; native serve failed closed with product runtime manifest checksum mismatch. Repaired in3d746e8, no live inference yet.",
-  "successful_manual_attempt_receipt": "qwen38-owner-canary-proof.json"
+  "successful_manual_attempt_receipt": "qwen38-owner-canary-proof.json",
+  "last_updated_at_utc": "2026-10-23T22:57:07.313500+00:00",
+  "superseded_by_successful_integrated_receipt": "qwen38-live-proof.json",
+  "overall_issue_acceptance_met": true,
+  "acceptance_scope": "acceptance_met=false above describes only listed failed attempts; integrated automatic run57433800 succeeded and was destroyed"
 }

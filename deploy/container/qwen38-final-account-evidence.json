@@ -1,0 +1,29 @@
+{
+  "schema": "m8s.qwen38-final-account-observation/v1",
+  "observed_at_utc": "2026-10-23T22:54:32.608701+00:00",
+  "account_id": 32349,
+  "credit_micro_usd_floor": 15926900,
+  "balance_micro_usd": 0,
+  "complete_instance_inventory_empty": true,
+  "volume_inventory_empty": true,
+  "successful_integrated_instance_id": 57433800,
+  "independently_confirmed_absent": true,
+  "original_reservation_micro_usd": 1676737,
+  "original_journal_and_consumed_claim_retained": true,
+  "prior_reconciled_liability_micro_usd": 14238687,
+  "successful_run_closed_liability": {
+    "reserved_at": 1792795711,
+    "provider_confirmed_absent_at": 1792795993,
+    "elapsed_seconds_upper_bound": 282,
+    "compute_micro_usd_per_hour": 1484445,
+    "storage_micro_usd_per_hour": 19048,
+    "transfer_upper_bound_micro_usd": 250048,
+    "additional_contingency_micro_usd": 100000,
+    "retained_closed_liability_micro_usd": 467823
+  },
+  "effective_total_retained_liability_micro_usd": 14706510,
+  "billing_finality": "unknown; conservative closed-run exposure, not settled charges",
+  "user_authorization": "Remove full-hold preservation; available funds to finish; original journals and claims preserved",
+  "new_rental_planned": false,
+  "unallocated_credit_after_liabilities_micro_usd": 1220390
+}

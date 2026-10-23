@@ -16,9 +16,12 @@ do not rent merely to explain or verify the existing result.
 - **Explain/show proof:** read `README.md`, the demo receipt, and
   `deploy/container/final-account-evidence.json`. Label billing observations by
   their timestamp; they are not current account balances or settled invoices.
-- **Qwen3.8 27B candidate:** read `docs/QWEN38_DEMO.md` and
-  `deploy/container/qwen38-preparation-evidence.json`. Its pinned profile is
-  preparation only; it has no live completion or normal-daemon acceptance.
+- **Qwen3.8 27B demo:** read `docs/QWEN38_DEMO.md`,
+  `deploy/container/qwen38-live-proof.json` and its final account observation.
+  Instance 57433800 completed the real automatic owner canary through the
+  explicit `m8sd --vast-demo` mode and was independently confirmed destroyed.
+  The default daemon remains development-only. Reuse this proof when explaining;
+  a new rental still needs current funding and a fresh bounded plan.
 - **Run a new paid demo:** read [the runbook](references/run-demo.md), then the
   CLI's “One-attempt Vast demo” documentation in `crates/m8s-cli/README.md`.
   Existing image/native qualification need not be repeated for unchanged pins.
@@ -43,8 +46,10 @@ rental. The Mac owner client must include the certified-key fix in
 `deploy/container/native-source.json`.
 The tested binaries are on the private `prototype-proof-2026-10-23` release.
 
-The model filename is not its API identity. Use the exact `local-gguf/sha256-…`
-identity recorded in the receipt. Only a verified certificate, discovered model,
+The model filename is not its API identity. For the Qwen HF download, discovery/requests use the exact pinned canonical HF
+alias; responses carry the separate native `local-gguf/sha256-…` source identity.
+It hashes repository, commit and file metadata, not the raw GGUF blob alone.
+Use both exact identities recorded in the receipt. Only a verified certificate, discovered model,
 and completion through the model-free owner client constitute acceptance.
 
 Direct UDP and pinned SSH TCP mappings are required. A listening acknowledgment
