@@ -422,7 +422,7 @@ fn run_with_client(
         .map_err(|_| "prototype-removal-finalization-refused")?;
     let completion = work?;
     Ok(
-        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":p.model.served(),"artifact_name":p.model.label(),"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
+        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":p.model.served(),"api_model":p.model.request_model(),"artifact_name":p.model.label(),"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
     )
 }
 // Container "running" can precede SSH startup. A TCP listener is only
@@ -558,7 +558,7 @@ async fn bootstrap(
     let result = store.with_bootstrapped_node(&endpoint,plan,&mut signer,&verifier,|_| async move {
         eprintln!("prototype stage: certificate-delivered-control-established");
         let completion = tokio::task::spawn_blocking(move || {
-            super::model_wait::wait(port,model.served(),if matches!(model, DemoModel::Qwen38) { work_deadline } else { (Instant::now()+Duration::from_secs(300)).min(work_deadline) }).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            super::model_wait::wait(port,model.request_model(),if matches!(model, DemoModel::Qwen38) { work_deadline } else { (Instant::now()+Duration::from_secs(300)).min(work_deadline) }).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-model-observed");
             if matches!(model, DemoModel::Flint) {
                 return super::benchmark::run(port, model.served(), work_deadline, &directory)

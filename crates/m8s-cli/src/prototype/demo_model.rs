@@ -28,16 +28,28 @@ impl DemoModel {
                 "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
             }
             Self::Qwen38 => {
-                "local-gguf/sha256-322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+                // Native HF identity hashes repository, commit and ordered
+                // file path/size/blob SHA, rather than the raw GGUF alone.
+                "local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de"
             }
             Self::Flint => {
                 "local-gguf/sha256-97cc8009ff9b132d5cf3c488e6767962bb5a5dc158a90ed661bbbddf876b8bde"
             }
         }
     }
+    pub(super) fn request_model(self) -> &'static str {
+        match self {
+            // OpenAI discovery presents the canonical HF alias. Responses
+            // carry the underlying content identity checked by served().
+            Self::Qwen38 => {
+                "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:UD-Q4_K_M"
+            }
+            Self::Qwen | Self::Flint => self.served(),
+        }
+    }
     pub(super) fn completion_request(self) -> serde_json::Value {
         let mut request = serde_json::json!({
-            "model": self.served(),
+            "model": self.request_model(),
             "messages": [{"role": "user", "content": "Reply with a short sentence explaining what a mesh network is."}],
             "stream": false,
             "max_tokens": 48
@@ -96,13 +108,36 @@ mod tests {
         assert!(model.gguf().is_none());
         assert_eq!(
             model.served(),
-            "local-gguf/sha256-322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+            "local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de"
         );
         assert_ne!(model.served(), DemoModel::default().served());
         assert!(DemoModel::default().gguf().is_some());
         for invalid in ["qwen27", "qwen3.5-27b", "qwen3.8", "Qwen/Qwen3.8-27B"] {
             assert!(serde_json::from_value::<DemoModel>(serde_json::json!(invalid)).is_err());
         }
+    }
+
+    #[test]
+    fn hf_source_identity_is_distinct_from_blob_digest_and_discovery_alias() {
+        let model = DemoModel::Qwen38;
+        let mut reply = serde_json::json!({"model":model.served(),"choices":[{
+            "index":0,"message":{"role":"assistant","content":"A mesh connects nodes."},
+            "finish_reason":"stop"}]});
+        assert!(
+            super::super::project(&serde_json::to_vec(&reply).unwrap(), model.served()).is_ok()
+        );
+        reply["model"] = serde_json::json!(
+            "local-gguf/sha256-322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+        );
+        assert!(
+            super::super::project(&serde_json::to_vec(&reply).unwrap(), model.served()).is_err()
+        );
+        assert_eq!(
+            model.request_model(),
+            "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:UD-Q4_K_M"
+        );
+        assert_ne!(model.request_model(), model.served());
+        assert_eq!(model.completion_request()["model"], model.request_model());
     }
 
     #[test]

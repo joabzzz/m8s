@@ -1,0 +1,49 @@
+{
+  "schema": "m8s.qwen38-authorized-liability-reconciliation/v1",
+  "status": "APPLIED_FOR_NEW_ACCOUNT_BUDGET_BASELINE",
+  "observed_at_utc": "2026-10-23T22:38:22.867911+00:00",
+  "account_id": 32349,
+  "credit_micro_usd_floor": 15994476,
+  "complete_instance_count": 0,
+  "volume_count": 0,
+  "user_authorization": "Remove preserve-hold requirement; full access to available funds to finish the demo",
+  "prior_reconciliation": "qwen38-authorized-reconciliation-fourth.json",
+  "prior_reconciled_liability_micro_usd": 14897063,
+  "attempts": [
+    {
+      "instance_id": 57431708,
+      "original_reservation_micro_usd": 1035182,
+      "reserved_at": 1792794288,
+      "provider_confirmed_absent_at": 1792794900,
+      "elapsed_seconds_upper_bound": 612,
+      "compute_micro_usd_per_hour": 777778,
+      "storage_micro_usd_per_hour": 19048,
+      "transfer_upper_bound_micro_usd": 250048,
+      "additional_contingency_micro_usd": 100000,
+      "retained_closed_run_liability_micro_usd": 485510,
+      "cleanup_receipt_sha256": "e1dcc310c8ecdc543ed80766e0b31bfdb59eb8ef907e20f0e4a40ae4441d97c5",
+      "consumed_claim_sha256": "749c9a89955aa0a014e394e1c39709f28c85ec284c9301a683ae107f871f4757"
+    },
+    {
+      "instance_id": 57330173,
+      "historical_run": true,
+      "original_reservation_micro_usd": 1716037,
+      "reserved_at": 1792735593,
+      "provider_confirmed_absent_at": 1792735657,
+      "elapsed_seconds_upper_bound": 64,
+      "compute_micro_usd_per_hour": 55556,
+      "storage_micro_usd_per_hour": 2000000,
+      "transfer_upper_bound_micro_usd": 65110,
+      "additional_contingency_micro_usd": 100000,
+      "retained_closed_run_liability_micro_usd": 201654,
+      "original_state_db_sha256": "0781372b07d6bb6989395fdb45388fe261bed92803e12c94e39b5a1335f186f9",
+      "cleanup_receipt_sha256": "a2373bf07e9f13cc165822686e5fb0a242a6496c6f2061c902dcf5b940126f56",
+      "transfer_bound_basis": "Original full10GB allowance for historical baked small-GGUF image; original quoted storage2USD/hour retained as a conservative upper bound, not renormalized downward."
+    }
+  ],
+  "retained_total_liability_micro_usd": 13868190,
+  "historical_other_holds_untouched_micro_usd": 11639131,
+  "billing_finality": "unknown; conservative bounds, not settled charges",
+  "original_stores_and_claims_unchanged": true,
+  "available_for_new_allowances_micro_usd": 2126286
+}

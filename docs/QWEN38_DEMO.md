@@ -1,13 +1,17 @@
-# Qwen3.8 27B demo preparation
+# Qwen3.8 27B live demo
 
-Issue [#6](https://github.com/joabzzz/m8s/issues/6) remains open until the live
-receipts below exist. The default `m8sd` controller remains development-only.
+A [live owner-routed canary](../deploy/container/qwen38-owner-canary-proof.json)
+returned a sensible completion from the exact pinned model on instance57431708,
+then real `m8s down` led to provider-confirmed destruction. The first canary was
+sent separately after discovering an API/content identity mismatch; a corrected
+automatic coordinator repeat is pending. Issue[#6](https://github.com/joabzzz/m8s/issues/6)
+remains open until that integrated verification finishes. The default `m8sd` controller remains development-only.
 An explicit `--vast-demo` mode now connects the normal control commands to the
 real bounded prototype coordinator: one admitted attempt, one replica, no
 replacement or automatic CREATE replay. Source tests and image builds are
 qualification steps, not successful Qwen3.8 serving evidence.
 
-## Current live outcome: startup failed, all rented resources destroyed
+## Earlier startup failures: four exact resources destroyed
 
 The [live-attempt receipt](../deploy/container/qwen38-live-attempts.json) records
 instances **57423542**, **57426719**, **57429936** and **57430645**. All reached certificate
@@ -91,11 +95,24 @@ removes ambiguity but is not a proven explanation of the failed live startup.
 
 Only the public first MiB was fetched for GGUF header inspection: it identifies
 `qwen35`, GGUF v3, 866 tensors and 262,144 context. The whole-file hash has not
-been independently checked. The expected routed API identity is:
+been independently checked. The raw GGUF blob hash is not the native HF source identity. The pinned native
+`HuggingFaceGgufIdentity` hashes canonical JSON containing repository, immutable
+commit and the ordered filename/size/blob-hash entries. For this exact artifact,
+the derived response/routing content identity is:
 
 ```text
-local-gguf/sha256-322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482
+local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de
 ```
+
+OpenAI discovery and requests use the canonical alias instead:
+
+```text
+unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:UD-Q4_K_M
+```
+
+The response's model field must equal the7756 content identity. The first live
+owner canary proved this mapping; the coordinator now distinguishes discovery
+from response identity. No alternate model or generic `mesh` route is accepted.
 
 Source inspection of companion MeshLLM `9d97fbfa58c428fb95263a0de719bed959f2510a`
 finds the `qwen35` family and explicit Qwen3.8 recognition. Its llama.cpp pin is
@@ -169,14 +186,16 @@ qualification.
    Preserve the model-free certified Mac owner client from the proven release,
    or build its pinned compatible successor outside the shared companion checkout.
    Use the published immutable CUDA image from the
-   [packaging receipt](../deploy/container/qwen38-image-qualification.json). It
-   passed offline CLI and installed-runtime checks for release 0.76.1 / ABI
-   0.1.71; this is not a GPU/model load receipt. To rebuild **before renting**, use
-   `deploy/container/Dockerfile.flint`, with
-   `--build-arg MODEL_CONTRACT=qwen38-model-artifact.json`. The filename is
-   historical; the recipe packages an SM120 runtime without weights. Use reviewed
-   native and m8s source archives and record their hashes and the resulting image
-   digest. Put only explicit public source inputs in the build context, never
+   [packaging receipt](../deploy/container/qwen38-product-image-qualification.json).
+   It passed the actual native product integrity startup gate for release0.76.1 /
+   ABI0.1.71; CPU-only qualification is not a GPU/model load receipt. Reuse this
+   immutable image for unchanged pins. To update the agent **before renting**, use
+   `deploy/container/Dockerfile.agent-update` and its explicit public inputs,
+   including the native product integrity qualifier. It reuses the compiled
+   native runtime and repairs enclosing product digests after normalization; no
+   native Rust/CUDA rebuild is needed. `Dockerfile.flint` is the historical full
+   native build recipe, not the qualified final overlay. Record source archive
+   hashes and the resulting immutable image digest. Put only explicit public source inputs in the build context, never
    `.env`, run directories, owner keys or credentials. Verify the packaged
    host/runtime ABI and required-certificate option before renting. The exact
    GPU model load is part of the bounded paid qualification; compilation alone
@@ -202,7 +221,7 @@ qualification.
    Copy the [inert Qwen template](../.agents/skills/m8s-demo/assets/qwen38-plan.template.json)
    outside Git into an owned private directory. Its zero dates/caps, unknown
    liability and zero image digest deliberately prevent use. Replace them with
-   the qualified image and reconciled, finite policy. Preserve cumulative holds.
+   the qualified image and reconciled, finite policy. Carry forward audited liabilities; preserve original journals and consumed claims.
    The executable schema and budget validator remain authoritative.
 
    For a read-only fresh account/inventory/offer check:
@@ -274,7 +293,10 @@ qualification.
    and stopped state are insufficient. Container disk remains chargeable until
    destruction; persistent volumes survive instance deletion. See
    [Vast storage rules](https://docs.vast.ai/guides/instances/storage/types).
-   Keep all unsettled holds and record a fresh account timestamp. Exact-owner
+   Retain conservative unsettled liability bounds and original journals, and record
+   a fresh account timestamp. Full allowances may be replaced only through an
+   explicitly authorized, evidenced reconciliation; provisional charges alone
+   are not final billing. Exact-owner
    audit, when needed:
 
    ```sh
@@ -341,3 +363,13 @@ contingency; original allowance/journal remains. At22:23:00 UTC credit16148953
 minus14897063 retained liabilities left1251890. The next finite allowance is
 1200000, including1500seconds runtime,240cleanup and400000contingency. Native
 download remains included; fresh preflight must still qualify the actual quote.
+
+The user also authorized reconciling previously closed historical allowances.
+[The fifth/historical receipt](../deploy/container/qwen38-authorized-reconciliation-fifth-and-historical.json)
+retains485510 micro-USD for the612-second fifth run (full64GBtransfer plus100000
+extra contingency) and201654 for already-destroyed historical57330173 (its
+original full10GBtransfer, conservative original storage rate,64seconds,100000
+extra contingency). Original journals and consumed claims remain unchanged.
+At22:38:22 UTC complete inventories were empty and15994476 credit minus13868190
+liabilities left2126286. The integrated repeat is capped at1900000, with1500
+seconds runtime,240cleanup,1000000contingency and the same64GBtransfer bound.
