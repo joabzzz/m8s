@@ -14,6 +14,15 @@ serde_json.workspace = true
 default = []
 readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
 scoped-destroy-https = ["readonly-https"]
+watchdog = ["scoped-destroy-https", "dep:libc"]
+
+[[bin]]
+name = "m8s-vast-watchdog"
+path = "src/bin/watchdog.rs"
+required-features = ["watchdog"]
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
 
 [dependencies.reqwest]
 version = "=0.13.5"

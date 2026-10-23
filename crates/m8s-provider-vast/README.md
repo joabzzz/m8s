@@ -70,6 +70,39 @@ This implementation has synthetic coverage only; live qualification is pending.
 
 ### Remaining inventory and launch gaps
 
+The default-off `watchdog` feature also builds `m8s-vast-watchdog`. This is an
+owner-side cleanup executable, not a launcher or a Ready capability. Its only
+arguments are `--plan CANONICAL_ABSOLUTE_PATH`; the creating account's credential
+is supplied through an anonymous stdin pipe, which the launcher must close.
+Never pass a key through argv, environment, a fixture, or a log. The launcher
+must clear the child's environment and retain its original budget reservation.
+
+The private plan uses schema `m8s.vast-watchdog/v1` and exactly these fields:
+`owner`, `node_uid`, `tier`, `image` (immutable repository digest), `created_at`,
+and `destroy_at` (absolute Unix seconds). The original lifetime is at most 1800
+seconds, and arming must occur within 30 seconds of creation. The plan is a
+current-user-owned 0600 regular single-link file in a private 0700 directory,
+with no extended ACL. Trusted ancestors remain a caller responsibility.
+
+The watchdog creates and syncs `watchdog.events.jsonl` exclusively, detaches into
+its own session, then writes `armed` to stdout. The launcher must not submit a
+create before reading that receipt. Existing journals refuse rearming; they are
+never removed or truncated. Resource binding requires positive exact owner label
+and image matching; an empty lookup is unresolved. SIGTERM, SIGINT, SIGHUP or
+the original deadline trigger cleanup. Monotonic elapsed time prevents clock
+rollback from extending the lease. Each provider request has a ten-second bound;
+lookup and cleanup cycles are separated by three seconds. A separate exact GET
+must confirm absence, even after DELETE acknowledgement.
+
+After 180 seconds of unresolved cleanup (plus any already-running bounded API
+calls), it records uncertainty and exits nonzero. Provider outages, watchdog
+failure, host loss and storage billing are **not** contained by this process.
+Keep the original liability and require reconciliation; never infer zero cost,
+release a reservation or create a replacement. The executable has source/unit
+coverage only: parent-death survival and live provider qualification are still
+required before relying on it for a paid launch. It is not yet wired into the
+owner LAUNCH command.
+
 Current official offer response example shows an object while historical fixture
 mapping expects a list. Only bounded explicit lists are supported, NOT guessed
 object wrapping. Offer prices remain unqualified (official units conflict).
