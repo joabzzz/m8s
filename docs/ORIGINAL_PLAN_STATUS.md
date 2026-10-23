@@ -61,6 +61,9 @@ plans remain required. Implementation can proceed with deterministic fixtures.
 4. Connect a real daemon mode to those boundaries, an explicit credential
    supplier, and the native owner's signing interface. Keep the default mock
    mode isolated and fail closed until these pieces are actually composed.
+   Status: a recovery-only `m8sd --vast-daemon` (restart observation/cleanup,
+   explicit credential file, no launch/Ready) is source-tested; launch
+   composition and the native owner signing interface remain.
 5. Add replacement admission only once outstanding resource uncertainty and
    billing are reconciled, retaining the per-tier launch rate and cumulative
    budget. Do not remove one-shot guards as a shortcut to fleet mode.
