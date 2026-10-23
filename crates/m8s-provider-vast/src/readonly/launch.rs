@@ -26,7 +26,7 @@ impl LaunchRequest {
         let encoded = ssh_public_key
             .strip_prefix("ssh-ed25519 ")
             .ok_or(Error::Invalid)?;
-        if !(1..=20).contains(&disk_gb)
+        if !(1..=128).contains(&disk_gb)
             || encoded.len() != 68
             || !encoded.starts_with("AAAAC3NzaC1lZDI1NTE5AAAAI")
             || !encoded
@@ -220,7 +220,7 @@ mod tests {
                 2 => value["label"] = json!("m8s:v1:owner:node:tier:extra"),
                 3 => value["image"] = json!("example.invalid/mesh:latest"),
                 4 => value["ssh_public_key"] = json!("secret-not-a-public-key"),
-                5 => value["disk_gb"] = json!(100),
+                5 => value["disk_gb"] = json!(129),
                 6 => value["unexpected"] = json!(true),
                 _ => value["offer"] = json!(0),
             }

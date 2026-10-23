@@ -112,3 +112,20 @@ fn ssh_command_is_fixed_pinned_noninteractive_and_has_no_secret_arguments() {
         .collect();
     assert_eq!(environment, ["HOME", "PATH"]);
 }
+
+#[test]
+fn flint_provisioning_requires_pinned_native_selection_without_a_local_file() {
+    let mut value = config();
+    value["model"] = json!(FLINT_MODEL_REF);
+    assert!(packet(&value).is_err());
+    value["gguf"] = Value::Null;
+    assert!(packet(&value).is_ok());
+    for model in [
+        "flint-nvfp4",
+        "RecursiveSI/flint-nvfp4-gguf@main/flint-nvfp4.gguf",
+        "other/repo",
+    ] {
+        value["model"] = json!(model);
+        assert!(packet(&value).is_err());
+    }
+}

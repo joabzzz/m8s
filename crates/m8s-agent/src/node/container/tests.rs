@@ -155,7 +155,7 @@ exit 0
     fn launch(&self) -> MeshLaunch {
         MeshLaunch {
             program: self.path.join("mesh"),
-            gguf: self.path.join("model"),
+            gguf: Some(self.path.join("model")),
             node_key: self.path.join("key"),
             owner: EndpointId([1; 32]),
             node: EndpointId([2; 32]),

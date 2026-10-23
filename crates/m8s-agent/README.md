@@ -237,7 +237,8 @@ It does not infer a DMS ACL from a wire identity: the coordinator installs the
 actual received ACL in current control policy and its trusted DMS configuration.
 Real verified heartbeat evidence retains all existing live policy checks.
 
-The command uses actual accepted mesh flags: `serve --gguf`, protected join/cert
+The command uses actual accepted mesh flags: `serve --gguf` for local fixtures
+or `serve --model` for native model resolution, protected join/cert
 files, explicit config, `--trust-policy allowlist --trust-owner`, headless and
 no default plugin installation. No owner-key/local-model-only/client/auto/publish
 flag, public listener widening or raw token/config/key bytes enter argv/env.
@@ -475,8 +476,8 @@ The bounded public config schema is `m8s.vast-node/v1`:
 | `owner_endpoint`, `owner_signing_key`, `mesh_owner_id` | Pinned public iroh identity, public MP001 signing key and canonical owner ID |
 | `owner_address`, `bind_address` | Explicit direct UDP addresses with nonzero ports; owner address cannot be unspecified |
 | `trust` | Current canonical public trust/revocation snapshot |
-| `program`, `gguf`, `material_root` | Absolute native binary, exact GGUF, and new private material directory; its private parent must already exist |
-| `model` | Exact GGUF basename without `.gguf`; split-model naming is refused |
+| `program`, `gguf`, `material_root` | Absolute native binary, optional local GGUF, and new private material directory; its private parent must already exist. Flint uses `gguf: null` and a pinned native model reference. |
+| `model` | Exact GGUF basename for local fixtures, or the admitted immutable Hugging Face reference when `gguf` is null. MeshLLM downloads the latter after bootstrap. |
 | `heartbeat_ttl_seconds`, `max_lifetime_seconds` | Positive bounded lease; TTL cannot exceed lifetime, lifetime cannot exceed 1800 seconds |
 | `port`, `console_port` | Distinct nonzero native listener ports |
 

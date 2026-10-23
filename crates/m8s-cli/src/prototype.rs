@@ -1,4 +1,6 @@
 #[cfg(all(unix, feature = "prototype-vast"))]
+mod benchmark;
+#[cfg(all(unix, feature = "prototype-vast"))]
 mod launch;
 #[cfg(all(unix, feature = "prototype-vast"))]
 mod owner;

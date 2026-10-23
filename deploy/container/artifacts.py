@@ -13,7 +13,7 @@ import sys
 import tarfile
 import time
 
-MAX_MODEL = 2 * 1024**3
+MAX_MODEL = 64 * 1024**3
 MAX_SOURCE = 2 * 1024**3
 
 

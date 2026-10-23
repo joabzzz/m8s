@@ -39,7 +39,8 @@ type Result<T> = std::result::Result<T, Error>;
 /// and endpoint match remain native mesh responsibilities, not inferred from mode.
 pub struct MeshLaunch {
     pub program: PathBuf,
-    pub gguf: PathBuf,
+    /// Local fixture, or None to let MeshLLM resolve the selected pinned model.
+    pub gguf: Option<PathBuf>,
     pub node_key: PathBuf,
     pub owner: EndpointId,
     pub node: EndpointId,
@@ -241,29 +242,31 @@ impl NodeMaterial {
             return Err(Error::Material);
         }
         let mut ancestors = Vec::new();
-        for selected in [
-            root,
-            launch.program.as_path(),
-            launch.gguf.as_path(),
-            launch.node_key.as_path(),
-        ] {
+        for selected in [root, launch.program.as_path(), launch.node_key.as_path()] {
             for path in selected.ancestors().skip(1) {
                 ancestors.push(Anchor::open(path, Kind::Ancestor)?);
+            }
+        }
+        if let Some(path) = &launch.gguf {
+            for ancestor in path.ancestors().skip(1) {
+                ancestors.push(Anchor::open(ancestor, Kind::Ancestor)?);
             }
         }
         let mut anchors = vec![
             Anchor::open(parent, Kind::Directory)?,
             Anchor::open(&launch.program, Kind::Binary)?,
-            Anchor::open(&launch.gguf, Kind::Model)?,
             Anchor::open(&launch.node_key, Kind::Private)?,
         ];
-        if anchors[3].len == 0 || anchors[3].len > 4096 {
+        if anchors[2].len == 0 || anchors[2].len > 4096 {
             return Err(Error::Material);
         }
         anchors.push(Anchor::open(
             launch.node_key.parent().ok_or(Error::Material)?,
             Kind::Directory,
         )?);
+        if let Some(path) = &launch.gguf {
+            anchors.push(Anchor::open(path, Kind::Model)?);
+        }
         anchors.extend(ancestors);
         check(&anchors)?;
         fs::DirBuilder::new()
@@ -359,8 +362,16 @@ impl NodeMaterial {
             program: self.launch.program.clone(),
             args: vec![
                 "serve".into(),
-                "--gguf".into(),
-                self.launch.gguf.as_os_str().into(),
+                if self.launch.gguf.is_some() {
+                    "--gguf"
+                } else {
+                    "--model"
+                }
+                .into(),
+                self.launch.gguf.as_ref().map_or_else(
+                    || self.launch.model.clone().into(),
+                    |path| path.as_os_str().into(),
+                ),
                 "--join-file".into(),
                 self.root.join("join-token").into_os_string(),
                 "--node-ownership".into(),

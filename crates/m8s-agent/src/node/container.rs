@@ -204,6 +204,8 @@ impl ContainerSession {
         io: &mut impl RecordIo,
     ) -> CResult<Self> {
         model_mount(&launch.model)?;
+        // Local container qualification retains its explicit bind-mounted fixture.
+        let gguf = launch.gguf.as_ref().ok_or(ContainerError)?;
         if !image(&spec.image)
             || !hex(&spec.run_id, 32)
             || !(1..=128).contains(&spec.max_tokens)
@@ -218,7 +220,7 @@ impl ContainerSession {
                 &spec.socket,
                 &spec.docker,
                 &spec.prompt_file,
-                &launch.gguf,
+                gguf,
                 &launch.node_key,
             ]
             .iter()
@@ -227,7 +229,7 @@ impl ContainerSession {
             return Err(ContainerError);
         }
         if spec.prompt_file == launch.node_key
-            || spec.prompt_file == launch.gguf
+            || spec.prompt_file == *gguf
             || launch.model.is_empty()
             || launch.model.len() > 128
             || !launch
@@ -254,7 +256,7 @@ impl ContainerSession {
         let mut anchors = vec![
             Anchor::open(parent, Kind::Directory).map_err(|_| ContainerError)?,
             Anchor::open(&launch.program, Kind::Binary).map_err(|_| ContainerError)?,
-            Anchor::open(&launch.gguf, Kind::Model).map_err(|_| ContainerError)?,
+            Anchor::open(gguf, Kind::Model).map_err(|_| ContainerError)?,
             Anchor::open(&launch.node_key, Kind::Private).map_err(|_| ContainerError)?,
             Anchor::open(
                 launch.node_key.parent().ok_or(ContainerError)?,
@@ -268,7 +270,7 @@ impl ContainerSession {
         for selected in [
             root,
             launch.program.as_path(),
-            launch.gguf.as_path(),
+            gguf.as_path(),
             launch.node_key.as_path(),
             spec.docker.as_path(),
             spec.socket.as_path(),
@@ -486,7 +488,11 @@ impl ContainerSession {
             "--mount".into(),
             format!(
                 "type=bind,src={},dst=/models/{}.gguf,readonly",
-                self.launch.gguf.display(),
+                self.launch
+                    .gguf
+                    .as_ref()
+                    .expect("validated local qualification model")
+                    .display(),
                 // Validated before the first create effect; launch is immutable.
                 self.launch.model
             ),
