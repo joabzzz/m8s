@@ -118,3 +118,9 @@ This path reports mock/development state. A mock Booting node is not a live Read
 node. Stopped is not destroyed, destroy acknowledgment is not absence, and an
 uncertain provider response never authorizes deleting a resource row or releasing
 its liability. The live prototype is not yet a production fleet scheduler.
+
+## Architecture and next work
+
+The [decision index](docs/decisions/README.md) records the implemented prototype
+choices and their evidence. The [production roadmap](docs/ROADMAP.md) separates
+completed acceptance from remaining integration and operational qualification.

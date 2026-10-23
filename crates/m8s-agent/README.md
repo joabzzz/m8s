@@ -1,8 +1,10 @@
-> Current prototype status: `vast-node` now supplies an explicit secure node
-> entrypoint and scoped provider cleanup; see the final section. Earlier sections
-> describe the local exerciser and library checkpoints. Owner-side LAUNCH,
-> independent watchdog wiring, live inference and provider qualification remain
-> unfinished. Container recipes run the agent under Tini, never directly as PID 1.
+> Current prototype status: the opt-in `vast-node` entrypoint is proven with
+> canonical certificate bootstrap, real native inference, heartbeat supervision,
+> and exact-resource cleanup. The owner CLI and independent watchdog completed
+> the [live acceptance run](../../deploy/container/demo-proof.json). Earlier
+> sections below describe the default local exerciser and library checkpoints;
+> their limitations do not describe the opt-in live path. Container recipes run
+> the agent under Tini, never directly as PID 1.
 
 # m8s-agent local lifecycle slice
 
