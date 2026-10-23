@@ -61,6 +61,46 @@ resource operation in this change.
 
 ## Semantics and limits
 
+### Hardware is regional
+
+A project in one region cannot select every GPU in the global catalog. Discover
+platforms in the selected project before choosing hardware or requesting quota.
+Quota approval does not provision a VM and does not establish physical capacity.
+
+| Hardware | Documented regions (2026-10-23) |
+| --- | --- |
+| B300 | `us-north1`, `uk-south1`, `eu-west2` |
+| RTX PRO 6000 | `us-central1`, `uk-south2`, `eu-south1` |
+| L40S | `eu-north1` |
+
+For example, a live `us-north1` project discovery listed B300 and CPU platforms,
+while the same account's `us-central1` project listed RTX PRO 6000. A small-model
+test does not need a B300; selecting another regional project can be necessary
+to use cheaper hardware. Include CPU/RAM in L40S quotes and check dynamic spot
+prices separately. See [platforms](https://docs.nebius.com/compute/virtual-machines/types).
+
+Tenant and project quota records are distinct. The live account had an active
+one-B300 tenant allowance while its project record omitted `limit` and `state`.
+Do not interpret that project record as proof that no tenant quota was approved,
+or silently mark an unspecified record active. The adapter's current
+project-only quota filter remains conservative and can return no offers here.
+
+The [one-shot GPU smoke tool](../../tools/nebius-smoke/README.md) checks cloud
+provisioning, GPU model execution and cleanup separately. It does not enable
+production mutations on `ReadonlyHttps` or claim authenticated m8s routing/Ready.
+
+On 2026-10-23, the tool ran `HuggingFaceTB/SmolLM2-135M-Instruct` on one
+`gpu-b300-sxm` VM with PyTorch 2.9.0/CUDA 13.0. It returned **Hello!** using
+GPU-resident model parameters after a CUDA kernel check. Independent cleanup and
+a subsequent owner read confirmed zero instances, disks and IP allocations in
+the selected project. The first create was cleaned up too early
+because the runner interpreted the provisional `STOPPED` state as a failure;
+that check was corrected to inspect terminal operation status before the retry.
+Both attempts and exact cleanup identities are in the
+[sanitized evidence](../../tools/nebius-smoke/evidence-2026-10-23.json).
+This establishes a provider/GPU smoke, not authenticated m8s routing, production
+launch support, a performance benchmark, or settled billing.
+
 Search is a catalog and GPU-quota eligibility check, not a reservation or proof of
 physical capacity. It does not qualify VM-count, disk, IP or other resource quotas.
 No Internet throughput or reliability evidence is available, so both are zero;

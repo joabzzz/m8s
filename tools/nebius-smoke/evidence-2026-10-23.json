@@ -1,0 +1,95 @@
+{
+  "schema": "m8s.nebius-gpu-smoke-evidence/v1",
+  "observed_at": "2026-10-23T20:03:18.814933+00:00",
+  "region": "us-north1",
+  "platform": "gpu-b300-sxm",
+  "preset": "1gpu-24vcpu-346gb",
+  "image_id": "computeimage-u02wkng6kzsvvc76n2",
+  "boot_disk_gib": 128,
+  "final_project_inventory_counts": {
+    "instances": 0,
+    "disks": 0,
+    "allocations": 0
+  },
+  "attempts": [
+    {
+      "owner": "m8s-smoke-a78edc5228aed384698432d5",
+      "instance_id": "computeinstance-u02agzfg5jskz902dj",
+      "create_operation": {
+        "id": "computeoperation-u02p902ymzgk84ayd3",
+        "terminal_code": 10,
+        "created_at": "2026-10-23T19:53:21.001879Z",
+        "finished_at": "2026-10-23T19:53:21.898337Z"
+      },
+      "cleanup": {
+        "exact_resources": {
+          "allocations": [],
+          "disks": [],
+          "instances": [
+            "computeinstance-u02agzfg5jskz902dj"
+          ]
+        },
+        "observed_at": 1792785213,
+        "owner": "m8s-smoke-a78edc5228aed384698432d5",
+        "provider_confirmed_absent": true,
+        "schema": "m8s.nebius-smoke-cleanup/v1"
+      },
+      "runner_snapshot_sha256": "d22fae0adff649bff2a3ff7f370267e0d058ed0742831b26a8e13e9a3f541766",
+      "outcome": "initial transient STOPPED state caused premature cleanup; fixed before replacement"
+    },
+    {
+      "owner": "m8s-smoke-a84b4b2d3e922df233bfce6b",
+      "instance_id": "computeinstance-u02hrya5yten4xyfc7",
+      "create_operation": {
+        "id": "computeoperation-u02kh748hxt09jcjhr",
+        "terminal_code": 0,
+        "created_at": "2026-10-23T19:55:35.314756Z",
+        "finished_at": "2026-10-23T19:56:16.747549Z"
+      },
+      "cleanup": {
+        "exact_resources": {
+          "allocations": [
+            "vpcallocation-u02hdrqjs4qmcpnxnz",
+            "vpcallocation-u02pebh9v570twx9vq"
+          ],
+          "disks": [
+            "computedisk-u02srxzbyxzy7011rs"
+          ],
+          "instances": [
+            "computeinstance-u02hrya5yten4xyfc7"
+          ]
+        },
+        "observed_at": 1792785731,
+        "owner": "m8s-smoke-a84b4b2d3e922df233bfce6b",
+        "provider_confirmed_absent": true,
+        "schema": "m8s.nebius-smoke-cleanup/v1"
+      },
+      "runner_snapshot_sha256": "6779a35e59d31bac70f18cd263e34464070faa91c0622c10afe87de71285eb92",
+      "inference": {
+        "schema": "m8s.nebius-gpu-smoke/v1",
+        "owner": "m8s-smoke-a84b4b2d3e922df233bfce6b",
+        "instance_id": "computeinstance-u02hrya5yten4xyfc7",
+        "success": true,
+        "gpu": "NVIDIA B300 SXM6 PC",
+        "compute_capability": [
+          10,
+          3
+        ],
+        "torch": "2.9.0+cu130",
+        "cuda": "13.0",
+        "model": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+        "completion": "Hello!",
+        "generated_tokens": 3,
+        "inference_seconds": 24.085,
+        "authenticated_m8s_routing": false,
+        "ready": false
+      },
+      "outcome": "GPU inference succeeded; exact resource cleanup confirmed"
+    }
+  ],
+  "actual_billed_micro_usd": null,
+  "billing_status": "not settled or independently reconciled",
+  "authenticated_m8s_model_routing_tested": false,
+  "ready": false
+}
