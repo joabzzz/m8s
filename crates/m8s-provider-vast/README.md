@@ -66,7 +66,10 @@ continues to reject every mutation, even when this feature is enabled.
 
 Protocol references: [Vast destroy instance API](https://docs.vast.ai/api-reference/instances/destroy-instance)
 and [official CLI exact-instance lookup](https://github.com/vast-ai/vast-cli/blob/master/vast.py).
-This implementation has synthetic coverage only; live qualification is pending.
+The opt-in prototype subsequently demonstrated exact-resource destruction and
+independent absence on instance 57330173; see
+`deploy/container/demo-proof.json`. That result does not qualify unrestricted
+provider mapping, general pagination, or every failure mode.
 
 ### Remaining inventory and launch gaps
 
@@ -158,3 +161,19 @@ cargo clippy -p m8s-provider-vast --all-features --all-targets --locked -j1 -- -
 
 Official evidence and remaining live gates:
 [Knowledge](agor://kb/m8s/research/metal-0-6-rust-readonly-transport.md).
+
+### Account-bound absence confirmation
+
+`ArmedCleanup::confirm_owned_absent` now takes the immutable expected creator
+account ID. It authenticates that ID through the fixed account endpoint before
+interpreting the exact-resource absence GET, using its retained creator credential
+for both reads. `OwnedResourceAbsence` carries that account pin together with the
+original owner label/image and resource ID; the Store finalizer matches all of
+them. Destroy acknowledgement remains separate from absence.
+
+`PreflightHttps::authenticate_account` checks identity only. It neither searches
+for offers nor requires credit/empty inventories, so exhausted credit cannot
+block cleanup verification. Mismatch, missing/ambiguous identity and transport
+failure refuse. This method does not establish provider-side permission scope
+or inventory completeness. New account-bound confirmation has synthetic source
+coverage; the historical demo is not a live rerun of this change.

@@ -348,7 +348,9 @@ fn run_with_client(
     cleanup.request_cleanup();
     let deadline = Instant::now() + Duration::from_secs(180);
     let absent = loop {
-        if let Ok(Some(receipt)) = cleanup.confirm_owned_absent(&access) {
+        if let Ok(Some(receipt)) =
+            cleanup.confirm_owned_absent(&access, NonZeroU64::new(fresh.account_id).ok_or(ERROR)?)
+        {
             break receipt;
         }
         if Instant::now() >= deadline {

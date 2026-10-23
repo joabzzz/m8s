@@ -14,10 +14,11 @@ expiry or cancellation cannot produce successful confirmation. A failed or
 cancelled attempt after nonce burn retains cleanup intent and must not be
 retried with a new nonce. The caller supplies current trusted launch observation,
 owner-side signer custody, bundle settings, listener and surviving cleanup.
-This library composition does not yet wire the CLI, launch a native node,
-implement its DMS loop, or prove readiness/inference. Its new tests exercise
-record selection and persistence with synthetic fixtures; no endpoint or provider
-qualification was rerun.
+The opt-in prototype CLI now composes this library with the actual native node,
+DMS and owner-routed model canary; its historical live result is recorded in
+`deploy/container/demo-proof.json`. The default daemon main remains mock-only.
+These persistence tests use synthetic fixtures and do not rerun endpoint or
+provider qualification.
 
 ## One authority and public contracts
 
@@ -27,7 +28,9 @@ instance in Booting, desired>0, and not deleting. `LaunchIdentity` contains the
 owner label (must equal Store/pool owner), node UID and `m8s_bootstrap::LaunchBinding`
 (pinned owner transport endpoint, provider instance/container/IP, verified signed
 image digest). These are **trusted adapter inputs**, not proof supplied by agent
-request fields. Real provider identity/scoped self-destroy proof is not implemented.
+request fields. The prototype coordinator supplies positively observed Vast
+identity; full daemon wiring and isolated scoped-self-destroy qualification remain
+incomplete.
 
 `Store::redeem_bootstrap(session, request, expected, observation, now, cert_expires_at,
 join_token, signer, verifier) -> m8s_bootstrap::Result<PendingDelivery>` uses the
@@ -1074,3 +1077,12 @@ absence. No new credential lookup or provider operation is introduced here.
 Older live journals without capsules remain auditable as `missing_legacy`;
 unversioned intermediate capsules refuse recovery rather than guessing an
 account or upgrading an old fingerprint. Existing proof artifacts are unchanged.
+
+The armed cleanup handle now authenticates the expected original account ID before
+its independent exact-instance absence GET, with the same retained credential for
+both reads. Account mismatch or failed authentication refuses before interpreting
+resource visibility. This identity-only check does not require a positive credit
+balance or empty account inventory; cleanup must remain possible after credit is
+spent. The opaque absence receipt carries the account pin, and the Store finalizer
+checks it against the original intent. Provider credential scope/visibility remains
+an adapter prerequisite; this source change is not new live qualification.

@@ -71,7 +71,7 @@ impl VastExecutor {
         receipt: &OwnedResourceAbsence,
         period: &CalendarPeriod,
     ) -> Result<VastRemoval> {
-        if !receipt.matches(&self.identity) {
+        if !receipt.matches(&self.identity, self.creator_account_id) {
             return Err(Error::Invalid);
         }
         self.finalize_removal_at(

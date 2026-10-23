@@ -31,33 +31,23 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         self.transport.backend.1
     }
     fn read(&mut self, path: &str, body: Option<Value>) -> Result<Value> {
-        let secret = (self.transport.supplier)()?;
-        let bytes = secret.expose();
-        if bytes.is_empty() || bytes.len() > 4096 || !bytes.iter().all(|b| (33..=126).contains(b)) {
-            return Err(Error::Unavailable);
-        }
-        let bearer = SecretValue::new([b"Bearer ".as_slice(), bytes].concat());
-        let mut authorization =
-            HeaderValue::from_bytes(bearer.expose()).map_err(|_| Error::Unavailable)?;
-        authorization.set_sensitive(true);
-        let method = if body.is_some() {
-            reqwest::Method::POST
-        } else {
-            reqwest::Method::GET
-        };
-        let reply = self
-            .transport
-            .backend
-            .send(WireRequest {
-                method,
-                url: format!("{ORIGIN}{path}"),
-                authorization,
-                body: body
-                    .map(|v| serde_json::to_vec(&v).map_err(|_| Error::Unavailable))
-                    .transpose()?,
-            })
-            .map_err(|_| Error::Unavailable)?;
-        checked_json(reply, bytes, 256 * 1024)
+        read_with(
+            &mut self.transport.backend,
+            &mut self.transport.supplier,
+            path,
+            body,
+        )
+    }
+    /// Authenticate the expected account only. Cleanup must remain possible with
+    /// zero/negative credit and existing resources; no inventory or offer read.
+    /// The caller must retain the same credential for subsequent resource reads.
+    pub fn authenticate_account(&mut self, expected: NonZeroU64) -> Result<()> {
+        self.stage = "vast-account-identity";
+        authenticate_account_with(
+            &mut self.transport.backend,
+            &mut self.transport.supplier,
+            expected,
+        )
     }
     pub fn observe(
         &mut self,
@@ -148,6 +138,51 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         })
     }
 }
+fn read_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
+    backend: &mut B,
+    supplier: &mut S,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value> {
+    let secret = supplier()?;
+    let bytes = secret.expose();
+    if bytes.is_empty() || bytes.len() > 4096 || !bytes.iter().all(|b| (33..=126).contains(b)) {
+        return Err(Error::Unavailable);
+    }
+    let bearer = SecretValue::new([b"Bearer ".as_slice(), bytes].concat());
+    let mut authorization =
+        HeaderValue::from_bytes(bearer.expose()).map_err(|_| Error::Unavailable)?;
+    authorization.set_sensitive(true);
+    let method = if body.is_some() {
+        reqwest::Method::POST
+    } else {
+        reqwest::Method::GET
+    };
+    let reply = backend
+        .send(WireRequest {
+            method,
+            url: format!("{ORIGIN}{path}"),
+            authorization,
+            body: body
+                .map(|v| serde_json::to_vec(&v).map_err(|_| Error::Unavailable))
+                .transpose()?,
+        })
+        .map_err(|_| Error::Unavailable)?;
+    checked_json(reply, bytes, 256 * 1024)
+}
+
+fn authenticate_account_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
+    backend: &mut B,
+    supplier: &mut S,
+    expected: NonZeroU64,
+) -> Result<()> {
+    let account = read_with(backend, supplier, "/api/v0/users/current/", None)?;
+    if account.get("id").and_then(Value::as_u64) != Some(expected.get()) {
+        return Err(Error::Unavailable);
+    }
+    Ok(())
+}
+
 fn offer_read_limit(selected: Option<NonZeroU64>) -> usize {
     if selected.is_some() { 100 } else { 20 }
 }
@@ -210,6 +245,53 @@ fn qualify(row: &Value, disk: u32) -> Result<(NonZeroU64, u64, u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cleanup_account_authentication_reads_only_identity_not_credit_or_inventory() {
+        use super::super::tests::{Fake, key};
+        for body in [
+            br#"{"id":7}"#.as_slice(),
+            br#"{"id":7,"credit":-10,"balance":-10}"#,
+        ] {
+            let mut fake = Fake::json(body);
+            authenticate_account_with(&mut fake, &mut key, NonZeroU64::new(7).unwrap()).unwrap();
+            assert_eq!(fake.calls, 1);
+            let sent = fake.request.unwrap();
+            assert_eq!(sent.method, reqwest::Method::GET);
+            assert_eq!(sent.url, "https://console.vast.ai/api/v0/users/current/");
+            assert!(sent.body.is_none());
+            assert!(sent.authorization.is_sensitive());
+        }
+    }
+
+    #[test]
+    fn cleanup_account_mismatch_missing_ambiguous_or_failed_identity_refuses() {
+        use super::super::tests::{Fake, key};
+        for body in [
+            br#"{}"#.as_slice(),
+            br#"{"id":8}"#,
+            br#"{"id":"7"}"#,
+            br#"{"id":0}"#,
+            br#"{"id":7,"id":8}"#,
+            br#"{"id":7,"success":false}"#,
+            br#"{"id":7,"error":"forbidden"}"#,
+        ] {
+            let mut fake = Fake::json(body);
+            assert!(
+                authenticate_account_with(&mut fake, &mut key, NonZeroU64::new(7).unwrap())
+                    .is_err()
+            );
+            assert_eq!(fake.calls, 1);
+        }
+        for status in [301, 401, 403, 404, 429, 500] {
+            let mut fake = Fake::json(br#"{"id":7}"#);
+            fake.reply.as_mut().unwrap().status = status;
+            assert!(
+                authenticate_account_with(&mut fake, &mut key, NonZeroU64::new(7).unwrap())
+                    .is_err()
+            );
+        }
+    }
+
     #[test]
     fn selected_offer_catalog_read_remains_bounded() {
         assert_eq!(offer_read_limit(None), 20);

@@ -33,6 +33,7 @@ pub struct ArmedCleanup {
 /// ```
 #[cfg(feature = "launch-https")]
 pub struct OwnedResourceAbsence {
+    creator_account_id: std::num::NonZeroU64,
     instance: std::num::NonZeroU64,
     intent: RecoveryIntent,
     observed_at: i64,
@@ -45,8 +46,14 @@ impl OwnedResourceAbsence {
     pub fn observed_at(&self) -> i64 {
         self.observed_at
     }
-    pub fn matches(&self, intent: &RecoveryIntent) -> bool {
-        self.intent.label() == intent.label() && self.intent.image() == intent.image()
+    pub fn matches(
+        &self,
+        intent: &RecoveryIntent,
+        creator_account_id: std::num::NonZeroU64,
+    ) -> bool {
+        self.creator_account_id == creator_account_id
+            && self.intent.label() == intent.label()
+            && self.intent.image() == intent.image()
     }
 }
 
@@ -179,10 +186,17 @@ impl ArmedCleanup {
     pub fn confirm_owned_absent(
         &self,
         access: &crate::readonly::access::NodeAccess,
+        creator_account_id: std::num::NonZeroU64,
     ) -> m8s_provider::Result<Option<OwnedResourceAbsence>> {
         if !access.matches(&self.intent) {
             return Err(m8s_provider::Error::Unavailable);
         }
+        // Check the original account before interpreting exact-ID visibility.
+        // Both reads use the same retained credential that this handle dispatched.
+        crate::readonly::preflight::PreflightHttps::new(|| {
+            Ok(SecretValue::new(self.secret.expose().to_vec()))
+        })?
+        .authenticate_account(creator_account_id)?;
         let receipt = ScopedDestroyHttps::new(access.instance_id(), || {
             Ok(SecretValue::new(self.secret.expose().to_vec()))
         })?
@@ -195,6 +209,7 @@ impl ArmedCleanup {
                     .and_then(|d| i64::try_from(d.as_secs()).ok())
                     .ok_or(m8s_provider::Error::Unavailable)?;
                 Ok(OwnedResourceAbsence {
+                    creator_account_id,
                     instance: receipt.instance_id(),
                     intent: self.intent.clone(),
                     observed_at,
@@ -263,6 +278,29 @@ fn read_ack(output: &mut std::process::ChildStdout, expected_ack: &[u8]) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "launch-https")]
+    #[test]
+    fn owned_absence_receipt_matches_account_and_exact_original_identity() {
+        let account = std::num::NonZeroU64::new(7).unwrap();
+        let identity = RecoveryIntent::new(
+            "owner",
+            "node",
+            "tier",
+            &format!("example.invalid/node@sha256:{}", "a".repeat(64)),
+        )
+        .unwrap();
+        let proof = OwnedResourceAbsence {
+            creator_account_id: account,
+            instance: std::num::NonZeroU64::new(42).unwrap(),
+            intent: identity.clone(),
+            observed_at: 100,
+        };
+        assert!(proof.matches(&identity, account));
+        assert!(!proof.matches(&identity, std::num::NonZeroU64::new(8).unwrap()));
+        let other = RecoveryIntent::new("owner", "other", "tier", identity.image()).unwrap();
+        assert!(!proof.matches(&other, account));
+    }
+
     #[test]
     fn arm_protocol_rejects_partial_wrong_and_unbound_receipts() {
         for (output, valid) in [
