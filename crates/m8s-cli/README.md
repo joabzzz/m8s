@@ -867,3 +867,22 @@ creation never authorizes another rental or a fresh budget. The cleanup worker
 begins destruction four minutes before the original reserved cleanup deadline.
 A successful local check or published image alone is not paid demo proof; use the
 final `demo-evidence.json` receipt.
+
+### Inspect an existing attempt without provider calls
+
+```sh
+m8s prototype audit --directory /absolute/existing-private-run --owner EXACT_OWNER
+```
+
+This reads the existing accounting store and reports whether the one-use create
+claim was consumed, whether provider invocation began, and which reservations
+remain held. It does not reset claims or release reservations. A consumed claim
+with no invocation is still not permission to retry. Provider absence and final
+billing remain separate evidence.
+
+The 2026-10-23 live attempt started the real image on Vast but did not reach
+bootstrap/inference because of missing UDP mapping and a dual-stack parser issue.
+The exact instance was destroyed and independently confirmed absent. Networking
+corrections are tested but await a separately authorized replacement attempt.
+See `deploy/container/vast-networking-attempt-evidence.json`. Do not represent the
+published image, successful container startup, or source tests as inference proof.
