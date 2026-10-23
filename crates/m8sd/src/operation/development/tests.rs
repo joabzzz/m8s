@@ -94,6 +94,7 @@ fn intent(id: &str) -> CreateIntent {
     i
 }
 fn seed(s: &Store, id: &str, p: &AdminBudget) {
+    s.initialize_budget(p, &period(), 100).unwrap();
     s.scale("tier", 1).unwrap();
     s.conn
         .execute(
@@ -644,7 +645,6 @@ fn original_serving_deadline_minus_one_succeeds_exact_deadline_or_rollback_does_
         let path = path();
         let s = Store::open(path, "owner").unwrap();
         s.scale("tier", 1).unwrap();
-        s.conn.execute("INSERT INTO gpu_node(uid,tier,phase,created_at) VALUES ('node-a','tier','\"Launching\"',100)",[]).unwrap();
         let mut p = policy();
         p.instance_hourly = 100000;
         p.total_hourly = 200000;
@@ -653,6 +653,7 @@ fn original_serving_deadline_minus_one_succeeds_exact_deadline_or_rollback_does_
         r.quote.transfer_total = 0;
         r.quote.valid_until = 170;
         s.reserve_budget(&p, &period(), &r, 100).unwrap();
+        s.conn.execute("INSERT INTO gpu_node(uid,tier,phase,created_at) VALUES ('node-a','tier','\"Launching\"',100)",[]).unwrap();
         let mut e = executor();
         let c = claim(&s, &e);
         let outcome = e.execute(&s, c, now);

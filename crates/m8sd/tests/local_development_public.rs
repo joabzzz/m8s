@@ -123,6 +123,8 @@ impl Fixture {
     }
     fn seed(&self, id: &str) -> Store {
         let s = self.open();
+        s.initialize_budget(&self.policy(), &self.period(), self.at)
+            .unwrap();
         s.scale("tier", 1).unwrap();
         // ONLY owned fixture setup is direct SQL; never a claim/proof constructor.
         Connection::open(&self.db).unwrap().execute(

@@ -198,6 +198,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|_| "configured mock state unavailable; state retained")?;
         policy.persisted(&tiers)?;
     }
+    store.claim_unmanaged_execution().map_err(
+        |_| "managed launch state requires its original coordinator; mock daemon refused",
+    )?;
     let socket = dir.join("control.sock");
     if let Ok(meta) = fs::symlink_metadata(&socket) {
         if !meta.file_type().is_socket() {

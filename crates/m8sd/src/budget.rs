@@ -574,7 +574,7 @@ fn owned(tx: &Transaction<'_>, owner: &str) -> Result<()> {
     if !yes {
         return Err(Error::OwnerMismatch);
     }
-    Ok(())
+    crate::execution_domain::claim(tx, owner, crate::execution_domain::Domain::Managed)
 }
 fn get_row(tx: &Transaction<'_>, owner: &str, request_id: &str) -> Result<BudgetReservation> {
     let s: String = tx.query_row(
@@ -603,11 +603,13 @@ impl Store {
         owned(&tx, &self.owner)?;
         if let Some(a) = account(&tx, &self.owner)? {
             clock(&a, now)?;
-            return if a.policy == *policy {
-                Ok(())
-            } else {
-                Err(Error::Invalid)
-            };
+            if a.policy != *policy {
+                return Err(Error::Invalid);
+            }
+            // A matching legacy account can acquire the sticky managed domain;
+            // existing selected domains incur no additional writes.
+            tx.commit()?;
+            return Ok(());
         }
         // A missing account with existing accounting rows is corrupt, not a new
         // approval epoch. No repair/reset is implicit in initialization.

@@ -127,6 +127,8 @@ impl Fixture {
     }
     fn seed(&self, id: &str) -> Store {
         let s = Store::open(&self.db, OWNER).unwrap();
+        s.initialize_budget(&self.policy(), &self.period(), self.at)
+            .unwrap();
         s.scale("tier", 1).unwrap();
         // Fixture setup only. All authority comes from public claim APIs; never
         // mint a private claim, opaque proof or fabricated absence/billing grant.

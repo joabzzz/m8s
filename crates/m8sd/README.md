@@ -1039,3 +1039,22 @@ Rust decoding; capsules remain capped at 4 KiB. Orphans, cross-linked budget
 records and a removal receipt with a retained node row refuse. Limits bound
 application collection size, not SQLite engine work. The query performs no
 mutation or provider calls and never consumes a claim or releases a hold.
+
+### Durable execution-domain isolation
+
+An `execution_domain` record permanently separates unmanaged/mock reconciliation
+from managed budget/operation custody. The mock daemon commits its domain after
+configuration admission and before opening its provider or control socket;
+`Store::reconcile` repeats that gate before its first provider read. Budget
+initialization claims the managed domain in the same SQLite write transaction,
+and managed operation mutations recheck it. Concurrent selection can have only
+one winner; no API converts or resets the selected domain, even after all nodes
+are removed.
+
+Older databases with managed journals can acquire managed custody while retaining
+their records. Older node/launch-attempt history without managed accounting cannot
+be implicitly converted. Managed fixtures initialize accounting before seeding
+node intent, matching the reservation-before-launch ordering. A missing or empty
+journal is not permission to erase history. The existing process lock remains
+required across provider effects within one domain; this is not multi-reconciler
+support or live-daemon enablement.

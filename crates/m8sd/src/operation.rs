@@ -121,6 +121,7 @@ fn owned(tx: &Transaction<'_>, owner: &str) -> Result<()> {
     Ok(())
 }
 fn account(tx: &Transaction<'_>, owner: &str, now: i64) -> Result<BudgetAccount> {
+    crate::execution_domain::claim(tx, owner, crate::execution_domain::Domain::Managed)?;
     let json: String = tx.query_row(
         "SELECT record FROM budget_account WHERE owner=?",
         [owner],

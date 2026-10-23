@@ -86,6 +86,7 @@ fn intent(id: &str) -> CreateIntent {
     }
 }
 fn seed(s: &Store, id: &str) {
+    s.initialize_budget(&policy(), &period(), 100).unwrap();
     s.scale("tier", 1).unwrap();
     s.conn
         .execute(
@@ -616,7 +617,6 @@ fn delayed_claim_keeps_positive_original_runtime_and_entire_cleanup_grace() {
         let p = path();
         let s = Store::open(p, "owner").unwrap();
         s.scale("tier", 1).unwrap();
-        s.conn.execute("INSERT INTO gpu_node(uid,tier,phase,created_at) VALUES ('node-a','tier','\"Launching\"',100)",[]).unwrap();
         let mut caps = policy();
         caps.instance_hourly = 100000;
         caps.total_hourly = 200000;
@@ -625,6 +625,7 @@ fn delayed_claim_keeps_positive_original_runtime_and_entire_cleanup_grace() {
         r.quote.transfer_total = 0;
         r.quote.valid_until = 170;
         s.reserve_budget(&caps, &period(), &r, 100).unwrap();
+        s.conn.execute("INSERT INTO gpu_node(uid,tier,phase,created_at) VALUES ('node-a','tier','\"Launching\"',100)",[]).unwrap();
         s.prepare_create(&intent("a"), 100).unwrap();
         let claim = s.claim_create("op-a", now);
         if now == 109 {

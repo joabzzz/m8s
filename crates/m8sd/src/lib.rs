@@ -96,6 +96,7 @@ impl Store {
         nonce::initialize(&conn)?;
         budget::initialize(&conn)?;
         operation::initialize(&conn)?;
+        execution_domain::initialize(&conn)?;
         // Allocate before moving either lifetime-sensitive local into Self.
         // On every earlier error/unwind, conn (declared later) drops first.
         let origin = std::sync::Arc::new(StoreOrigin);
@@ -274,18 +275,10 @@ impl Store {
     /// using a Mock (or another unbound provider). Managed executors own their
     /// authenticated observations and budget settlement. Check before effects.
     pub fn require_unmanaged_state(&self) -> Result<()> {
-        let managed: bool = self.conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM create_operation) OR EXISTS(SELECT 1 FROM budget_account)",
-            [],
-            |r| r.get(0),
-        )?;
-        if managed {
-            return Err(Error::Invalid);
-        }
-        Ok(())
+        execution_domain::require_unmanaged(&self.conn, &self.owner)
     }
     pub fn reconcile(&mut self, p: &mut impl Provider, now: Timestamp) -> Result<()> {
-        self.require_unmanaged_state()?;
+        self.claim_unmanaged_execution()?;
         // A list failure does not become an empty snapshot.
         let owned = p.list_owned(&self.owner)?;
         for instance in owned {
@@ -433,6 +426,7 @@ pub mod operation;
 mod control_snapshot;
 pub use control_snapshot::ControlSnapshot;
 mod diagnostics;
+mod execution_domain;
 mod manual;
 mod private;
 mod removal;
