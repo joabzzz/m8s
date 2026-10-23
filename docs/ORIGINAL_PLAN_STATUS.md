@@ -33,7 +33,7 @@ plans remain required. Implementation can proceed with deterministic fixtures.
 | 0009: owner configuration | Versioned config and manual/schedule/queue planning; real observations must drive any production trigger |
 | 0010: inference over mesh | Demo traversed the owner client and actual mesh; no production inference gateway. The bounded demo/canary captures its own result only |
 | 0011: privacy/audit | Strong transport is not provider confidentiality. No effective L1/L2/L3 claim without the required audit/attestation evidence |
-| 0012: secrets | File backend and safe CLI; intended Keychain default remains unqualified. Prototype dotenv is explicitly selected. m8s must not read a permanent mesh owner private key |
+| 0012: secrets | File backend and safe CLI; Keychain library backend passed the synthetic OS roundtrip/concurrency run (2026-10-23) but is not wired into the CLI and not default; see ADR 0012 for blockers. Prototype dotenv is explicitly selected. m8s must not read a permanent mesh owner private key |
 | 0013: payments | Still out of scope; no wallet or top-up implementation |
 | 0014: evals | Real single completion is acceptance evidence, not throughput/quality evaluation; reuse the native mesh-routed tooling when adding evals |
 | 0015: interfaces | CLI/TUI/control API foundations; live managed recovery/status, metrics and alert sinks remain incomplete |

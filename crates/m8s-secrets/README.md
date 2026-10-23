@@ -214,7 +214,7 @@ physical erasure and automatic expiry deletion are not claimed.
 
 ## Synthetic macOS qualification — Phase A source freeze
 
-Gate 1 remains **incomplete**. [ADR-0012 v9](../../docs/original/decisions/0012-secret-store.md)
+Gate 1: the synthetic OS run **passed on 2026-10-23** (see the ADR-0012 section of that date; the exact item was removed afterwards), but the default stays **unavailable** pending CLI wiring, lock-domain provisioning and signed-binary access-policy checks. [ADR-0012 v9](../../docs/original/decisions/0012-secret-store.md)
 records the 2026-10-21 synthetic OS attempt failing with opaque `Backend`;
 possible effects remain uncertain. The earlier v8 readiness statement is
 superseded. Admin attendance is not required, but the failed attempt does not
@@ -411,8 +411,7 @@ ignored selection. Phase B must separately record the exact reviewed hashes,
 runtime/toolchain, non-secret synthetic identifiers, outcome and retained
 artifacts. Neither phase proves external deployment writers cooperate, provisions
 a production home directory, qualifies every binary/signing/prompt configuration,
-or authorizes enabling the default. The failed Phase B attempt is recorded in ADR-0012 v9; no successful Phase B
-qualification is claimed.
+or authorizes enabling the default. The failed 2026-10-21 attempt is recorded in ADR-0012 v9; the 2026-10-23 pass is recorded in the newer ADR-0012 section. Neither enables the default.
 
 ## Borrowed descriptor ACL-only check
 
