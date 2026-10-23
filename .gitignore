@@ -5,3 +5,8 @@
 *.db-wal
 
 /.cargo-home/
+
+# Operator credentials stay outside committed source.
+.env
+.env.*
+!.env.example

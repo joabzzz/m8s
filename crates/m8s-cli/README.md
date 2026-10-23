@@ -886,3 +886,13 @@ The exact instance was destroyed and independently confirmed absent. Networking
 corrections are tested but await a separately authorized replacement attempt.
 See `deploy/container/vast-networking-attempt-evidence.json`. Do not represent the
 published image, successful container startup, or source tests as inference proof.
+
+### Live acceptance (2026-10-23)
+
+The full `prototype launch` command passed on Vast instance **57330173**,
+including canonical certificate delivery, owner-routed Qwen inference, exact
+resource destruction, and independent provider absence confirmation. See
+`deploy/container/demo-proof.json`. Earlier failed attempts remain recorded.
+The served API model ID is `local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`;
+the filename remains the node's artifact-selection label. Heartbeats are capped
+at one second to stay inside the control stream's five-second idle timeout.

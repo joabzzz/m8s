@@ -1,4 +1,22 @@
-# Full-node source image (not runtime-qualified)
+# Full-node prototype image
+
+## Proven end-to-end demo (2026-10-23)
+
+The complete CLI → Vast → canonical certificate → native mesh → owner-routed
+Qwen inference → exact destruction/absence path **passed**, exit 0, on instance
+**57330173**. See [the complete receipt](demo-proof.json) and
+[the final account observation](final-account-evidence.json).
+
+The working image is
+`ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9`.
+It contains the model and runtime; only the small agent layer was refreshed.
+The current CLI uses the GGUF SHA-256 API ID, acknowledges the node listener
+before TLS dialing, and sends control heartbeats every second.
+
+Earlier checkpoints below are preserved as history and do not describe the
+latest acceptance state. The public package was separately authorized; source
+publication is private. The small CPU-model proof does not qualify larger GPU
+models, production scheduling, signed-image verification, or final billing.
 
 `Dockerfile.agent` refreshes only the Rust m8s agent in an existing full-node
 image. Supply the reviewed runtime image by immutable digest and a clean,

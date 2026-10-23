@@ -1,0 +1,10 @@
+{
+  "schema": "m8s.native-source-integration/v1",
+  "repository": "https://github.com/joabzzz/m8s-mesh-llm",
+  "visibility": "private",
+  "client_revision": "7a101840af79c7509789b9e3152ca6c4605186e8",
+  "server_revision": "f2cbf8fd8159a16401040a3536550d49a3da8ce2",
+  "client_fix_patch": "deploy/container/native-client-required-key.patch",
+  "identity_vendor_record": "vendor/mesh-llm-identity/UPSTREAM.md",
+  "publication": "published"
+}

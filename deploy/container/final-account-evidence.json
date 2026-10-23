@@ -1,0 +1,46 @@
+{
+  "schema": "m8s.vast-final-account-observation/v1",
+  "observed_at": 1792735716,
+  "account_id": 32349,
+  "successful_instance_id": 57330173,
+  "independently_confirmed_absent": true,
+  "complete_instance_inventory_empty": true,
+  "volume_inventory_empty": true,
+  "credit_usd": 16.218561388236246,
+  "reported_charges": [
+    {
+      "instance_id": 57330173,
+      "reported_usd": 0.0
+    },
+    {
+      "instance_id": 57329116,
+      "reported_usd": 0.004
+    },
+    {
+      "instance_id": 57328141,
+      "reported_usd": 0.004
+    },
+    {
+      "instance_id": 57327385,
+      "reported_usd": 0.003
+    },
+    {
+      "instance_id": 57326565,
+      "reported_usd": 0.005
+    },
+    {
+      "instance_id": 57326047,
+      "reported_usd": 0.005
+    },
+    {
+      "instance_id": 57325005,
+      "reported_usd": 0.004
+    }
+  ],
+  "reported_total_usd": "0.025",
+  "billing_complete_page": true,
+  "billing_finality": "not-established-reservations-retained",
+  "cumulative_authorized_micro_usd": 16000000,
+  "total_retained_reservations_micro_usd": 13355168,
+  "unallocated_micro_usd": 2644832
+}

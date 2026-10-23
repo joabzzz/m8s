@@ -1,0 +1,57 @@
+{
+  "artifact_name": "qwen2.5-0.5b-instruct-q4_k_m",
+  "certificate_verified": true,
+  "completion": {
+    "content": "A mesh network is a local network structure where devices are connected through multiple direct or indirect connections, allowing for decentralized and self-sustaining communication.",
+    "finish_reason": "stop"
+  },
+  "final_billing": "unknown-liability-retained",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9",
+  "instance_id": 57330173,
+  "model": "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+  "owner_routed_inference": true,
+  "provider_confirmed_absent": true,
+  "reserved_micro_usd": 1716037,
+  "schema": "m8s.vast-demo-evidence/v1",
+  "owner_source_revision": "f99e07b0e0c2a94417ff57dd504642d83fb358fe",
+  "native_client_revision": "7a101840af79c7509789b9e3152ca6c4605186e8",
+  "native_server_revision": "f2cbf8fd8159a16401040a3536550d49a3da8ce2",
+  "agent_revision": "78e1ed59be9d117036d787bbbfde178797f1a9c1",
+  "command": "m8s prototype launch --plan /private/tmp/m8s-vast-demo-plan-selected-network-20261023.json",
+  "exit_code": 0,
+  "worker_events": [
+    {
+      "event": "armed",
+      "instance_id": null,
+      "observed_at": 1792735593,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "exact_resource_bound",
+      "instance_id": 57330173,
+      "observed_at": 1792735596,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "destroy_acknowledged",
+      "instance_id": 57330173,
+      "observed_at": 1792735654,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "provider_confirmed_absent",
+      "instance_id": 57330173,
+      "observed_at": 1792735657,
+      "schema": "m8s.vast-watchdog-event/v1"
+    }
+  ],
+  "removal": {
+    "creator_account_id": 32349,
+    "image": "ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9",
+    "instance_id": 57330173,
+    "observed_at": 1792735656,
+    "provider_confirmed_absent": true,
+    "schema": "m8s.vast-removal/v1"
+  },
+  "private_run_material_removed": true
+}
