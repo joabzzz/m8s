@@ -234,6 +234,14 @@ impl<D: TeardownDriver> Supervisor<D> {
                 })
             });
         }
+        #[cfg(all(unix, feature = "sealed-node"))]
+        if let Some(stdout) = child.stdout.take() {
+            std::thread::spawn(move || {
+                crate::node::diagnostics::drain(stdout, |label| {
+                    eprintln!("m8s native diagnostic: {label}");
+                })
+            });
+        }
         Ok(Self {
             #[cfg(feature = "authenticated-control")]
             control_binding: crate::control::ControlBinding::default(),
@@ -274,7 +282,9 @@ impl<D: TeardownDriver> Supervisor<D> {
         }
         command
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
+            // JSON event sinks can write startup failures to either channel.
+            // Both are destructively classified; neither raw stream is logged.
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let node = material.node();
         let mut supervisor = Self::spawn_command(command, dms, driver, retry)?;
@@ -341,6 +351,10 @@ impl<D: TeardownDriver> Supervisor<D> {
         match self.process.observe_exit() {
             Ok(false) => Ok(()),
             Ok(true) => {
+                #[cfg(all(unix, feature = "sealed-node"))]
+                if self._node_material.is_some() {
+                    eprintln!("m8s native diagnostic: native-child-exited");
+                }
                 self.shutdown();
                 Ok(())
             }

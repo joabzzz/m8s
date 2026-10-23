@@ -372,6 +372,7 @@ fn native_label(line: &[u8]) -> Option<&'static str> {
         "native-model-reference-error",
         "native-download-error",
         "native-other-error",
+        "native-child-exited",
         "node-policy-error",
         "node-id-error",
         "node-material-error",

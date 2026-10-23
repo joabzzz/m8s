@@ -217,6 +217,7 @@ fn safe_stage(line: &[u8]) -> bool {
             "native-model-reference-error",
             "native-download-error",
             "native-other-error",
+            "native-child-exited",
             "node-policy-error",
             "node-id-error",
             "node-material-error",
@@ -375,6 +376,9 @@ mod tests {
             assert!(!super::safe_stage(line));
         }
         assert!(super::safe_stage(b"prototype stage: cleanup-armed\n"));
+        assert!(super::safe_stage(
+            b"prototype native category: native-child-exited\n"
+        ));
         for label in [
             "refused",
             "unavailable",

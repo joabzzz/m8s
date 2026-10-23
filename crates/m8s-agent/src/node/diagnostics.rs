@@ -5,6 +5,8 @@ use std::io::Read;
 fn category(line: &[u8]) -> Option<&'static str> {
     let text = std::str::from_utf8(line).ok()?.to_ascii_lowercase();
     let error = text.contains("error")
+        || text.contains("fatal")
+        || text.contains("panicked")
         || text.contains("failed")
         || text.contains("not found")
         || text.contains("no such file")
@@ -87,6 +89,10 @@ mod tests {
         assert_eq!(
             category(b"no compatible native runtime found"),
             Some("native-runtime-error")
+        );
+        assert_eq!(
+            category(br#"{"type":"fatal","message":"CUDA initialization aborted","context":"synthetic-private"}"#),
+            Some("native-cuda-error")
         );
         let mut oversized = vec![b'x'; 9000];
         oversized.extend_from_slice(b" error private\nunknown\n");
