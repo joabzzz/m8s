@@ -40,6 +40,34 @@ impl VastRecovery {
             )
             .ok_or(Error::Corrupt)
     }
+    /// Explicit synchronous cleanup for an already bound invocation. This does
+    /// not arm a worker, renew deadlines, mutate journals or authenticate at
+    /// construction. Cleanup remains possible after the original deadline.
+    pub fn bound_cleanup<S>(
+        &self,
+        supplier: S,
+    ) -> Result<m8s_provider_vast::readonly::restart::RestartCleanup<S>>
+    where
+        S: FnMut() -> m8s_provider::Result<m8s_provider_vast::readonly::restart::SecretValue>,
+    {
+        if self.operation.invocation_started_at.is_none() {
+            return Err(Error::Invalid);
+        }
+        let binding = self.operation.result.as_ref().ok_or(Error::Invalid)?;
+        if binding.volumes != VolumeBinding::NoneAllocated {
+            return Err(Error::Invalid);
+        }
+        let instance: NonZeroU64 = binding.instance_id.parse().map_err(|_| Error::Invalid)?;
+        if instance.to_string() != binding.instance_id {
+            return Err(Error::Invalid);
+        }
+        Ok(m8s_provider_vast::readonly::restart::RestartCleanup::new(
+            self.identity().clone(),
+            self.creator_account_id(),
+            instance,
+            supplier,
+        )?)
+    }
     /// The observation must still come from the creator-account adapter. Loading
     /// this capsule cannot turn a stored receipt into a fresh absence proof.
     pub fn finalize_removal(

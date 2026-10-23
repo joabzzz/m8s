@@ -33,10 +33,10 @@ pub struct ArmedCleanup {
 /// ```
 #[cfg(feature = "launch-https")]
 pub struct OwnedResourceAbsence {
-    creator_account_id: std::num::NonZeroU64,
-    instance: std::num::NonZeroU64,
-    intent: RecoveryIntent,
-    observed_at: i64,
+    pub(crate) creator_account_id: std::num::NonZeroU64,
+    pub(crate) instance: std::num::NonZeroU64,
+    pub(crate) intent: RecoveryIntent,
+    pub(crate) observed_at: i64,
 }
 #[cfg(feature = "launch-https")]
 impl OwnedResourceAbsence {

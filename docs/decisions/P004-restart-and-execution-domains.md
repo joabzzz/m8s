@@ -42,9 +42,13 @@ concurrent provider effects within a domain.
 ## Remaining integration
 
 - The original creator account ID is now persisted and fingerprinted. A restarted
-  transport must still authenticate that expected account; reconstructing an
-  owner label or reading the stored account number alone is insufficient.
-- Compose bounded restart observation and surviving cleanup with that transport.
+  bound-resource transport now authenticates that expected account before every
+  exact GET or DELETE, retaining one credential across each pair. The Store
+  entrypoint requires a recorded invocation and canonical resource binding.
+  Construction has no effects and preserves original deadlines; it is not an
+  armed worker. Cleanup remains available after the deadline. Only explicit
+  exact-ID absence can produce a fresh opaque finalization receipt.
+- Compose ambiguous-create lookup and surviving cleanup with that transport.
   Do not turn stored removal metadata into a fresh observation.
 - Ask the native owner to sign exact claims without transferring its permanent
   private key into m8s. The existing CLI `auth sign-node` uses relative hours and

@@ -171,7 +171,7 @@ fn read_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
     checked_json(reply, bytes, 256 * 1024)
 }
 
-fn authenticate_account_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
+pub(super) fn authenticate_account_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
     backend: &mut B,
     supplier: &mut S,
     expected: NonZeroU64,

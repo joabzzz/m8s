@@ -19,6 +19,8 @@ pub mod preflight;
 pub mod provisioning_log;
 #[cfg(feature = "scoped-destroy-https")]
 pub mod recovery;
+#[cfg(all(unix, feature = "watchdog", feature = "launch-https"))]
+pub mod restart;
 
 const ORIGIN: &str = "https://console.vast.ai";
 const TIMEOUT: Duration = Duration::from_secs(10);

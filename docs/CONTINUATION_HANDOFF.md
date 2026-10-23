@@ -14,6 +14,30 @@ private repositories describes the completed prototype session and does not
 override the latest continuation instructions. Do not reinterpret old failed
 qualifications as current tool denials or silently bypass them.
 
+## Follow-up P1 slice (2026-10-23)
+
+The subsequent user request authorized a PR to update the remote. That permits
+publishing the preserved source integration to the private repository; all
+provider-call, credential, spend and qualification restrictions remain in force.
+The original local `origin` remains unchanged.
+
+`VastRecovery::bound_cleanup` now constructs an explicit synchronous cleanup
+adapter only for a recorded invocation with a canonical exact resource binding.
+Each exact GET/DELETE authenticates the original creator account first, retaining
+one supplied credential across both requests. Only explicit exact-ID absence
+produces a fresh opaque receipt accepted by the existing atomic finalizer.
+Construction performs no provider effects or journal mutation. Original deadlines
+remain unchanged; overdue cleanup is allowed, with no CREATE authority or new
+rental admission. This is source integration, not an armed cleanup worker.
+
+The selected check profile passed 776 tests, formatting and strict Clippy.
+Check log: `/private/tmp/m8s-p1-restart-check.log`.
+
+Next: authenticated positive lookup for ambiguous creates, durable binding before
+mutation, and independently surviving restart worker composition with original
+deadlines. Permanent owner signing and the real daemon loop remain open. Continue
+to reuse `deploy/container/demo-proof.json`; no fresh live qualification occurred.
+
 ## Original design recovered
 
 `docs/original/` contains 23 verbatim Agor Knowledge snapshots: original roadmap,

@@ -28,7 +28,7 @@ development controller; this live result does not promote it to a fleet manager.
 
 ## Qualification boundaries
 
-The latest selected Rust profile passed 772 tests, fmt and strict Clippy. Four
+The latest selected Rust profile passed 776 tests, fmt and strict Clippy. Four
 synthetic PTY and three ACL-mutation tests were excluded by the documented
 profile. Existing endpoint/E PASS evidence remains valid and was not repeated.
 No additional rentals are needed for documentation or deterministic source work.
@@ -64,6 +64,8 @@ exit criteria, all 17 ADR boundaries, and the next P1 integration order.
 Subsequent local integration adds an atomic absence/node/accounting finalizer,
 immutable recovery inputs including the original creator-account pin, a bounded
 consistent audit snapshot, and durable mock/managed execution-domain isolation.
-These are source-tested boundaries. Authenticated restart transport, permanent
-native-owner signing, the live daemon loop and safe fleet replacement remain
+Authenticated restart cleanup now supports already bound invocations, checking
+the original account with the same credential before each exact GET or DELETE.
+These are source-tested boundaries. Ambiguous-create recovery, surviving restart
+workers, permanent native-owner signing, the live daemon loop and fleet replacement remain
 unfinished; see [P004](decisions/P004-restart-and-execution-domains.md).

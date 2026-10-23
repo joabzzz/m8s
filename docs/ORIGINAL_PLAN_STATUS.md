@@ -50,8 +50,9 @@ plans remain required. Implementation can proceed with deterministic fixtures.
    cleanup only** after restart. A reconstructed coordinator must not mint a new
    create claim, renew its lifetime, or treat an empty lookup as absence.
    Canonical metadata and the fingerprinted creator-account pin are implemented;
-   account-bound absence confirmation is source-tested. Authenticated restart
-   transport and worker composition remain.
+   account-bound absence confirmation and authenticated restart cleanup for an
+   already bound invocation are source-tested. Ambiguous-create observation and
+   surviving worker composition remain.
 3. Expose a bounded recovery/status view that distinguishes reservation-only,
    consumed-but-not-invoked, ambiguous create, positively bound resource,
    provider-confirmed removal and unsettled billing. The bounded CLI journal

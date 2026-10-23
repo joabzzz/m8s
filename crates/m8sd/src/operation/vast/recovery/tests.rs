@@ -190,3 +190,68 @@ fn oversized_companion_journals_refuse_recovery_without_touching_state() {
         assert_eq!(store.conn.total_changes(), before);
     }
 }
+
+#[test]
+fn bound_restart_cleanup_requires_invoked_binding_and_preserves_deadlines_and_journal() {
+    let (store, directory) = setup(6_000_000, 1);
+    let executor = executor(42);
+    let intent = executor.intent("run", "request", "operation").unwrap();
+    executor.prepare_at(&store, &intent, || Ok(100)).unwrap();
+    let supplier = || -> m8s_provider::Result<m8s_provider_vast::readonly::restart::SecretValue> {
+        panic!("construction must never request credentials")
+    };
+    assert!(
+        store
+            .recover_vast("operation")
+            .unwrap()
+            .bound_cleanup(supplier)
+            .is_err()
+    );
+    let claim = store.claim_create("operation", 101).unwrap();
+    assert!(
+        start_bound_invocation(
+            &store,
+            &claim,
+            InvocationClock::Explicit(101),
+            "smoke",
+            false
+        )
+        .unwrap()
+    );
+    assert!(
+        store
+            .recover_vast("operation")
+            .unwrap()
+            .bound_cleanup(supplier)
+            .is_err()
+    );
+    store
+        .record_create_result(
+            "operation",
+            &CreateObservation::Bound(ResourceBinding {
+                owner: "owner".into(),
+                run_id: "run".into(),
+                node_uid: "node".into(),
+                instance_id: "42".into(),
+                volumes: VolumeBinding::NoneAllocated,
+                provenance: "synthetic-exact-observation".into(),
+                observed_at: 102,
+                status: EvidenceStatus::Complete,
+            }),
+            102,
+        )
+        .unwrap();
+    let operations = store.create_operations().unwrap();
+    let reservations = store.budget_reservations().unwrap();
+    drop(store);
+    let store = Store::open(directory.0.join("state.db"), "owner").unwrap();
+    let recovery = store.recover_vast("operation").unwrap();
+    let before = store.conn.total_changes();
+    let _cleanup = recovery.bound_cleanup(supplier).unwrap();
+    assert_eq!(recovery.cleanup_starts_at().unwrap(), 160);
+    assert_eq!(recovery.cleanup_deadline().unwrap(), 400);
+    assert_eq!(store.conn.total_changes(), before);
+    assert_eq!(store.create_operations().unwrap(), operations);
+    assert_eq!(store.budget_reservations().unwrap(), reservations);
+    assert!(store.claim_create("operation", 401).is_err());
+}
