@@ -98,10 +98,35 @@
         "m8s down"
       ],
       "final_billing": "unknown; original allowance retained in original journal, authorized separate closed-run reconciliation required before replacement"
+    },
+    {
+      "instance_id": 57430645,
+      "image": "ghcr.io/joabzzz/m8s-prototype@sha256:8e4faa54b9770384f7de461c1b31421401a86e91301b96b53b3a46ffb8c613e9",
+      "reserved_micro_usd": 1501182,
+      "billing_state": "BillingUnknown",
+      "certificate_delivery_and_control_established": true,
+      "model_discovered": false,
+      "owner_routed_completion": false,
+      "provider_confirmed_absent": true,
+      "absence_observed_at": 1792793659,
+      "resource_row_removed": true,
+      "native_category": "native-child-exited",
+      "bootstrap_category": "transport",
+      "commands_exercised": [
+        "m8sd --vast-demo",
+        "m8s up",
+        "m8s scale 1",
+        "m8s status",
+        "m8s logs",
+        "m8s down"
+      ],
+      "final_billing": "unknown; original allowance retained in journal; separate conservative reconciliation under user authorization"
     }
   ],
   "historical_holds_micro_usd": 13355168,
-  "new_paid_holds_micro_usd": 4608958,
-  "total_holds_micro_usd": 17964126,
-  "remaining_action": "Original journal allowances remain recorded; effective new baseline follows explicitly authorized conservative reconciliation receipts. Diagnose native child exit vs control failure; no completion claimed."
+  "new_paid_holds_micro_usd": 6110140,
+  "total_holds_micro_usd": 19465308,
+  "remaining_action": "Original journal allowances remain recorded; effective new baseline follows explicitly authorized conservative reconciliation receipts. Diagnose native child exit vs control failure; no completion claimed.",
+  "totals_scope": "original journal allowances, not effective reconciled exposure; see authorized reconciliation receipts",
+  "reproduced_offline_blocker": "Normalized runtime manifest changed without enclosing product manifest/tree digests; native serve failed closed with product runtime manifest checksum mismatch. Repaired in3d746e8, no live inference yet."
 }

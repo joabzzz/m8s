@@ -1,0 +1,30 @@
+{
+  "schema": "m8s.qwen38-authorized-liability-reconciliation/v1",
+  "status": "APPLIED_FOR_NEW_ACCOUNT_BUDGET_BASELINE",
+  "observed_at_utc": "2026-10-23T22:23:00.987731+00:00",
+  "account_id": 32349,
+  "credit_micro_usd_floor": 16148953,
+  "complete_instance_count": 0,
+  "volume_count": 0,
+  "user_authorization": "Remove preserve-hold requirement; full access to available funds to finish the demo",
+  "prior_reconciliation": "qwen38-authorized-reconciliation-third.json",
+  "prior_reconciled_liability_micro_usd": 14533478,
+  "attempt": {
+    "instance_id": 57430645,
+    "original_reservation_micro_usd": 1501182,
+    "reserved_at": 1792793612,
+    "provider_confirmed_absent_at": 1792793659,
+    "elapsed_seconds_upper_bound": 47,
+    "compute_micro_usd_per_hour": 1017778,
+    "storage_micro_usd_per_hour": 19048,
+    "transfer_upper_bound_micro_usd": 250048,
+    "additional_contingency_micro_usd": 100000,
+    "retained_closed_run_liability_micro_usd": 363585,
+    "cleanup_receipt_sha256": "fbb7d1a4b23d790892124cee8258062db007ef58b8b39f605c6d26bf68de5019",
+    "consumed_claim_sha256": "749c9a89955aa0a014e394e1c39709f28c85ec284c9301a683ae107f871f4757"
+  },
+  "retained_total_liability_micro_usd": 14897063,
+  "billing_finality": "unknown; conservative bound, not settled charges",
+  "original_stores_and_claims_unchanged": true,
+  "available_for_new_allowances_micro_usd": 1251890
+}

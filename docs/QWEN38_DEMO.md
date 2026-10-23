@@ -10,7 +10,7 @@ qualification steps, not successful Qwen3.8 serving evidence.
 ## Current live outcome: startup failed, all rented resources destroyed
 
 The [live-attempt receipt](../deploy/container/qwen38-live-attempts.json) records
-instances **57423542**, **57426719** and **57429936**. All reached certificate
+instances **57423542**, **57426719**, **57429936** and **57430645**. All reached certificate
 delivery/control, then failed before exact model discovery or inference. The third attempt reports the closed
 bootstrap category `transport` after the first authenticated heartbeat.
 All have independently confirmed provider absence and retained removal records;
@@ -24,11 +24,12 @@ provider-confirmed-absent attempts, plus all 13,355,168 micro-USD of older holds
 Original journals, consumed claims and the earlier declined proposal remain as
 history; this is not final billing. The 22:05:26 UTC authenticated observation
 found 16,204,104 micro-USD credit, no instances/volumes, and 2,031,043 micro-USD
-available after these liabilities. The next allowance is capped at 1,900,000,
-including download, 1,500 seconds runtime, 240 seconds cleanup and 1,000,000
-contingency; launch must still requalify current account, inventory and prices.
+available after these liabilities. That funded the third attempt with a
+1,900,000 cap. Later attempts and reconciliations below retain additional
+exposure. The current next allowance is 1,200,000 from 1,251,890 observed
+available at 22:23 UTC; launch must still requalify account, inventory and prices.
 
-The [latest qualified image](../deploy/container/qwen38-both-streams-image-qualification.json)
+The [latest qualified image](../deploy/container/qwen38-product-image-qualification.json)
 contains the agent with fixed public NVIDIA probe/loader paths after clearing its
 environment. Driver mounts appear after build-time `ldconfig`; neither personal
 PATH nor arbitrary environment/credentials are inherited. Native stderr is
@@ -330,3 +331,13 @@ no network, credentials, certificate or weights. A deliberately synthetic GPU
 profile selects the bundle in the CPU build container; reaching the expected
 driver-library load failure proves native product checks passed. This synthetic
 profile is never used on a rental and is not CUDA/inference proof.
+
+The corrected image's actual native startup qualification now passes the
+product integrity gate and reaches the expected library-load failure in its
+CPU-only build container. This check is part of Dockerfile.agent-update.
+[Fourth-run reconciliation](../deploy/container/qwen38-authorized-reconciliation-fourth.json)
+retains363585 micro-USD for47seconds plus full64GBtransfer and100000 extra
+contingency; original allowance/journal remains. At22:23:00 UTC credit16148953
+minus14897063 retained liabilities left1251890. The next finite allowance is
+1200000, including1500seconds runtime,240cleanup and400000contingency. Native
+download remains included; fresh preflight must still qualify the actual quote.

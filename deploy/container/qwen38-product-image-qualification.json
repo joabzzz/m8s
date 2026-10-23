@@ -1,0 +1,53 @@
+{
+  "schema": "m8s.qwen38-agent-image-qualification/v1",
+  "observed_at_utc": "2026-10-23T22:24:31.929868+00:00",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:5266fe6e7e824cd4e343b084d74c9b251cdec130d12b72fbb8349f940f8048a6",
+  "base_image": "ghcr.io/joabzzz/m8s-prototype@sha256:be8d0675112d6a1051cb59aee61399abe4bdfaa1ac5a2b261dd1e37028c30dfb",
+  "agent_source_revision": "3d746e843d33e672a5cea82a5d35463288b4f546",
+  "m8s_source_archive_sha256": "c866a2d8e23529bde92893db0ccb96e027a705289c56db9a8417b1d84ae1c794",
+  "unpacked_bytes": 12626584303,
+  "registry_layer_bytes": 4660433553,
+  "prior_receipt_size_correction": "Prior image receipt mislabeled registry layer bytes as unpacked size; budget below uses <13GB unpacked as conservative transfer allowance.",
+  "anonymous_manifest_digest_verified": true,
+  "platform": "linux/amd64",
+  "native_libraries_unchanged": true,
+  "native_source": {
+    "repository": "https://github.com/joabzzz/m8s-mesh-llm",
+    "revision": "962aeb2faabe74f5fa809b8b61eaad2f9b816e18",
+    "archive_sha256": "e03b39b7186c5fe98fe137b3b622fe218976246f5daaf47767cc0bb78b8247f6",
+    "all_file_payloads_match_revision": true,
+    "directory_entries_omitted": true,
+    "llama_upstream_revision": "a37cc46104eb50900d5ab4a9ba02a0abdac039db",
+    "llama_patched_revision": "6085189ee2b42cad0a296bebdab486cae3a58dbe",
+    "qwen35_loader_present": true
+  },
+  "runtime_architecture_normalization": {
+    "schema": "m8s.cuda-architecture-normalization/v2",
+    "nvcc_target": "120a",
+    "probed_compute_capability": "120",
+    "original_manifest_sha256": "1b0bab828f50d89ac868f93900ce695eff5e4636ae261044e226bf33bc0a0667",
+    "normalized_manifest_sha256": "eb2bf9bed038c09f6b6533e7f26c924fc532418d9de25c2f7a0614ebd67b5799",
+    "original_product_sha256": "73b146d4566a0a896d977733ab125809acd951382272546f9f1ffd23a822dac0",
+    "normalized_product_sha256": "1661396bc2aed9ccf3300fd8d74724aa0394f76270db88b9761e15b29fe7c16b",
+    "original_runtime_tree_sha256": "1555fe528e17c7ae53747c0fc16f33a2017e8c351fd24e04d67223fa70ed3eaf",
+    "normalized_runtime_tree_sha256": "aaed498a550788569c1f76f3547e53ca4c691bcde51bbb40f756d752d53b105d",
+    "product_integrity_metadata_updated": true,
+    "host_binary_hash_unchanged": true,
+    "native_library_hashes_unchanged": true,
+    "abi_unchanged": "0.1.71",
+    "release_unchanged": "0.76.1",
+    "authority": "https://developer.nvidia.com/blog/nvidia-blackwell-and-nvidia-cuda-12-9-introduce-family-specific-architecture-features"
+  },
+  "installed_runtime_check_passed": true,
+  "native_product_integrity_gate_passed_in_offline_startup": true,
+  "native_library_load_reached": true,
+  "qualification_gpu_profile": "synthetic CPU-container only, never used on rental",
+  "owner_client": {
+    "revision": "7a101840af79c7509789b9e3152ca6c4605186e8",
+    "platform": "darwin/aarch64",
+    "display_version": "0.78.0",
+    "sha256": "48ca217a81c77a4bc7f40d8729e9324a0d6e32d5b5e3bcc7c64082415757d8cb",
+    "bytes": 101606024
+  },
+  "qualification_scope": "offline packaging; actual Qwen GPU load still required"
+}
