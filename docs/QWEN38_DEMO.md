@@ -46,6 +46,16 @@ checks a potential local qualification route; the proven model-free owner client
 does not load that package. Build a matching native runtime/host pair for model
 qualification rather than changing the manifest's ABI assertions.
 
+The published Qwen image uses the integrated native source at
+`962aeb2faabe74f5fa809b8b61eaad2f9b816e18`: llama.cpp
+`a37cc46104eb50900d5ab4a9ba02a0abdac039db`, patched revision
+`6085189ee2b42cad0a296bebdab486cae3a58dbe`. Its actual loader contains
+`qwen35`. The matching host/runtime pair now builds and passes the offline
+installed-runtime check with release 0.76.1 / ABI 0.1.71. See the
+[image qualification receipt](../deploy/container/qwen38-image-qualification.json)
+for source/archive hashes, immutable image digest and owner-client checksum.
+GPU loading and a routed completion remain separate live gates.
+
 Keep the native ABI, ownership certificate checks and certified owner-client fix.
 Do not replace the embedded runtime with an unrelated llama-server.
 
@@ -53,7 +63,9 @@ Do not replace the embedded runtime with an unrelated llama-server.
 
 Choose Vast on-demand, one SM120 Blackwell GPU with at least 48,000 MiB VRAM,
 64,000 MiB host RAM, 64 GB ephemeral disk and advertised download >=1,000 Mbps.
-Compute must be <=1,500,000 micro-USD/hour; storage and transfer are additional.
+Compute must be <=2,000,000 micro-USD/hour; storage and transfer are additional.
+Both transfer directions must be <=4,000 micro-USD/GB, so low hourly pricing
+cannot select a host whose native-download fees exhaust the bounded run budget.
 The existing SM120 CUDA build recipe requires CUDA driver support >=12.8.
 The 48 GB candidate leaves headroom above the 15.33 GiB weights for native
 buffers and cache. It is a conservative selection, not measured VRAM proof.
@@ -71,7 +83,7 @@ qualification.
 
 ## Preparation and bounded run
 
-1. Build from the stacked source with Rust 1.98. All local Cargo/native/container
+1. Build this branch with Rust 1.98. All local Cargo/native/container
    build commands in the coordinated session go through the shared helper:
 
    ```sh
@@ -81,7 +93,10 @@ qualification.
 
    Preserve the model-free certified Mac owner client from the proven release,
    or build its pinned compatible successor outside the shared companion checkout.
-   Prepare a Linux AMD64 CUDA image **before renting** using
+   Use the published immutable CUDA image from the
+   [packaging receipt](../deploy/container/qwen38-image-qualification.json). It
+   passed offline CLI and installed-runtime checks for release 0.76.1 / ABI
+   0.1.71; this is not a GPU/model load receipt. To rebuild **before renting**, use
    `deploy/container/Dockerfile.flint`, with
    `--build-arg MODEL_CONTRACT=qwen38-model-artifact.json`. The filename is
    historical; the recipe packages an SM120 runtime without weights. Use reviewed

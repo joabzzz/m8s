@@ -63,12 +63,14 @@ impl DemoModel {
             Self::Qwen => Default::default(),
             Self::Qwen38 => m8s_provider::vast::readonly::preflight::Requirements {
                 max_compute_hourly: 2_000_000,
+                max_transfer_micro_usd_per_gb: 4000,
                 min_gpu_memory_mib: 48000,
                 min_download_mbps: 1000,
                 blackwell_sm120: true,
             },
             Self::Flint => m8s_provider::vast::readonly::preflight::Requirements {
                 max_compute_hourly: 3_000_000,
+                max_transfer_micro_usd_per_gb: 100_000,
                 min_gpu_memory_mib: 48000,
                 min_download_mbps: 4000,
                 blackwell_sm120: true,
@@ -110,6 +112,7 @@ mod tests {
         let requirements = model.requirements();
         assert_eq!(requirements.min_gpu_memory_mib, 48000);
         assert_eq!(requirements.max_compute_hourly, 2_000_000);
+        assert_eq!(requirements.max_transfer_micro_usd_per_gb, 4000);
         assert!(requirements.min_download_mbps >= 1000);
         assert!(requirements.blackwell_sm120);
         assert_eq!(

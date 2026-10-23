@@ -27,6 +27,7 @@ pub struct GpuObservation {
 #[derive(Clone, Copy)]
 pub struct Requirements {
     pub max_compute_hourly: u64,
+    pub max_transfer_micro_usd_per_gb: u64,
     pub min_gpu_memory_mib: u64,
     pub min_download_mbps: u64,
     pub blackwell_sm120: bool,
@@ -35,6 +36,7 @@ impl Default for Requirements {
     fn default() -> Self {
         Self {
             max_compute_hourly: 300_000,
+            max_transfer_micro_usd_per_gb: 100_000,
             min_gpu_memory_mib: 0,
             min_download_mbps: 0,
             blackwell_sm120: false,
@@ -102,6 +104,7 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
             || !(1..=128).contains(&disk_gb)
             || requirements.max_compute_hourly == 0
             || requirements.max_compute_hourly > 3_000_000
+            || requirements.max_transfer_micro_usd_per_gb > 100_000
             || requirements.min_gpu_memory_mib > 192 * 1024
             || requirements.min_download_mbps > 100_000
         {
@@ -148,6 +151,10 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
             return Err(Error::Unavailable);
         }
         let mut query = json!({"allocated_storage":disk_gb,"limit":offer_read_limit(selected_offer),"type":"on-demand","verified":{"eq":true},"rentable":{"eq":true},"rented":{"eq":false},"cpu_cores_effective":{"gte":4},"cpu_ram":{"gte":8192},"disk_space":{"gte":disk_gb},"direct_port_count":{"gte":2},"dph_total":{"lte": requirements.max_compute_hourly as f64 / 1_000_000.0},"order":[["dph_total","asc"]]});
+        for direction in ["inet_up_cost", "inet_down_cost"] {
+            query[direction] =
+                json!({"lte": requirements.max_transfer_micro_usd_per_gb as f64 / 1_000_000.0});
+        }
         if requirements.min_gpu_memory_mib > 0 {
             query["gpu_ram"] = json!({"gte": requirements.min_gpu_memory_mib});
             query["num_gpus"] = json!({"eq": 1});
@@ -316,7 +323,7 @@ fn qualify(
     if compute == 0
         || compute > requirements.max_compute_hourly
         || storage > 32_000_000
-        || transfer > 100_000
+        || transfer > requirements.max_transfer_micro_usd_per_gb
         || get("rentable")?.as_bool() != Some(true)
         || get("rented")?.as_bool() != Some(false)
         || row.get("verification").and_then(Value::as_str) != Some("verified")
@@ -409,6 +416,7 @@ mod tests {
     fn gpu_offer_is_rechecked_and_monthly_storage_rounds_up_to_hourly() {
         let requirements = Requirements {
             max_compute_hourly: 3_000_000,
+            max_transfer_micro_usd_per_gb: 4000,
             min_gpu_memory_mib: 48000,
             min_download_mbps: 4000,
             blackwell_sm120: true,
@@ -445,6 +453,8 @@ mod tests {
             ("inet_down", json!(3999)),
             ("geolocation", json!("China, CN")),
             ("dph_total", json!("3.000001")),
+            ("inet_up_cost", json!("0.004000001")),
+            ("inet_down_cost", json!("0.004000001")),
             ("rented", json!(true)),
         ] {
             let mut invalid = row.clone();
