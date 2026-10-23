@@ -1,0 +1,61 @@
+{
+  "schema": "m8s.vast-demo/v1",
+  "directory": "/absolute/private/NEW-ATTEMPT",
+  "mesh": "/absolute/mesh-llm",
+  "credential_file": "/absolute/selected.env",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9",
+  "offer_id": null,
+  "expected_account_id": 0,
+  "disk_gb": 10,
+  "owner": "REPLACE-OWNER",
+  "node_uid": "REPLACE-NODE",
+  "tier": "smoke",
+  "policy": {
+    "owner": "REPLACE-OWNER",
+    "approval_id": "REPLACE-CURRENT-AUTHORIZATION",
+    "baseline": {
+      "prior_lifetime_spent": 0,
+      "prior_current_period_spent": 0,
+      "initial_period": {
+        "id": "REPLACE-CALENDAR-MONTH",
+        "starts_at": 0,
+        "ends_at": 0
+      },
+      "external_liability": "Unknown",
+      "observed_at": 0,
+      "status": "Unknown",
+      "provenance": "requires-current-accounting-reconciliation"
+    },
+    "valid_from": 0,
+    "valid_until": 0,
+    "trial_all_in": 0,
+    "monthly_all_in": 0,
+    "total_hourly": 0,
+    "instance_hourly": 0,
+    "max_instances": 1,
+    "max_runtime_seconds": 1800,
+    "minimum_cleanup_seconds": 240,
+    "minimum_contingency": 1000000
+  },
+  "request": {
+    "owner": "REPLACE-OWNER",
+    "run_id": "REPLACE-UNIQUE-RUN",
+    "request_id": "REPLACE-UNIQUE-REQUEST",
+    "node_uid": "REPLACE-NODE",
+    "quote": {
+      "provenance": "requires-fresh-live-preflight",
+      "observed_at": 0,
+      "valid_until": 0,
+      "status": "Unknown",
+      "compute_unit": "Unknown",
+      "storage_unit": "Unknown",
+      "totals_unit": "Unknown",
+      "compute_hourly": 0,
+      "storage_hourly": 0,
+      "transfer_total": 0,
+      "runtime_seconds": 900,
+      "cleanup_seconds": 240,
+      "contingency": 1000000
+    }
+  }
+}

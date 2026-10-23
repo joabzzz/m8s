@@ -54,6 +54,13 @@ resources or relax that rule to make a demo proceed.
 
 ## 3. Prepare a new private plan
 
+Start from [the inert plan template](../assets/demo-plan.template.json), copied
+outside the repo. Its zero caps/dates/account ID and unknown external liability
+are deliberate refusals, not suggested values. Replace every placeholder from
+current authorization and reconciled evidence. The zero prior-spend fields must
+not overwrite existing spend or retained liabilities. The pinned image is the
+historically proven artifact; confirm it remains the intended artifact.
+
 The exact versioned schema and validation live in
 `crates/m8s-cli/src/prototype/launch.rs`; budget types live under
 `crates/m8sd/src/budget.rs`. Read them rather than inventing fields. A plan contains:
