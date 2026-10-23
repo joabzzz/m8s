@@ -399,5 +399,15 @@ fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags()
     assert!(args.contains(&"--trust-owner"));
     assert!(args.windows(2).any(|a| a == ["--ctx-size", "4096"]));
     assert!(args.windows(2).any(|a| a == ["--parallel", "1"]));
+    assert!(args.contains(&"--no-draft"));
+    let env: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+    assert_eq!(
+        env[std::ffi::OsStr::new("MESH_HF_RETRY_MAX_ATTEMPTS")],
+        Some(std::ffi::OsStr::new("0"))
+    );
+    assert_eq!(
+        env[std::ffi::OsStr::new("HF_XET_CLIENT_RETRY_MAX_ATTEMPTS")],
+        Some(std::ffi::OsStr::new("0"))
+    );
     assert!(!args.contains(&"--gguf"));
 }

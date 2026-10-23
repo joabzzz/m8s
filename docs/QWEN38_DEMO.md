@@ -1,12 +1,11 @@
 # Qwen3.8 27B demo preparation
 
-Issue [#6](https://github.com/joabzzz/m8s/issues/6) remains open. This is a
-repeatable preparation procedure for a candidate live run, **not a successful
-Qwen3.8 demo receipt**. The normal `m8sd` controller still uses development
-providers. `m8s up`, `scale`, `status`, `logs`, and `down` do not currently start
-this paid model. The explicit prototype lifecycle below does real provisioning,
-certificate verification, inference and destruction when its prerequisites pass;
-it does not satisfy the requested daemon-command acceptance on its own.
+Issue [#6](https://github.com/joabzzz/m8s/issues/6) remains open until the live
+receipts below exist. The default `m8sd` controller remains development-only.
+An explicit `--vast-demo` mode now connects the normal control commands to the
+real bounded prototype coordinator: one admitted attempt, one replica, no
+replacement or automatic CREATE replay. Source tests and image builds are
+qualification steps, not successful Qwen3.8 serving evidence.
 
 ## Exact model and runtime
 
@@ -61,7 +60,8 @@ buffers and cache. It is a conservative selection, not measured VRAM proof.
 [Unsloth's sizing guide](https://unsloth.ai/docs/models/qwen3.8) describes smaller
 4-bit configurations; this demo does not claim those configurations were tested.
 
-Native-download launches explicitly use `--ctx-size 4096 --parallel 1`. Do not
+Native-download launches explicitly use `--ctx-size 4096 --parallel 1 --no-draft`.
+Automatic draft-model detection is disabled so it cannot add another weight download. Do not
 claim a 262K context demo. Neither multiple GPUs nor multiple nodes are selected;
 split serving is unqualified. Text only: no vision projector is downloaded, no
 image request is sent. The completion request disables thinking through
@@ -75,7 +75,7 @@ qualification.
    build commands in the coordinated session go through the shared helper:
 
    ```sh
-   python3 /Users/sandro/Development/m8s/m8s-session-control/with-build-lock.py cargo build --locked -j 2 -p m8s-cli --features prototype-vast
+   python3 /Users/sandro/Development/m8s/m8s-session-control/with-build-lock.py cargo build --locked -j 2 -p m8s-cli -p m8sd --features m8s-cli/prototype-vast,m8sd/prototype-vast
    python3 /Users/sandro/Development/m8s/m8s-session-control/with-build-lock.py cargo build --locked -j 2 -p m8s-provider --features vast-node
    ```
 
@@ -87,9 +87,10 @@ qualification.
    historical; the recipe packages an SM120 runtime without weights. Use reviewed
    native and m8s source archives and record their hashes and the resulting image
    digest. Put only explicit public source inputs in the build context, never
-   `.env`, run directories, owner keys or credentials. Qualify the packaged native
-   runtime and exact GGUF locally/on already authorized hardware first. No
-   qualified Qwen3.8 CUDA image is recorded yet; do not reuse the smoke image.
+   `.env`, run directories, owner keys or credentials. Verify the packaged
+   host/runtime ABI and required-certificate option before renting. The exact
+   GPU model load is part of the bounded paid qualification; compilation alone
+   does not qualify it. Do not reuse the smoke image or bypass ABI assertions.
 
 2. Read only the operator-selected credential file. For this session the user
    clarified `VAST_API_KEY` in `/Users/sandro/Development/m8s/.env`; it is never
@@ -123,28 +124,56 @@ qualification.
    download happens **during billed rental time**, along with image pull,
    provisioning and loading. At 1,000 Mbps the weights alone have an ideal lower
    bound of about 132 seconds; no throughput guarantee follows from that rate.
-   The prototype reserves a disk-sized transfer allowance; disk capacity alone
-   does not bound cumulative traffic, upstream retries or image-pull charges.
-   Establish an authoritative worst-case transfer bound (or enforce one) before
-   admitting a paid run. Include storage for the entire runtime plus cleanup,
+   The Qwen profile reserves 256 GB of transfer independently of its 64 GB
+   disk. Its native Hub and Xet request retry counts are fixed to zero, using
+   the pinned clients' public settings, to prevent retry amplification. Include
+   the immutable image's download size, weights, metadata and transfer overhead
+   in that reserve; fail admission if it cannot cover the selected flow.
+   Search Offers defines `storage_cost` as USD/GB/month. The adapter converts
+   it to micro-USD/hour using a conservative 28-day month and upward rounding;
+   `allocated_storage` binds the requested disk size in the price search.
+   Include storage for the entire runtime plus cleanup,
    independent cleanup, contingency and unsettled previous liabilities. Reserve
    at least 240 seconds for cleanup within the 1,800-second attempt ceiling.
    Refuse if the available credit cannot cover all retained and new liability.
 
-4. After qualification and budget admission, run a fresh plan exactly once:
+4. For daemon control, add `"control_directory": "/absolute/private/NEW-CONTROLLER"`
+   to the private plan. It must match `--state-dir`; the attempt `directory`
+   remains a separate fresh directory. Start the explicitly selected binaries:
 
    ```sh
-   target/debug/m8s prototype launch --plan /absolute/private/new-qwen38-plan.json
+   target/debug/m8sd --vast-demo --state-dir /absolute/private/NEW-CONTROLLER --plan /absolute/private/new-qwen38-plan.json --m8s /absolute/target/debug/m8s
+   # Another terminal, same private socket throughout:
+   target/debug/m8s --socket /absolute/private/NEW-CONTROLLER/control.sock up qwen38-27b --json
+   target/debug/m8s --socket /absolute/private/NEW-CONTROLLER/control.sock scale qwen38-27b 1 --json
+   target/debug/m8s --socket /absolute/private/NEW-CONTROLLER/control.sock status --json
+   target/debug/m8s --socket /absolute/private/NEW-CONTROLLER/control.sock logs --json
+   # After logs show completion-held-until-down-or-deadline:
+   target/debug/m8s --socket /absolute/private/NEW-CONTROLLER/control.sock down --json
    ```
 
-   Expected stage output includes cleanup armed **before CREATE**, exact-resource
-   binding, listener progress, certificate verification, discovery of the exact
-   served hash, owner-routed completion, and confirmed removal. A listener
-   acknowledgment or `/v1/models` entry alone is not Ready. The final receipt
-   must contain a sensible actual answer about mesh networks; do not replace it
-   with canned expected text. The independent watchdog must survive owner loss.
-   The node has its existing heartbeat/lifetime limits. Neither is a substitute
-   for verified provider destruction. Do not retry an uncertain CREATE.
+   Startup freezes the validated plan/executable fingerprint without opening
+   credentials or contacting Vast. `up` consumes a durable single-use controller
+   claim before starting the actual prototype CLI. The CLI owns the authoritative
+   intent/budget Store and arms independent cleanup before provider CREATE.
+   Scale 1 is idempotent while active; scale 0 requests down; larger counts
+   refuse. Restart permits stored observation and down, never launch replay.
+
+   Status reports `mode=vast-prototype`; nodes come from the real attempt Store,
+   not a mock adapter. Stored status is not fresh provider absence and no Ready
+   phase is invented. Logs retain only an exact list of static stage labels.
+   Wait for `completion-held-until-down-or-deadline`, which follows verified
+   certificate delivery, exact model discovery and a real routed completion.
+   The answer remains private until verified removal. Down before completion
+   cancels the work and requests cleanup. Down after completion releases the
+   result to the existing exact-resource destruction/finalization path. Down's
+   immediate acknowledgment is not absence: poll logs and verify the receipt.
+
+   The original admitted deadline, node DMS and detached watchdog still apply.
+   Omitting `control_directory` preserves the one-shot prototype's automatic
+   cleanup. Neither mode retries an uncertain CREATE or extends an approval.
+   A sensible actual answer about mesh networks must appear in the final
+   `demo-evidence.json`; never substitute canned expected text.
 
 5. Preserve private attempt state, sanitized completion, preflight, watchdog,
    certificate and cleanup receipts. Publish only reviewed projections. Check
@@ -164,8 +193,9 @@ qualification.
 ## Remaining issue acceptance
 
 - Qualify the exact model and packaged runtime, then record a real routed answer.
-- Connect the production daemon lifecycle commands to the admitted live flow;
-  the prototype one-shot is not `m8sd` + `up`/`scale`/`logs`/`down` acceptance.
+- Exercise the explicit daemon mode's `up`/`scale`/`status`/`logs`/`down` against
+  the live model. It remains a one-attempt development integration, not a
+  production fleet scheduler.
 - Admit the finite budget after all retained liabilities and native-download
   costs, arm independent cleanup, execute once and verify teardown.
 

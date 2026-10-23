@@ -50,6 +50,14 @@ impl DemoModel {
     pub(super) fn accepts_disk(self, disk_gb: u32) -> bool {
         !matches!(self, Self::Qwen38) || disk_gb >= 64
     }
+    pub(super) fn transfer_reserve_gb(self, disk_gb: u32) -> u64 {
+        match self {
+            // Cover native model/cache traffic, metadata, image pull and
+            // transfer framing separately from the disk allocation.
+            Self::Qwen38 => 256,
+            Self::Qwen | Self::Flint => u64::from(disk_gb),
+        }
+    }
     pub(super) fn requirements(self) -> m8s_provider::vast::readonly::preflight::Requirements {
         match self {
             Self::Qwen => Default::default(),
@@ -98,6 +106,7 @@ mod tests {
         assert!(!model.accepts_disk(10));
         assert!(!model.accepts_disk(63));
         assert!(model.accepts_disk(64));
+        assert_eq!(model.transfer_reserve_gb(64), 256);
         let requirements = model.requirements();
         assert_eq!(requirements.min_gpu_memory_mib, 48000);
         assert!(requirements.min_download_mbps >= 1000);

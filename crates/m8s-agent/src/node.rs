@@ -404,7 +404,12 @@ impl NodeMaterial {
         // Native downloads use a small, explicit demo working set rather than
         // auto-scaling to the advertised model context or allocating four lanes.
         if self.launch.gguf.is_none() {
-            command.args(["--ctx-size", "4096", "--parallel", "1"]);
+            command
+                .args(["--ctx-size", "4096", "--parallel", "1", "--no-draft"])
+                // Fixed public transfer policy for the pinned native Hub/Xet
+                // clients: one attempt, no retry amplification of model bytes.
+                .env("MESH_HF_RETRY_MAX_ATTEMPTS", "0")
+                .env("HF_XET_CLIENT_RETRY_MAX_ATTEMPTS", "0");
         }
         Ok(command)
     }

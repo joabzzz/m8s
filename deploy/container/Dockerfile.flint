@@ -58,8 +58,10 @@ ARG M8S_SOURCE_SHA256
 RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
 RUN CARGO_NET_OFFLINE=false cargo fetch --locked
-RUN --network=none cargo build --release --locked --offline -j2 -p m8s-cli -p m8s-provider \
-    --features m8s-provider/vast-node,m8s-cli/prototype-container
+RUN --network=none \
+    --mount=type=cache,id=m8s-vast-agent-target-${TARGETARCH},target=/src/m8s/target,sharing=locked \
+    cargo build --release --locked --offline -j2 -p m8s-provider --features vast-node \
+    && install -D target/release/m8s-agent /out/m8s-agent
 
 FROM node@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -69,8 +71,7 @@ COPY --from=cuda-tools /usr/local/cuda-12.8/targets/x86_64-linux/lib/ /usr/local
 RUN printf '%s\n' /usr/local/cuda/lib64 /usr/local/nvidia/lib /usr/local/nvidia/lib64 > /etc/ld.so.conf.d/m8s-cuda.conf && ldconfig
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64 NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=compute,utility
 COPY --from=build /out/product/mesh-bundle/ /opt/mesh/
-COPY --from=build --chmod=0555 /src/m8s/target/release/m8s /usr/local/bin/m8s
-COPY --from=build --chmod=0555 /src/m8s/target/release/m8s-agent /usr/local/bin/m8s-agent
+COPY --from=build --chmod=0555 /out/m8s-agent /usr/local/bin/m8s-agent
 COPY artifacts.py /usr/local/lib/m8s/artifacts.py
 ARG MODEL_CONTRACT=model-artifact.json
 COPY ${MODEL_CONTRACT} /etc/m8s/model-artifact.json

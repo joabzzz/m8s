@@ -147,7 +147,7 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         {
             return Err(Error::Unavailable);
         }
-        let mut query = json!({"limit":offer_read_limit(selected_offer),"type":"on-demand","verified":{"eq":true},"rentable":{"eq":true},"rented":{"eq":false},"cpu_cores_effective":{"gte":4},"cpu_ram":{"gte":8192},"disk_space":{"gte":disk_gb},"direct_port_count":{"gte":2},"dph_total":{"lte": requirements.max_compute_hourly as f64 / 1_000_000.0},"order":[["dph_total","asc"]]});
+        let mut query = json!({"allocated_storage":disk_gb,"limit":offer_read_limit(selected_offer),"type":"on-demand","verified":{"eq":true},"rentable":{"eq":true},"rented":{"eq":false},"cpu_cores_effective":{"gte":4},"cpu_ram":{"gte":8192},"disk_space":{"gte":disk_gb},"direct_port_count":{"gte":2},"dph_total":{"lte": requirements.max_compute_hourly as f64 / 1_000_000.0},"order":[["dph_total","asc"]]});
         if requirements.min_gpu_memory_mib > 0 {
             query["gpu_ram"] = json!({"gte": requirements.min_gpu_memory_mib});
             query["num_gpus"] = json!({"eq": 1});
@@ -303,12 +303,15 @@ fn qualify(
         .and_then(NonZeroU64::new)
         .ok_or(Error::Unavailable)?;
     let compute = micros(get("dph_total")?)?;
-    // The CLI describes storage_cost per GB/month while billing docs also
-    // describe hourly storage. Reserve the larger hourly interpretation; never
-    // divide an ambiguous provider rate and understate the all-in liability.
-    let storage = micros(get("storage_cost")?)?
+    // Search Offers explicitly defines storage_cost as USD/GB/month:
+    // https://docs.vast.ai/api-reference/search/search-offers
+    // Normalize with the shortest calendar month (28 days), rounding UP.
+    // dph_total may already include disk; adding this reserve double-counts
+    // that component conservatively rather than silently excluding storage.
+    let monthly_storage = micros(get("storage_cost")?)?
         .checked_mul(disk.into())
         .ok_or(Error::Unavailable)?;
+    let storage = monthly_storage.div_ceil(28 * 24);
     let transfer = micros(get("inet_up_cost")?)?.max(micros(get("inet_down_cost")?)?);
     if compute == 0
         || compute > requirements.max_compute_hourly
@@ -403,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn gpu_offer_is_rechecked_locally_and_storage_reservation_stays_conservative() {
+    fn gpu_offer_is_rechecked_and_monthly_storage_rounds_up_to_hourly() {
         let requirements = Requirements {
             max_compute_hourly: 3_000_000,
             min_gpu_memory_mib: 48000,
@@ -416,7 +419,17 @@ mod tests {
             "cpu_ram":64000,"inet_down":12000,"geolocation":"Virginia, US",
             "gpu_name":"RTX PRO 5000","cuda_max_good":13.0});
         let (_, compute, storage, transfer) = qualify(&row, 80, requirements).unwrap();
-        assert_eq!((compute, storage, transfer), (740000, 16000000, 4000));
+        assert_eq!((compute, storage, transfer), (740000, 23810, 4000));
+        // A sub-micro hourly fraction must still reserve one whole micro-USD.
+        let mut fractional = row.clone();
+        fractional["storage_cost"] = json!("0.000001");
+        assert_eq!(qualify(&fractional, 1, requirements).unwrap().2, 1);
+        fractional["storage_cost"] = json!("0");
+        assert_eq!(qualify(&fractional, 1, requirements).unwrap().2, 0);
+        for invalid in [json!(-1), json!(true), Value::Null] {
+            fractional["storage_cost"] = invalid;
+            assert!(qualify(&fractional, 1, requirements).is_err());
+        }
         assert!(qualify(&row, 80, Requirements::default()).is_err());
         for location in ["Netherlands, NL", "Czechia, CZ"] {
             let mut fast_host = row.clone();

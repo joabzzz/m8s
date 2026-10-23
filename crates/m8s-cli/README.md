@@ -881,9 +881,10 @@ The Flint profile requires one Blackwell RTX PRO 5000/6000 GPU in the US,
 Netherlands or Czechia with at least
 48,000 MiB VRAM, 64,000 MiB host RAM, CUDA driver support for 12.8 or newer, and
 4,000 Mbps advertised download speed. Capacity and price are rechecked locally.
-Disk allocation is bounded at 128 GB and compute at $3/hour. Ambiguous storage
-rates retain the conservative hourly interpretation and transfer reserves cover
-the allocated disk size. The additional allowance above retained historical
+Disk allocation is bounded at 128 GB and compute at $3/hour. Search Offers
+storage rates are USD/GB/month; preflight normalizes them with an upward-rounded
+28-day month. The search binds `allocated_storage` to the requested disk size.
+The Flint transfer reserve covers the allocated disk size. The additional allowance above retained historical
 claims is limited to $16 and must fit the freshly observed account credit.
 The combined work and cleanup window remains at most 30 minutes.
 
@@ -985,3 +986,33 @@ tests do not qualify a CUDA image, prove VRAM fit or create an admitted budget.
 See the [Qwen3.8 runbook](../../docs/QWEN38_DEMO.md) for provenance, the inert
 plan, current liabilities, qualification/teardown requirements and outstanding
 normal-daemon command integration. Issue #6 remains open until actual acceptance.
+
+
+### One-attempt Vast daemon control (explicit prototype-vast)
+
+```sh
+m8sd --vast-demo --state-dir ABS_PRIVATE_CONTROLLER --plan ABS_PLAN --m8s ABS_CLI
+m8s --socket ABS_PRIVATE_CONTROLLER/control.sock up qwen38-27b --json
+m8s --socket ABS_PRIVATE_CONTROLLER/control.sock scale qwen38-27b 1 --json
+m8s --socket ABS_PRIVATE_CONTROLLER/control.sock status --json
+m8s --socket ABS_PRIVATE_CONTROLLER/control.sock logs --json
+m8s --socket ABS_PRIVATE_CONTROLLER/control.sock down --json
+```
+
+Build both binaries with their `prototype-vast` features. The plan's optional
+`control_directory` must equal the daemon state directory. Startup validates and
+freezes the plan/CLI fingerprint without provider calls; up claims this single
+attempt durably before invoking the actual launch coordinator. It uses the
+coordinator's one authoritative Store and independent cleanup, not the mock
+adapter. Scale 1 is idempotent while its launcher is active; scale 0 requests
+down; more than one replica refuses. A restart cannot replay a consumed claim.
+
+This mode holds a successful canary until down or the original deadline, keeping
+native heartbeats active. A down before completion cancels work. Down is an
+asynchronous request, not absence; wait for `exact-instance-absence-confirmed`
+and verify `cleanup-evidence.json` and the final `demo-evidence.json`. Status
+is a retained real journal view and never fresh provider absence or invented
+Ready. Logs retain only exact static labels, not arbitrary child output or
+completion text. The original watchdog deadline cannot be renewed. Default
+mock behavior is unchanged; fleet replacement, live restart adoption and
+production readiness remain outside this one-attempt mode.
