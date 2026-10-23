@@ -15,19 +15,15 @@ ENV CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2
 RUN cargo install --locked --version 1.40.0 just \
     && cargo install --locked --version 0.16.0 sccache
 COPY artifacts.py /checks/artifacts.py
-COPY mesh-source.tar m8s-source.tar /inputs/
+COPY mesh-source.tar /inputs/
 ARG MESH_SOURCE_SHA256
-ARG M8S_SOURCE_SHA256
 RUN --network=none mkdir -p /src \
-    && python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh \
-    && python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
+    && python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh
 WORKDIR /src/mesh
 # Preparation follows the native owner's pinned patch queue; no substitute ABI.
 RUN cargo fetch --locked \
     && pnpm --dir mesh/crates/mesh-llm-ui install --frozen-lockfile \
     && scripts/prepare-llama.sh pinned
-WORKDIR /src/m8s
-RUN cargo fetch --locked
 RUN apt-get update && apt-get install -y --no-install-recommends patchelf \
     && rm -rf /var/lib/apt/lists/*
 ENV CARGO_NET_OFFLINE=true
@@ -40,7 +36,12 @@ RUN --network=none \
     just bundle /out/mesh-bundle.tar.gz
 RUN --network=none mkdir /out/product && tar -xzf /out/mesh-bundle.tar.gz -C /out/product \
     && python3 /checks/artifacts.py check-native /out/product/mesh-bundle/mesh-llm
+# Keep m8s changes after native packaging so they cannot invalidate that build.
+COPY m8s-source.tar /inputs/
+ARG M8S_SOURCE_SHA256
+RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
+RUN CARGO_NET_OFFLINE=false cargo fetch --locked
 RUN --network=none cargo build --release --locked --offline -j2 -p m8s-cli -p m8s-agent \
     --features m8s-agent/secure-runtime,m8s-cli/prototype-container
 
