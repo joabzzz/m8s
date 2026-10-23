@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[cfg(all(unix, feature = "launch-https"))]
 pub mod provision;
+pub mod provision_protocol;
 
 const MAX_BODY: usize = 1_048_576;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

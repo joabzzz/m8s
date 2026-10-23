@@ -464,6 +464,8 @@ async fn bootstrap(
     .await
     .map_err(|_| "prototype-ssh-provision-failed")?;
     eprintln!("prototype stage: ssh-provision-sent");
+    provision.wait_listening().await?;
+    eprintln!("prototype stage: provisioned-control-listener-ready");
     let pin =
         Mp001TrustPin::new(owner, *signer_key.verifying_key().as_bytes()).map_err(|_| ERROR)?;
     let mut signer = Mp001NodeSigner::new(signer_key, &pin, 1800, 5).map_err(|_| ERROR)?;

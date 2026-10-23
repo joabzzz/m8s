@@ -17,7 +17,7 @@ use m8s_secrets::SecretValue;
 use serde::Deserialize;
 use std::{
     fs::{self, OpenOptions},
-    io::Read,
+    io::{Read, Write},
     net::SocketAddr,
     num::NonZeroU64,
     os::unix::fs::{MetadataExt, OpenOptionsExt},
@@ -179,6 +179,12 @@ fn clock() -> i64 {
         .unwrap_or(i64::MAX)
 }
 
+fn announce(stage: &'static [u8]) -> Result<()> {
+    let mut output = std::io::stdout().lock();
+    output.write_all(stage).map_err(|_| REFUSED)?;
+    output.flush().map_err(|_| REFUSED)
+}
+
 pub(super) fn run() -> Result<()> {
     let paths: Vec<_> = std::env::args_os().skip(2).collect();
     if paths.len() != 3 {
@@ -188,6 +194,7 @@ pub(super) fn run() -> Result<()> {
         serde_json::from_slice(private_input(Path::new(&paths[0]), 65536)?.expose())
             .map_err(|_| REFUSED)?;
     config.validate()?;
+    announce(m8s_provider_vast::provision_protocol::CONFIG)?;
     let supplied_id = std::env::var("CONTAINER_ID").map_err(|_| REFUSED)?;
     if supplied_id != config.instance_id.to_string() {
         return Err(REFUSED);
@@ -207,6 +214,7 @@ pub(super) fn run() -> Result<()> {
         .map_err(|_| REFUSED)?;
     let verifier = Mp001CertificateVerifier::new(pin, std::mem::take(&mut config.trust))
         .map_err(|_| REFUSED)?;
+    announce(m8s_provider_vast::provision_protocol::IDENTITY)?;
     // Only the provider-injected per-instance credential. Never VAST_API_KEY.
     let credential = SecretValue::new(
         std::env::var("CONTAINER_API_KEY")
@@ -222,6 +230,7 @@ pub(super) fn run() -> Result<()> {
     if provider.confirm_absent().map_err(|_| REFUSED)?.is_some() {
         return Err(REFUSED);
     }
+    announce(m8s_provider_vast::provision_protocol::PROVIDER)?;
     let mut driver = WorkerTeardown::spawn(move |effect| match effect {
         Effect::Drain => Outcome::Success, // Supervisor separately reaps the child.
         Effect::Wipe => Outcome::Failure, // Ephemeral filesystem removal needs provider destruction.
@@ -299,6 +308,7 @@ fn run_supervised(
             .await
             .map_err(|_| REFUSED)?
             .map_err(|_| REFUSED)?;
+        announce(m8s_provider_vast::provision_protocol::LISTENING)?;
         let owner_address =
             iroh::EndpointAddr::new(iroh::PublicKey::from_bytes(&owner.0).map_err(|_| REFUSED)?)
                 .with_ip_addr(config.owner_address);

@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     process::{Child, Command},
 };
 
@@ -177,6 +177,17 @@ impl ProvisioningSession {
         .map_err(|_| Error::Unavailable)??;
         Ok(session)
     }
+    /// Wait for the node to validate its inputs/instance credential and bind
+    /// its control endpoint before dialing it. No plaintext bootstrap data is
+    /// returned here: this is only a fixed progress protocol inside pinned SSH.
+    pub async fn wait_listening(&mut self) -> std::result::Result<(), &'static str> {
+        let output = self
+            .child
+            .stdout
+            .take()
+            .ok_or("prototype-provision-output-unavailable")?;
+        wait_for_stages(output).await
+    }
     pub async fn exited(&mut self) -> Result<()> {
         self.child
             .wait()
@@ -190,6 +201,23 @@ impl ProvisioningSession {
             .map_err(|_| Error::Unavailable)?
             .map_err(|_| Error::Unavailable)
     }
+}
+
+async fn wait_for_stages(
+    mut output: impl tokio::io::AsyncRead + Unpin,
+) -> std::result::Result<(), &'static str> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    for &(expected, failure) in crate::provision_protocol::STAGES {
+        let mut bytes = vec![0; expected.len()];
+        tokio::time::timeout_at(deadline, output.read_exact(&mut bytes))
+            .await
+            .map_err(|_| failure)?
+            .map_err(|_| failure)?;
+        if bytes != expected {
+            return Err(failure);
+        }
+    }
+    Ok(())
 }
 
 fn ssh_command(
@@ -247,7 +275,7 @@ fn ssh_command(
         .arg(format!("m8s@{}", address.ip()))
         .arg("provision-v1")
         .stdin(Stdio::piped())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
     command
@@ -293,3 +321,31 @@ fn private_file(file: &File) -> Result<()> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::*;
+    #[test]
+    fn exact_ordered_progress_required_without_exposing_received_bytes() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let all: Vec<u8> = crate::provision_protocol::STAGES
+                .iter()
+                .flat_map(|(b, _)| b.iter().copied())
+                .collect();
+            assert!(wait_for_stages(all.as_slice()).await.is_ok());
+            let stages = crate::provision_protocol::STAGES;
+            let mut prefix = Vec::new();
+            for &(record, failure) in stages {
+                assert_eq!(wait_for_stages(prefix.as_slice()).await, Err(failure));
+                let mut wrong = prefix.clone();
+                wrong.extend_from_slice(&vec![b'X'; record.len()]);
+                assert_eq!(wait_for_stages(wrong.as_slice()).await, Err(failure));
+                prefix.extend_from_slice(record);
+            }
+        });
+    }
+}

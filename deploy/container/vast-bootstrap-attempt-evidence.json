@@ -1,0 +1,50 @@
+{
+  "schema": "m8s.vast-bootstrap-attempt/v1",
+  "instance_id": 57327385,
+  "source_commit": "5313301",
+  "certificate_delivered": false,
+  "inference_completed": false,
+  "pinned_ssh_provision_frame_sent": true,
+  "failure_category": "secure transport failed or timed out",
+  "removal": {
+    "creator_account_id": 32349,
+    "image": "ghcr.io/joabzzz/m8s-prototype@sha256:660feef6604150c1d6586130ae502ea2778e5528eab68c6a898c3e7c889d9b73",
+    "instance_id": 57327385,
+    "observed_at": 1792733736,
+    "provider_confirmed_absent": true,
+    "schema": "m8s.vast-removal/v1"
+  },
+  "worker_events": [
+    {
+      "event": "armed",
+      "instance_id": null,
+      "observed_at": 1792733694,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "exact_resource_bound",
+      "instance_id": 57327385,
+      "observed_at": 1792733698,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "destroy_acknowledged",
+      "instance_id": 57327385,
+      "observed_at": 1792733734,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "provider_confirmed_absent",
+      "instance_id": 57327385,
+      "observed_at": 1792733737,
+      "schema": "m8s.vast-watchdog-event/v1"
+    }
+  ],
+  "reservation_micro_usd": 1716037,
+  "reservation_state": "BillingUnknown",
+  "total_retained_micro_usd": 8418348,
+  "authorized_total_micro_usd": 16000000,
+  "unallocated_micro_usd": 7581652,
+  "private_run_material_removed": true,
+  "next_change": "Wait for fixed, bounded node-listener acknowledgment on pinned SSH before TLS bootstrap; report the last validated provisioning stage without remote output."
+}
