@@ -42,11 +42,17 @@ fn recorded(conn: &Connection, owner: &str) -> Result<Option<Domain>> {
 fn managed_history(conn: &Connection) -> Result<bool> {
     Ok(conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM create_operation) OR EXISTS(SELECT 1 FROM budget_account)
-        OR EXISTS(SELECT 1 FROM budget_reservation) OR EXISTS(SELECT 1 FROM vast_launch)
+        OR EXISTS(SELECT 1 FROM budget_reservation) OR EXISTS(SELECT 1 FROM budget_period)
+        OR EXISTS(SELECT 1 FROM vast_launch)
         OR EXISTS(SELECT 1 FROM vast_removal)",
         [],
         |r| r.get(0),
     )?)
+}
+
+/// A missing account row does not erase prior domain/accounting history.
+pub(crate) fn managed_initialized(conn: &Connection, owner: &str) -> Result<bool> {
+    Ok(recorded(conn, owner)? == Some(Domain::Managed) || managed_history(conn)?)
 }
 
 pub(crate) fn require_unmanaged(conn: &Connection, owner: &str) -> Result<()> {

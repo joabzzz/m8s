@@ -1086,3 +1086,8 @@ balance or empty account inventory; cleanup must remain possible after credit is
 spent. The opaque absence receipt carries the account pin, and the Store finalizer
 checks it against the original intent. Provider credential scope/visibility remains
 an adapter prerequisite; this source change is not new live qualification.
+
+Budget initialization also refuses a missing account row when a managed domain,
+period history or other managed records remain. Missing accounting is uncertainty,
+not a fresh approval epoch. Neither mock selection nor a new baseline can clear
+that retained history; an explicit future reconciliation design is required.

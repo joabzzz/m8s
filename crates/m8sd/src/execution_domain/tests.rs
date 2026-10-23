@@ -122,6 +122,7 @@ fn legacy_unmanaged_nodes_or_attempts_never_become_managed_implicitly() {
 fn legacy_managed_or_orphan_history_blocks_mock_before_provider_access() {
     for insert in [
         "INSERT INTO budget_account VALUES ('owner','{}')",
+        "INSERT INTO budget_period VALUES ('owner','period','{}')",
         "INSERT INTO budget_reservation VALUES ('owner','request','node','{}')",
         "INSERT INTO create_operation VALUES ('owner','operation','request','node','{}')",
         "INSERT INTO vast_launch VALUES ('owner','operation','tier',X'7b7d')",

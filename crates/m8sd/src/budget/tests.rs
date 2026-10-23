@@ -872,3 +872,32 @@ fn legacy_account_claims_managed_domain_without_resetting_budget() {
     assert_eq!(mode, "managed");
     assert_eq!(s.budget_reservations().unwrap(), vec![before]);
 }
+
+#[test]
+fn missing_account_with_domain_or_period_history_never_resets_authorization() {
+    for legacy_without_domain in [false, true] {
+        let (_, s) = fixture();
+        s.initialize_budget(&policy(), &period(), 100).unwrap();
+        s.conn.execute("DELETE FROM budget_account", []).unwrap();
+        if legacy_without_domain {
+            s.conn.execute("DELETE FROM execution_domain", []).unwrap();
+        }
+        let before: i64 = s
+            .conn
+            .query_row("SELECT count(*) FROM budget_period", [], |r| r.get(0))
+            .unwrap();
+        assert!(before > 0);
+        assert!(s.initialize_budget(&policy(), &period(), 101).is_err());
+        assert!(s.claim_unmanaged_execution().is_err());
+        let accounts: i64 = s
+            .conn
+            .query_row("SELECT count(*) FROM budget_account", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(accounts, 0);
+        let after: i64 = s
+            .conn
+            .query_row("SELECT count(*) FROM budget_period", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after, before);
+    }
+}

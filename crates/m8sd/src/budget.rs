@@ -600,6 +600,7 @@ impl Store {
         policy_valid(policy, &self.owner)?;
         period_valid(period, now)?;
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        let initialized = crate::execution_domain::managed_initialized(&tx, &self.owner)?;
         owned(&tx, &self.owner)?;
         if let Some(a) = account(&tx, &self.owner)? {
             clock(&a, now)?;
@@ -613,7 +614,7 @@ impl Store {
         }
         // A missing account with existing accounting rows is corrupt, not a new
         // approval epoch. No repair/reset is implicit in initialization.
-        if !rows(&tx, &self.owner)?.is_empty() {
+        if initialized || !rows(&tx, &self.owner)?.is_empty() {
             return Err(Error::Corrupt);
         }
         if policy.baseline.initial_period != *period
