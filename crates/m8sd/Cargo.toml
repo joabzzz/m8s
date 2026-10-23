@@ -8,10 +8,12 @@ license.workspace = true
 default = []
 local-development = ["dep:m8s-provider-local"]
 secure-bootstrap = ["m8s-bootstrap/iroh-transport", "m8s-bootstrap/mp001-owner-signing", "dep:iroh", "dep:tokio"]
+prototype-vast = ["secure-bootstrap", "dep:m8s-provider-vast"]
 
 [dependencies]
 m8s-config = { path = "../m8s-config" }
 m8s-provider-local = { path = "../m8s-provider-local", optional = true }
+m8s-provider-vast = { path = "../m8s-provider-vast", optional = true, default-features = false, features = ["watchdog", "launch-https"] }
 m8s-core.workspace = true
 m8s-provider.workspace = true
 m8s-api.workspace = true

@@ -14,6 +14,8 @@ struct DriverOrigin;
 pub mod development;
 #[cfg(all(feature = "local-development", unix))]
 pub mod local_development;
+#[cfg(all(feature = "prototype-vast", unix))]
+pub mod vast;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateIntent {
@@ -236,7 +238,7 @@ fn live_launch(tx: &Transaction<'_>, intent: &CreateIntent, now: i64) -> Result<
 }
 enum InvocationClock {
     Explicit(i64),
-    #[cfg(all(feature = "local-development", unix))]
+    #[cfg(all(any(feature = "local-development", feature = "prototype-vast"), unix))]
     LocalUtc,
 }
 // Shared internal invocation burn. No caller-supplied code or effects in TX.
@@ -250,13 +252,12 @@ fn start_bound_invocation(
     let tx = Transaction::new_unchecked(&store.conn, TransactionBehavior::Immediate)?;
     // Local wall time sampled AFTER obtaining the SQL writer, not before a
     // possibly-blocking BEGIN; Explicit keeps existing synthetic semantics.
-    #[cfg(all(feature = "local-development", unix))]
+    #[cfg(all(any(feature = "local-development", feature = "prototype-vast"), unix))]
     let now = match clock {
         InvocationClock::Explicit(now) => now,
-        #[cfg(all(feature = "local-development", unix))]
-        InvocationClock::LocalUtc => local_development::utc_seconds()?,
+        InvocationClock::LocalUtc => wall_utc()?,
     };
-    #[cfg(not(all(feature = "local-development", unix)))]
+    #[cfg(not(all(any(feature = "local-development", feature = "prototype-vast"), unix)))]
     let InvocationClock::Explicit(now) = clock;
     owned(&tx, &store.owner)?;
     let mut a = account(&tx, &store.owner, now)?;
@@ -298,6 +299,15 @@ fn start_bound_invocation(
     }
     tx.commit()?;
     Ok(true)
+}
+
+#[cfg(all(any(feature = "local-development", feature = "prototype-vast"), unix))]
+fn wall_utc() -> Result<i64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_secs()).ok())
+        .ok_or(Error::Invalid)
 }
 fn binding_valid(b: &ResourceBinding, intent: &CreateIntent, now: i64) -> Result<()> {
     if b.owner != intent.owner

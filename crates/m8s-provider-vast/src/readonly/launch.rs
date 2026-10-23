@@ -45,6 +45,19 @@ impl LaunchRequest {
     pub fn identity(&self) -> &RecoveryIntent {
         &self.identity
     }
+    /// Canonical public launch parameters for durable intent fingerprinting.
+    /// Includes the offer, image, ownership label, disk and provisioning public
+    /// key. No account credential or bootstrap secret can enter this encoding.
+    pub fn canonical_intent(&self) -> Result<Vec<u8>> {
+        serde_json::to_vec(&json!({
+            "schema":"m8s.vast-launch-intent/v1",
+            "offer": self.offer.get(), "image": self.identity.image(),
+            "label": self.identity.label(), "disk_gb": self.disk_gb,
+            "ssh_public_key": self.ssh_public_key,
+            "tcp_port":2222, "udp_port":40100, "runtype":"args"
+        }))
+        .map_err(|_| Error::Invalid)
+    }
 }
 
 /// A successful create response is only a candidate ID, never observed presence,

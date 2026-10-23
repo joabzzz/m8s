@@ -22,7 +22,7 @@ extern "C" fn stop(_: libc::c_int) {
     STOP.store(true, Ordering::Relaxed);
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct Plan {
     schema: String,
@@ -68,7 +68,7 @@ fn regular(file: &File) -> Result<()> {
     m8s_secrets::check_no_extended_acl(file).map_err(|_| ())
 }
 
-fn load(path: &Path) -> Result<(Plan, File)> {
+fn load_plan(path: &Path) -> Result<(Plan, File)> {
     if !path.is_absolute() || path.canonicalize().map_err(|_| ())? != path {
         return Err(());
     }
@@ -106,6 +106,12 @@ fn load(path: &Path) -> Result<(Plan, File)> {
     }
     let plan: Plan = serde_json::from_slice(&bytes).map_err(|_| ())?;
     plan.validate(utc()?)?;
+    Ok((plan, directory))
+}
+
+fn load(path: &Path) -> Result<(Plan, File)> {
+    let (plan, directory) = load_plan(path)?;
+    let parent = path.parent().ok_or(())?;
     // Exclusive creation is also the one-use arm latch. Never truncate a prior
     // run or delete a journal to retry. Recovery must retain its original record.
     let journal = OpenOptions::new()
@@ -190,7 +196,9 @@ fn run_inner(path: &Path) -> Result<()> {
     let started = Instant::now();
     let remaining = Duration::from_secs(plan.destroy_at.checked_sub(utc()?).ok_or(())?);
     record(&mut journal, "armed", None)?;
-    std::io::stdout().write_all(b"armed\n").map_err(|_| ())?;
+    std::io::stdout()
+        .write_all(&arm_ack(&plan)?)
+        .map_err(|_| ())?;
     std::io::stdout().flush().map_err(|_| ())?;
     let mut bound = None;
     let mut destroy_acknowledged = false;
@@ -287,3 +295,13 @@ mod tests {
 
 #[cfg(test)]
 mod process_tests;
+
+mod launcher;
+pub use launcher::ArmedCleanup;
+
+fn arm_ack(plan: &Plan) -> Result<Vec<u8>> {
+    let mut ack = b"armed ".to_vec();
+    serde_json::to_writer(&mut ack, plan).map_err(|_| ())?;
+    ack.push(b'\n');
+    Ok(ack)
+}

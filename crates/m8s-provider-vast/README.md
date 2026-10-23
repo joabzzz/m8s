@@ -85,8 +85,9 @@ current-user-owned 0600 regular single-link file in a private 0700 directory,
 with no extended ACL. Trusted ancestors remain a caller responsibility.
 
 The watchdog creates and syncs `watchdog.events.jsonl` exclusively, detaches into
-its own session, then writes `armed` to stdout. The launcher must not submit a
-create before reading that receipt. Existing journals refuse rearming; they are
+its own session, then writes `armed ` followed by the canonical public plan JSON
+and a newline. The launcher must match the complete receipt before submitting a
+create. Existing journals refuse rearming; they are
 never removed or truncated. Resource binding requires positive exact owner label
 and image matching; an empty lookup is unresolved. SIGTERM, SIGINT, SIGHUP or
 the original deadline trigger cleanup. Monotonic elapsed time prevents clock
@@ -99,9 +100,26 @@ calls), it records uncertainty and exits nonzero. Provider outages, watchdog
 failure, host loss and storage billing are **not** contained by this process.
 Keep the original liability and require reconciliation; never infer zero cost,
 release a reservation or create a replacement. The executable has source/unit
-coverage only: parent-death survival and live provider qualification are still
-required before relying on it for a paid launch. It is not yet wired into the
-owner LAUNCH command.
+coverage plus a passing synthetic launcher-process-group-loss qualification.
+Live provider qualification remains unfinished. It is not yet wired into a
+complete owner LAUNCH command.
+
+`ArmedCleanup::arm_cli` re-executes the current m8s binary's fixed cleanup-worker
+route with an empty environment. It supplies the key through stdin and bounds
+the complete, plan-bound acknowledgment to ten seconds. Its opaque handle retains
+the same account key for one create dispatch, preventing create/cleanup account
+substitution. Drop requests early cleanup without killing the detached worker.
+This is a process receipt, not provider absence or guaranteed billing containment.
+
+The default-off `m8sd/prototype-vast` executor consumes the existing durable
+create claim. It requires a reserved budget, one lifetime attempt in that owner
+Store, a cap at most USD6, one instance and at least 240 seconds of cleanup
+reserve. It checks the cleanup handle before and after the database invocation
+burn, never retries create, and retains uncertain liability even for a successful
+create acknowledgment. Only a separate exact instance observation can bind the
+resource and advance Launching to Booting. Ready, real inference and settlement
+remain separate obligations. Tests use synthetic accounting and never dispatch
+to Vast.
 
 Current official offer response example shows an object while historical fixture
 mapping expects a list. Only bounded explicit lists are supported, NOT guessed

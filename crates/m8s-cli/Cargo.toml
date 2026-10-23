@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 prototype-container = ["dep:m8s-agent", "m8s-agent/sealed-node"]
-prototype-vast = ["dep:m8s-provider-vast", "m8s-provider-vast/watchdog", "m8s-provider-vast/launch-https"]
+prototype-vast = ["dep:m8sd", "m8sd/prototype-vast", "dep:m8s-provider-vast", "m8s-provider-vast/watchdog", "m8s-provider-vast/launch-https"]
 local-development = ["dep:m8sd", "m8sd/local-development"]
 
 [dependencies]

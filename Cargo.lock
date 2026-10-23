@@ -2075,6 +2075,7 @@ dependencies = [
  "m8s-core",
  "m8s-provider",
  "m8s-provider-local",
+ "m8s-provider-vast",
  "nix",
  "rusqlite",
  "serde",

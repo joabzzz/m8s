@@ -8,10 +8,19 @@ use std::{
 
 pub struct NodeAccess {
     instance: NonZeroU64,
+    label: String,
+    image: String,
+    observed_at: i64,
     ssh: SocketAddr,
     control: SocketAddr,
 }
 impl NodeAccess {
+    pub fn matches(&self, intent: &RecoveryIntent) -> bool {
+        self.label == intent.label() && self.image == intent.image()
+    }
+    pub fn observed_at(&self) -> i64 {
+        self.observed_at
+    }
     pub fn instance_id(&self) -> NonZeroU64 {
         self.instance
     }
@@ -43,7 +52,12 @@ impl<S: FnMut() -> Result<SecretValue>> OwnedAccessHttps<S> {
             self.instance,
             reqwest::Method::GET,
         )?;
-        project(&value, self.instance, &self.intent)
+        let observed_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|d| i64::try_from(d.as_secs()).ok())
+            .ok_or(Error::Unavailable)?;
+        project_at(&value, self.instance, &self.intent, observed_at)
     }
 }
 
@@ -81,10 +95,11 @@ fn mapped_port(row: &Value, name: &str) -> Result<u16> {
         .filter(|n| *n > 0)
         .ok_or(Error::Unavailable)
 }
-fn project(
+fn project_at(
     value: &Value,
     instance: NonZeroU64,
     intent: &RecoveryIntent,
+    observed_at: i64,
 ) -> Result<Option<NodeAccess>> {
     let row = value
         .get("instances")
@@ -115,6 +130,9 @@ fn project(
     let control = SocketAddr::V4(SocketAddrV4::new(ip, mapped_port(&row, "40100/udp")?));
     Ok(Some(NodeAccess {
         instance,
+        label: intent.label().into(),
+        image: intent.image().into(),
+        observed_at,
         ssh,
         control,
     }))
@@ -123,6 +141,13 @@ fn project(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn project(
+        value: &Value,
+        instance: NonZeroU64,
+        intent: &RecoveryIntent,
+    ) -> Result<Option<NodeAccess>> {
+        project_at(value, instance, intent, 100)
+    }
     fn intent() -> RecoveryIntent {
         RecoveryIntent::new(
             "synthetic-owner",
@@ -146,6 +171,11 @@ mod tests {
             .unwrap();
         assert_eq!(access.ssh_address().port(), 12000);
         assert_eq!(access.control_address().port(), 13000);
+        assert!(access.matches(&intent()));
+        assert_eq!(access.observed_at(), 100);
+        let other = RecoveryIntent::new("other-owner", "synthetic-node", "smoke", intent().image())
+            .unwrap();
+        assert!(!access.matches(&other));
         for state in ["loading", "stopped", "exited", "offline"] {
             let mut value = row();
             value["instances"]["actual_status"] = json!(state);
