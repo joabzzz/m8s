@@ -12,3 +12,6 @@
 - Run scripts/check (fmt, tests, clippy); max two compiler jobs. Coordinate heavy builds.
 - Only integration owner edits root Cargo.toml/Cargo.lock. Workers do not delegate.
 - Commit coherent slices; export ignored bundles/m8s-<milestone>.bundle with git bundle create --all.
+
+## Repo-local agent skill
+- For explaining, running, or recovering a demo, read `.agents/skills/m8s-demo/SKILL.md`. It links the proven artifacts, fresh-run procedure, and exact cleanup/accounting boundaries.

@@ -124,3 +124,12 @@ its liability. The live prototype is not yet a production fleet scheduler.
 The [decision index](docs/decisions/README.md) records the implemented prototype
 choices and their evidence. The [production roadmap](docs/ROADMAP.md) separates
 completed acceptance from remaining integration and operational qualification.
+
+## Agent demo skill
+
+Ask an agent: **“Use $m8s-demo to explain the proof and help me run a fresh bounded demo.”**
+The repo-local [skill](.agents/skills/m8s-demo/SKILL.md) includes the artifact pins,
+[runbook](.agents/skills/m8s-demo/references/run-demo.md), accounting constraints,
+and failure/cleanup workflow. If the agent does not discover repo-local skills,
+ask it to read that file explicitly. A new rental needs a current budget; reading
+the proof does not make provider calls.
