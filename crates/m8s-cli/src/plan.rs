@@ -1,6 +1,6 @@
 //! Bounded owner-intent diagnostics only. No execution capability is constructed.
 use m8s_config::{ColdBehavior, Config, ValidationLimits};
-use m8s_models::ModelCatalog;
+use m8s_core::models::ModelCatalog;
 use serde_json::{Value, json};
 use std::{io::Write, path::PathBuf};
 
@@ -206,7 +206,7 @@ mod tests {
     use super::*;
     #[test]
     fn pure_projection_and_bounded_rendering() {
-        let catalog: ModelCatalog = toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap();
+        let catalog: ModelCatalog = toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap();
         let limits = ValidationLimits::default();
         let config = Config::parse(m8s_config::EXAMPLE.as_bytes(), &catalog, &limits).unwrap();
         let summary = project(&config, "small", &limits).unwrap();

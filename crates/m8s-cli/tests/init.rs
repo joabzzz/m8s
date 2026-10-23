@@ -86,7 +86,7 @@ fn fresh_exact_private_examples_validate_and_output_is_relative_deterministic() 
     );
     assert_eq!(
         fs::read(w.path.join("catalog.toml")).unwrap(),
-        m8s_models::EXAMPLE_CATALOG.as_bytes()
+        m8s_core::models::EXAMPLE_CATALOG.as_bytes()
     );
     let readme = fs::read_to_string(w.path.join("README.md")).unwrap();
     assert!(readme.contains("\"$PWD/state\""));

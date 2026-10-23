@@ -157,7 +157,7 @@ mod unix {
         acl: &impl Fn(&File) -> Result<(), ()>,
     ) -> Result<(), ()> {
         // Validate exact shipped bytes before the first directory/file write.
-        let catalog = toml::from_str(m8s_models::EXAMPLE_CATALOG).map_err(|_| ())?;
+        let catalog = toml::from_str(m8s_core::models::EXAMPLE_CATALOG).map_err(|_| ())?;
         m8s_config::Config::parse(
             m8s_config::EXAMPLE.as_bytes(),
             &catalog,
@@ -205,7 +205,7 @@ mod unix {
         }
         for (index, (name, bytes)) in [
             ("m8s.toml", m8s_config::EXAMPLE.as_bytes()),
-            ("catalog.toml", m8s_models::EXAMPLE_CATALOG.as_bytes()),
+            ("catalog.toml", m8s_core::models::EXAMPLE_CATALOG.as_bytes()),
             ("README.md", STARTER_README.as_bytes()),
         ]
         .into_iter()

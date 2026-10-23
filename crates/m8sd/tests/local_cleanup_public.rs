@@ -196,7 +196,7 @@ impl ChildScope {
         loop {
             match LocalDevelopmentExecutor::open(plan(journal), OWNER) {
                 Ok(e) => return Self(Some(e)),
-                Err(m8sd::Error::Provider(m8s_provider::Error::Unavailable))
+                Err(m8sd::Error::Provider(m8s_core::provider::Error::Unavailable))
                     if Instant::now() < end =>
                 {
                     thread::sleep(Duration::from_millis(10));

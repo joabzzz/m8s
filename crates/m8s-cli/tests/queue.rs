@@ -29,7 +29,7 @@ impl Fixture {
                 .replace("\"30m\"", "\"4s\""),
         )
         .unwrap();
-        fs::write(&f.catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+        fs::write(&f.catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
         f.records(records);
         f
     }

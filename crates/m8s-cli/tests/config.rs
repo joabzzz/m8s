@@ -18,7 +18,7 @@ impl Fixture {
         let config = root.join("sensitive-path-config");
         let catalog = root.join("sensitive-path-catalog");
         fs::write(&config, m8s_config::EXAMPLE).unwrap();
-        fs::write(&catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+        fs::write(&catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
         Self {
             _dir: dir,
             config,
@@ -169,8 +169,8 @@ fn shipped_whole_configuration_is_sorted_honest_deterministic_and_read_only() {
     .unwrap();
     assert_eq!(f.run().stdout, first.stdout);
     // Neither catalog free text nor owner/schedule descriptions enter the summary.
-    let mut catalog: m8s_models::ModelCatalog =
-        toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap();
+    let mut catalog: m8s_core::models::ModelCatalog =
+        toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap();
     for m in &mut catalog.models {
         m.source = "https://sensitive-source.invalid".into();
         m.license = "sensitive-license\u{1b}".into();
@@ -211,8 +211,8 @@ fn invalid_unselected_tiers_catalog_and_budget_are_not_hidden() {
     .unwrap();
     refused(&f.run(), "invalid-config-document");
     fs::write(&f.config, m8s_config::EXAMPLE).unwrap();
-    let mut catalog: m8s_models::ModelCatalog =
-        toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap();
+    let mut catalog: m8s_core::models::ModelCatalog =
+        toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap();
     let mut unused = catalog.models[0].clone();
     unused.id = "unused".into();
     unused.weights_bytes = 0;
@@ -221,7 +221,7 @@ fn invalid_unselected_tiers_catalog_and_budget_are_not_hidden() {
     refused(&f.run(), "invalid-config-catalog");
     fs::write(&f.catalog, "sensitive-raw-catalog = [invalid").unwrap();
     refused(&f.run(), "invalid-config-catalog");
-    fs::write(&f.catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+    fs::write(&f.catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
     fs::write(&f.config, "sensitive-raw-config = [invalid").unwrap();
     refused(&f.run(), "invalid-config-document");
 }
@@ -296,7 +296,7 @@ fn strict_grammar_redaction_and_shared_file_boundaries() {
     assert_eq!(fs::read(&f.config).unwrap(), m8s_config::EXAMPLE.as_bytes());
     assert_eq!(
         fs::read(&f.catalog).unwrap(),
-        m8s_models::EXAMPLE_CATALOG.as_bytes()
+        m8s_core::models::EXAMPLE_CATALOG.as_bytes()
     );
 }
 #[cfg(unix)]
@@ -304,8 +304,8 @@ fn strict_grammar_redaction_and_shared_file_boundaries() {
 fn maximum_tier_structure_stays_bounded_and_counts_references() {
     let f = Fixture::new();
     let mut config = String::from("schema=1\n");
-    let mut catalog: m8s_models::ModelCatalog =
-        toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap();
+    let mut catalog: m8s_core::models::ModelCatalog =
+        toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap();
     catalog.models[0].id = format!("m{}", "x".repeat(95));
     for n in 0..m8s_config::MAX_TIERS {
         config.push_str(&format!(

@@ -75,7 +75,7 @@ impl Fixture {
             .canonicalize()
             .unwrap()
             .join("sensitive-path-marker-catalog");
-        fs::write(&catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+        fs::write(&catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
         Self { dir, catalog }
     }
     fn args(&self, action: &[&str]) -> Vec<OsString> {
@@ -93,12 +93,12 @@ impl Fixture {
         assert_eq!(fs::read(&self.catalog).unwrap(), before);
         out
     }
-    fn write(&self, catalog: &m8s_models::ModelCatalog) {
+    fn write(&self, catalog: &m8s_core::models::ModelCatalog) {
         fs::write(&self.catalog, toml::to_string(catalog).unwrap()).unwrap();
     }
 }
-fn catalog() -> m8s_models::ModelCatalog {
-    toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap()
+fn catalog() -> m8s_core::models::ModelCatalog {
+    toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap()
 }
 fn success(out: &Output) -> Value {
     assert!(out.status.success(), "{out:?}");
@@ -264,7 +264,7 @@ fn sensitive_free_text_is_omitted_and_certified_is_only_declared() {
 #[test]
 fn entire_catalog_validated_before_even_show_or_unknown_lookup() {
     let f = Fixture::new();
-    let mutations: &[fn(&mut m8s_models::ModelProfile)] = &[
+    let mutations: &[fn(&mut m8s_core::models::ModelProfile)] = &[
         |m| m.weights_bytes = 0,
         |m| {
             m.weights_bytes = u64::MAX;
@@ -290,13 +290,13 @@ fn entire_catalog_validated_before_even_show_or_unknown_lookup() {
         }
     }
     for c in [
-        m8s_models::ModelCatalog { models: vec![] },
+        m8s_core::models::ModelCatalog { models: vec![] },
         {
             let mut c = catalog();
             c.models.push(c.models[0].clone());
             c
         },
-        m8s_models::ModelCatalog {
+        m8s_core::models::ModelCatalog {
             models: (0..=m8s_config::MAX_MODELS)
                 .map(|i| {
                     let mut m = catalog().models.remove(0);
@@ -407,7 +407,7 @@ fn unsafe_missing_and_oversized_files_refuse_without_mutation_or_blocking() {
     assert!(!missing.exists());
     assert_eq!(
         fs::read(&f.catalog).unwrap(),
-        m8s_models::EXAMPLE_CATALOG.as_bytes()
+        m8s_core::models::EXAMPLE_CATALOG.as_bytes()
     );
     assert_eq!(fs::read(&oversized).unwrap(), vec![b'x'; 65537]);
 }

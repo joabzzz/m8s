@@ -214,9 +214,12 @@ physical erasure and automatic expiry deletion are not claimed.
 
 ## Synthetic macOS qualification — Phase A source freeze
 
-Gate 1 is ready for technical qualification (ADR-0012 v8); Admin attendance is
-not required. This harness is **not yet OS execution evidence** and does not
-change default selection. Review its frozen source before explicitly running it.
+Gate 1 remains **incomplete**. [ADR-0012 v9](../../docs/original/decisions/0012-secret-store.md)
+records the 2026-10-21 synthetic OS attempt failing with opaque `Backend`;
+possible effects remain uncertain. The earlier v8 readiness statement is
+superseded. Admin attendance is not required, but the failed attempt does not
+qualify Keychain or change default selection. The following describes the frozen
+harness, not a successful OS qualification.
 Only `tests/os_keyring_qualification.rs` and this qualification documentation are
 in scope; no production APIs, CLI, dependencies or lock schema are changed.
 
@@ -408,7 +411,8 @@ ignored selection. Phase B must separately record the exact reviewed hashes,
 runtime/toolchain, non-secret synthetic identifiers, outcome and retained
 artifacts. Neither phase proves external deployment writers cooperate, provisions
 a production home directory, qualifies every binary/signing/prompt configuration,
-or authorizes enabling the default. No Phase B result is claimed here.
+or authorizes enabling the default. The failed Phase B attempt is recorded in ADR-0012 v9; no successful Phase B
+qualification is claimed.
 
 ## Borrowed descriptor ACL-only check
 

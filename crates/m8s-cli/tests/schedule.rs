@@ -21,7 +21,7 @@ impl Fixture {
             _dir: dir,
         };
         fs::write(&f.config, m8s_config::EXAMPLE).unwrap();
-        fs::write(&f.catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+        fs::write(&f.catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
         f
     }
     fn args(&self) -> Vec<OsString> {
@@ -129,7 +129,7 @@ fn context_subset_and_full_configuration_refusals_are_opaque() {
     fs::write(&f.config, m8s_config::EXAMPLE).unwrap();
     fs::write(
         &f.catalog,
-        m8s_models::EXAMPLE_CATALOG.replace(
+        m8s_core::models::EXAMPLE_CATALOG.replace(
             "runtime_status = \"untested\"",
             "runtime_status = \"SECRET-invalid\"",
         ),

@@ -1,5 +1,5 @@
 //! Pure rendering: usable with an in-memory backend, never initializes a TTY.
-use crate::{ConfigObservation, StatusSnapshot, client::ReadError, display_text};
+use crate::dashboard::{ConfigObservation, StatusSnapshot, client::ReadError, display_text};
 use m8s_core::Phase;
 use ratatui::{
     Frame, Terminal,

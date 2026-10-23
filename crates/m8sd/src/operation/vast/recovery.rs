@@ -48,7 +48,7 @@ impl VastRecovery {
         supplier: S,
     ) -> Result<m8s_provider_vast::readonly::restart::RestartCleanup<S>>
     where
-        S: FnMut() -> m8s_provider::Result<m8s_provider_vast::readonly::restart::SecretValue>,
+        S: FnMut() -> m8s_core::provider::Result<m8s_provider_vast::readonly::restart::SecretValue>,
     {
         if self.operation.invocation_started_at.is_none() {
             return Err(Error::Invalid);

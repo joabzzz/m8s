@@ -24,7 +24,7 @@ impl Fixture {
         let config = root.join("sensitive-path-sentinel-config");
         let catalog = root.join("sensitive-path-sentinel-catalog");
         fs::write(&config, m8s_config::EXAMPLE).unwrap();
-        fs::write(&catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+        fs::write(&catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
         Self {
             dir,
             config,
@@ -225,7 +225,7 @@ fn changed_valid_intent_and_descriptors_are_reflected_not_executed() {
         v["behavior_descriptions"]["cold"],
         serde_json::json!({"mode":"fallback","tier":"small"})
     );
-    let catalog = m8s_models::EXAMPLE_CATALOG.replace("untested", "certified");
+    let catalog = m8s_core::models::EXAMPLE_CATALOG.replace("untested", "certified");
     fs::write(&f.catalog, catalog).unwrap();
     assert_eq!(f.json()["readiness"], "not_assessed");
 }
@@ -306,18 +306,18 @@ fn invalid_config_catalog_and_references_are_opaque() {
         "raw-toml-sentinel".to_owned(),
         format!(
             "{}\n{}",
-            m8s_models::EXAMPLE_CATALOG,
-            m8s_models::EXAMPLE_CATALOG
+            m8s_core::models::EXAMPLE_CATALOG,
+            m8s_core::models::EXAMPLE_CATALOG
         ),
-        m8s_models::EXAMPLE_CATALOG.replace("example-27b-q4km", "absent"),
-        m8s_models::EXAMPLE_CATALOG.replace("untested", "crypto-looking-raw-toml-sentinel"),
+        m8s_core::models::EXAMPLE_CATALOG.replace("example-27b-q4km", "absent"),
+        m8s_core::models::EXAMPLE_CATALOG.replace("untested", "crypto-looking-raw-toml-sentinel"),
     ] {
         fs::write(&f.catalog, catalog).unwrap();
         refused(f.run());
     }
     fs::write(
         &f.catalog,
-        m8s_models::EXAMPLE_CATALOG
+        m8s_core::models::EXAMPLE_CATALOG
             .replace("untested", "certified")
             .replace("example://", "https://sensitive-url-sentinel/"),
     )

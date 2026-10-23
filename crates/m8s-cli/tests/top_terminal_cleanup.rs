@@ -1,6 +1,6 @@
 //! Reuses the exact standalone synthetic PTY qualification fixture; no /dev/tty.
 #![cfg(unix)]
-#[path = "../../m8s-top/tests/support/terminal_cleanup.rs"]
+#[path = "support/terminal_cleanup.rs"]
 mod support;
 use nix::sys::signal::Signal;
 #[test]

@@ -25,7 +25,7 @@ and retains the runtime image's baked model and provisioning entrypoint.
 The registry and target caches are separate from the native mesh build caches;
 compilation runs with networking disabled and at most two jobs.
 
-## Latest live attempt (2026-10-23)
+## Historical networking failure (2026-10-23)
 
 The actual pinned image was published publicly and started on Vast as instance
 **57325005**. This is deployment proof, **not inference proof**. Secure bootstrap
@@ -33,12 +33,13 @@ refused to proceed because the provider reported no UDP control mapping. Its TCP
 mapping also exposed a parser incompatibility with normal dual-stack responses.
 The launch now uses the documented explicit `host:container/protocol` syntax;
 the parser accepts the same wildcard port across IPv4/IPv6 and still rejects
-missing UDP or conflicting destinations. These corrections await live qualification.
+missing UDP or conflicting destinations. These corrections were subsequently exercised by the successful instance
+57330173 recorded at the top of this document.
 Port syntax follows the [official Vast Docker environment documentation](https://github.com/vast-ai/docs/blob/main/guides/instances/docker-environment.mdx).
 
 The independent cleanup worker destroyed the exact instance. A separate
 creator-account GET confirmed absence; complete inventories reported no instances
-or volumes. The latest observed charge was $0.003, with billing finality unknown.
+or volumes. The charge observed at that checkpoint was $0.003, with billing finality unknown.
 Both reservations remain retained: $1.609658 from the earlier uninvoked attempt
 and $1.688308 from this attempt, leaving $2.702034 unallocated within the $6 cap.
 No budget reset, replacement rental, plaintext downgrade, or source publication

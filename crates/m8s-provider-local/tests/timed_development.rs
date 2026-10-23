@@ -1,7 +1,7 @@
 #![cfg(unix)]
 use m8s_agent::supervisor::LocalTerminationState;
+use m8s_core::provider::{Error, LaunchSpec, Provider};
 use m8s_core::{Instance, InstanceState, Observation};
-use m8s_provider::{Error, LaunchSpec, Provider};
 use m8s_provider_local::{DevelopmentCommand, Local, LocalDeadlines, LocalLaunch};
 use std::{
     ffi::OsString,

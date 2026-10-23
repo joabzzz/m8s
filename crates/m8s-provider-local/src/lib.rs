@@ -9,8 +9,8 @@ use m8s_agent::{
     DeadManSwitch, Effect, Outcome,
     supervisor::{ChildSpec, LocalOnlyBoot, RetryTeardown, Supervisor, TeardownDriver},
 };
+use m8s_core::provider::{Error, LaunchSpec, Provider, Result};
 use m8s_core::{Instance, InstanceState, Observation, Offer};
-use m8s_provider::{Error, LaunchSpec, Provider, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{

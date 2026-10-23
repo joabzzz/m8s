@@ -1,5 +1,5 @@
+use m8s_core::provider::{Error, LaunchSpec, Provider};
 use m8s_core::{InstanceState, Observation, Offer};
-use m8s_provider::{Error, LaunchSpec, Provider};
 use m8s_provider_vast::{FixtureConfig, FixtureTransport, Market, Method, Reply, Request, Vast};
 use serde_json::{Value, json};
 use std::collections::VecDeque;

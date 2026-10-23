@@ -1,5 +1,5 @@
 //! Offline arithmetic over explicit synthetic capacity, never a live offer.
-use m8s_models::{FitPlan, Layout, PlanError, PlanRequest};
+use m8s_core::models::{FitPlan, Layout, PlanError, PlanRequest};
 use serde_json::{Value, json};
 use std::{io::Write, path::PathBuf};
 const CAP: usize = 16 * 1024;
@@ -199,12 +199,13 @@ fn execute(options: &Options) -> Result<Vec<u8>, Error> {
         interruptible: false,
         reliability_bps: 0,
     };
-    let fit = m8s_models::plan(model, &capacity, options.request).map_err(|error| match error {
-        PlanError::NoCapacity | PlanError::DoesNotFit => Error::NoFit,
-        PlanError::Overflow => Error::Overflow,
-        PlanError::InvalidProfile => Error::Catalog,
-        PlanError::InvalidRequest | PlanError::InvalidBandwidth => Error::Arguments,
-    })?;
+    let fit =
+        m8s_core::models::plan(model, &capacity, options.request).map_err(|error| match error {
+            PlanError::NoCapacity | PlanError::DoesNotFit => Error::NoFit,
+            PlanError::Overflow => Error::Overflow,
+            PlanError::InvalidProfile => Error::Catalog,
+            PlanError::InvalidRequest | PlanError::InvalidBandwidth => Error::Arguments,
+        })?;
     render(&project(options, fit), options.json)
 }
 fn write(bytes: &[u8]) -> Result<(), Error> {

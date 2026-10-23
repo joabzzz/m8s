@@ -147,9 +147,9 @@ No command bytes or digest are added to the journal.
 
 ```rust,no_run
 # use m8s_provider_local::{DevelopmentCommand, Local, LocalDeadlines};
-# use m8s_provider::LaunchSpec;
+# use m8s_core::provider::LaunchSpec;
 # use std::{path::Path, time::{Duration, SystemTime}};
-# fn example(directory: &Path, spec: &LaunchSpec) -> m8s_provider::Result<()> {
+# fn example(directory: &Path, spec: &LaunchSpec) -> m8s_core::provider::Result<()> {
 let command = DevelopmentCommand::new("/bin/sleep".into(), vec!["60".into()])?;
 let mut local = Local::open_development(directory, spec.owner.clone(), command)?;
 let stop_at = SystemTime::now() + Duration::from_secs(1);

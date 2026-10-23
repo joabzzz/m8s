@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use m8s_top::{
+use m8s_cli::dashboard::{
     ConfigObservation,
     client::{ReadError, StatusClient, decode_status},
     view::{Dashboard, text_snapshot},
@@ -31,7 +31,7 @@ fn observe(
     config_delay: Duration,
     reply: Option<Vec<u8>>,
     unsafe_second: bool,
-) -> Result<m8s_top::StatusSnapshot, ReadError> {
+) -> Result<m8s_cli::dashboard::StatusSnapshot, ReadError> {
     let dir = tempfile::Builder::new()
         .prefix("m8tc-")
         .permissions(std::fs::Permissions::from_mode(0o700))
@@ -307,7 +307,7 @@ fn rendering_available_legacy_unknown_stale_and_tiny_is_pure_and_bounded() {
 fn immediate_close(
     first: Vec<u8>,
     second: Option<Vec<u8>>,
-) -> Result<m8s_top::StatusSnapshot, ReadError> {
+) -> Result<m8s_cli::dashboard::StatusSnapshot, ReadError> {
     let dir = tempfile::Builder::new()
         .prefix("m8close-")
         .permissions(std::fs::Permissions::from_mode(0o700))

@@ -1,7 +1,7 @@
 //! Bounded schema1 owner intent only: no cron/autoscaling/providers/readiness.
 //! Caller supplies bytes/path AND model catalog; no discovery or interpolation.
 use m8s_core::MicroUsd;
-use m8s_models::ModelCatalog;
+use m8s_core::models::ModelCatalog;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -65,7 +65,7 @@ impl Default for ValidationLimits {
 /// Validated immutable document; no Deserialize implementation bypasses validation.
 /// Catalog source/license/runtime data is not retained or echoed by Config.
 /// ```
-/// let catalog: m8s_models::ModelCatalog = toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap();
+/// let catalog: m8s_core::models::ModelCatalog = toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap();
 /// let config = m8s_config::Config::parse(m8s_config::EXAMPLE.as_bytes(), &catalog,
 ///     &m8s_config::ValidationLimits::default()).unwrap();
 /// assert_eq!(config.tiers().count(), 2); // intent only, no effects/qualification
@@ -658,13 +658,13 @@ fn read_bounded(_: &Path) -> Result<Vec<u8>> {
 mod catalog_validation_tests {
     use super::*;
     fn catalog() -> ModelCatalog {
-        toml::from_str(m8s_models::EXAMPLE_CATALOG).unwrap()
+        toml::from_str(m8s_core::models::EXAMPLE_CATALOG).unwrap()
     }
     #[test]
     fn public_catalog_validation_reuses_global_metadata_rules() {
         let good = catalog();
         assert_eq!(validate_catalog(&good), Ok(()));
-        let mutations: &[fn(&mut m8s_models::ModelProfile)] = &[
+        let mutations: &[fn(&mut m8s_core::models::ModelProfile)] = &[
             |m| m.id = "Invalid".into(),
             |m| m.weights_bytes = 0,
             |m| {

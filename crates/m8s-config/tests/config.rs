@@ -1,5 +1,5 @@
 use m8s_config::{ColdBehavior, Config, Error, MAX_BYTES, ValidationLimits};
-use m8s_models::{ModelCatalog, ModelProfile};
+use m8s_core::models::{ModelCatalog, ModelProfile};
 fn catalog() -> ModelCatalog {
     ModelCatalog {
         models: vec![profile("example-27b-q4km"), profile("example-70b-q4km")],

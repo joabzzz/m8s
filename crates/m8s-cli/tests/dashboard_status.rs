@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use m8s_top::{
+use m8s_cli::dashboard::{
     client::{ReadError, StatusClient, decode_status},
     view::{Dashboard, text_snapshot},
 };
@@ -24,7 +24,7 @@ fn fixture() -> Vec<u8> {
 fn server<F: FnOnce(UnixStream) + Send + 'static>(
     timeout: Duration,
     send: F,
-) -> Result<m8s_top::StatusSnapshot, ReadError> {
+) -> Result<m8s_cli::dashboard::StatusSnapshot, ReadError> {
     let dir = tempfile::Builder::new()
         .permissions(std::fs::Permissions::from_mode(0o700))
         .tempdir()
@@ -234,7 +234,7 @@ fn rendering_snapshot_is_unqualified_and_stale_data_never_looks_live() {
     assert!(text_snapshot(&dashboard, 301, 20).is_err());
     assert!(text_snapshot(&dashboard, 150, 121).is_err());
     assert_eq!(
-        m8s_top::view::bounded_area(u16::MAX, u16::MAX),
+        m8s_cli::dashboard::view::bounded_area(u16::MAX, u16::MAX),
         ratatui::layout::Rect::new(0, 0, 300, 120)
     );
     for (width, height) in [(1, 1), (39, 11), (40, 12)] {

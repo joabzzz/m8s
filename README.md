@@ -11,10 +11,6 @@ canonical node certificate over pinned direct iroh TLS, observed the model
 through the owner client, obtained a real completion, destroyed the instance,
 and independently confirmed its absence. The command exited successfully.
 
-> A mesh network is a local network structure where devices are connected through
-> multiple direct or indirect connections, allowing for decentralized and
-> self-sustaining communication.
-
 Evidence:
 
 - [Complete demo receipt](deploy/container/demo-proof.json)
@@ -77,16 +73,23 @@ its companion repository and the node image's source revision.
 
 | Component | Responsibility |
 | --- | --- |
-| `m8s-core`, `m8s-config` | Pure policy, capacity planning, configuration |
+| `m8s-core`, `m8s-config` | Policy, provider contracts, model fit arithmetic; configuration parsing |
 | `m8sd` | SQLite intent/nonce/accounting journals and operation coordinators |
 | `m8s-provider-vast` | Explicit bounded Vast transports, observation, cleanup |
 | `m8s-provider-local` | Local development execution and recovery |
 | `m8s-bootstrap` | Canonical identity bridge, direct TLS delivery and control |
 | `m8s-agent` | Required-certificate native launch, supervision and dead-man switch |
-| `m8s-cli`, `m8s-top` | Operator commands and terminal UI |
+| `m8s-cli` | Operator commands and dashboard; builds `m8s` and `m8s-top` |
+| `m8s-api` | Shared local control protocol for daemon and operator clients |
 | `m8s-secrets` | Explicit secret stores; no ambient discovery or silent fallback |
 
-Core has no provider dependency. Money uses micro-USD; capacities use bytes;
+The workspace has ten crates. Model profiles and provider contracts are modules
+in core; the persistent development mock belongs to `m8sd`. The dashboard is
+a CLI module. Configuration, API, secrets, bootstrap and provider adapters remain
+separate to keep their dependencies out of consumers that do not use them. The
+agent, daemon and operator tools have distinct executable roles.
+
+Core has no provider implementation or I/O dependency. Money uses micro-USD; capacities use bytes;
 network rates use Mbps. Policy time is injected. Secret values are excluded from
 Debug/Serialize and never placed in command arguments or logs. Only public node
 certificates and node keys reach workers; owner signing keys stay with the owner.
@@ -98,7 +101,9 @@ scripts/check --no-pty --no-acl-mutation
 python3 -B -m unittest discover -s deploy/container/tests -v
 ```
 
-The latest Rust run passed **772 tests**, formatting, and strict Clippy. The
+The crate consolidation passed **776 tests**, formatting and strict Clippy.
+Five tests remained ignored and seven were filtered. The mock end-to-end demo
+also passed creation, scale, restart adoption and confirmed removal. The
 selected profile excludes four synthetic PTY tests and three ACL-mutation tests;
 it is not an unfiltered OS qualification. Existing operator endpoint evidence is
 retained and was not rerun. `scripts/check` without flags retains the normal

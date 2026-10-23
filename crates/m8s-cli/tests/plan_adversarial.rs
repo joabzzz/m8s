@@ -33,7 +33,7 @@ impl Fixture {
             root,
         };
         fs::write(&f.config, m8s_config::EXAMPLE).unwrap();
-        fs::write(&f.catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+        fs::write(&f.catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
         f
     }
     fn args(&self) -> Vec<OsString> {
@@ -323,7 +323,7 @@ fn explicit_files_never_discover_expand_or_repair_ambient_paths() {
     // Valid ambient candidates must NOT rescue an explicitly invalid catalog.
     fs::write(
         f.root.path().join("models.toml"),
-        m8s_models::EXAMPLE_CATALOG,
+        m8s_core::models::EXAMPLE_CATALOG,
     )
     .unwrap();
     fs::write(&literal, "invalid explicit catalog").unwrap();
@@ -337,7 +337,7 @@ fn explicit_files_never_discover_expand_or_repair_ambient_paths() {
 #[test]
 fn catalog_freetext_and_paths_never_echo_in_text_json_or_errors() {
     let f = Fixture::new();
-    let catalog = m8s_models::EXAMPLE_CATALOG
+    let catalog = m8s_core::models::EXAMPLE_CATALOG
         .replace("example://", &format!("https://{SENTINEL}/?not-a-token="))
         .replace("owner-must-verify", SENTINEL)
         .replace("Q4_K_M", SENTINEL)
@@ -375,7 +375,7 @@ fn reordered_catalog_tables_and_equivalent_duration_spelling_have_identical_proj
     let f = Fixture::new();
     let baseline = f.run(&f.args());
     assert!(baseline.status.success());
-    let (_, models) = m8s_models::EXAMPLE_CATALOG
+    let (_, models) = m8s_core::models::EXAMPLE_CATALOG
         .split_once("[[models]]")
         .unwrap();
     let (first, second) = models.split_once("[[models]]").unwrap();
@@ -400,15 +400,16 @@ fn existing_catalog_shape_and_global_validation_are_not_replaced_by_selected_mod
     let f = Fixture::new();
     let control = f.json();
     // Current ModelProfile deserialize intentionally ignores unknown fields.
-    let with_extra = m8s_models::EXAMPLE_CATALOG.replace(
+    let with_extra = m8s_core::models::EXAMPLE_CATALOG.replace(
         "[[models]]",
         "[[models]]\nnon_authority = 'synthetic-private-sentinel'",
     );
     fs::write(&f.catalog, with_extra).unwrap();
     assert_eq!(f.json(), control);
     for invalid in [
-        m8s_models::EXAMPLE_CATALOG.replace("[[models]]", "[[profiles]]"),
-        m8s_models::EXAMPLE_CATALOG.replace("weights_bytes = 42000000000", "weights_bytes = 0"),
+        m8s_core::models::EXAMPLE_CATALOG.replace("[[models]]", "[[profiles]]"),
+        m8s_core::models::EXAMPLE_CATALOG
+            .replace("weights_bytes = 42000000000", "weights_bytes = 0"),
     ] {
         fs::write(&f.catalog, invalid).unwrap();
         let o = f.run(&f.args());
@@ -422,11 +423,12 @@ fn existing_catalog_shape_and_global_validation_are_not_replaced_by_selected_mod
     // Valid selected small model cannot hide invalid unused large metadata.
     fs::write(
         &f.catalog,
-        m8s_models::EXAMPLE_CATALOG.replace("max_context_tokens = 32768", "max_context_tokens = 0"),
+        m8s_core::models::EXAMPLE_CATALOG
+            .replace("max_context_tokens = 32768", "max_context_tokens = 0"),
     )
     .unwrap();
     refusal(f.run(&f.args()), "invalid-plan-configuration", true);
-    fs::write(&f.catalog, m8s_models::EXAMPLE_CATALOG).unwrap();
+    fs::write(&f.catalog, m8s_core::models::EXAMPLE_CATALOG).unwrap();
     assert_eq!(f.json(), control);
 }
 #[test]

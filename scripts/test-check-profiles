@@ -75,7 +75,7 @@ def main():
         raise SystemExit("check profiles: optimized Python disables assertions; refused")
     if len(sys.argv) != 1:
         raise SystemExit("usage: python3 scripts/test-check-profiles")
-    source = (ROOT / "crates/m8s-top/tests/terminal_cleanup.rs").read_text()
+    source = (ROOT / "crates/m8s-cli/tests/dashboard_terminal_cleanup.rs").read_text()
     validate_inventory(source)
     for changed in (
         source + "\n#[test]\nfn additional_operational_case() {}\n",

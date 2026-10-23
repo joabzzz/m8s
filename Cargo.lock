@@ -1946,6 +1946,7 @@ dependencies = [
 name = "m8s-cli"
 version = "0.1.0"
 dependencies = [
+ "crossterm",
  "getrandom 0.4.3",
  "hex",
  "iroh",
@@ -1955,15 +1956,16 @@ dependencies = [
  "m8s-bootstrap",
  "m8s-config",
  "m8s-core",
- "m8s-models",
  "m8s-provider-vast",
  "m8s-secrets",
- "m8s-top",
  "m8sd",
  "mesh-llm-identity",
  "nix",
+ "ratatui",
  "serde",
  "serde_json",
+ "signal-hook",
+ "socket2",
  "tempfile",
  "tokio",
  "toml",
@@ -1978,7 +1980,6 @@ dependencies = [
  "chrono-tz",
  "libc",
  "m8s-core",
- "m8s-models",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
@@ -1994,24 +1995,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "m8s-models"
-version = "0.1.0"
-dependencies = [
- "m8s-core",
- "serde",
-]
-
-[[package]]
-name = "m8s-provider"
-version = "0.1.0"
-dependencies = [
- "m8s-core",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "m8s-provider-local"
 version = "0.1.0"
 dependencies = [
@@ -2019,7 +2002,6 @@ dependencies = [
  "libc",
  "m8s-agent",
  "m8s-core",
- "m8s-provider",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2031,7 +2013,6 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "m8s-core",
- "m8s-provider",
  "m8s-secrets",
  "reqwest",
  "rustls",
@@ -2055,22 +2036,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "m8s-top"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "m8s-api",
- "m8s-core",
- "nix",
- "ratatui",
- "serde",
- "serde_json",
- "signal-hook",
- "socket2",
- "tempfile",
-]
-
-[[package]]
 name = "m8sd"
 version = "0.1.0"
 dependencies = [
@@ -2081,7 +2046,6 @@ dependencies = [
  "m8s-bootstrap",
  "m8s-config",
  "m8s-core",
- "m8s-provider",
  "m8s-provider-local",
  "m8s-provider-vast",
  "nix",

@@ -74,11 +74,11 @@ m8s --socket /private/path/control.sock top [--once] [--json] [--timeout-ms 1..1
 m8s top --socket /private/path/control.sock [--once] [--json] [--timeout-ms 1..10000]
 ```
 
-Both forms call the same explicit `m8s_top::app` parser/runner as standalone
+Both forms call the same explicit `m8s_cli::dashboard::app` parser/runner as standalone
 `m8s-top`, in this process; no executable lookup, shell or child dispatch.
 Only Status is sent, never a provider/resource command. Socket private-path,
 peer-UID, one absolute I/O deadline, redacted errors and terminal RAII behavior
-are identical to [m8s-top](../m8s-top/README.md). Parsing/imports have no socket,
+are identical to [m8s-top](DASHBOARD.md). Parsing/imports have no socket,
 terminal or signal effects; interactive execution is explicit opt-in.
 
 Non-TTY invocation automatically takes one text snapshot. `--once` and `--json`
@@ -105,7 +105,7 @@ m8s plan --help
 All four input flags are required exactly once, in any order. `--json` is
 optional once. Unknown flags/positionals, duplicates, socket, execution and
 approval overrides fail before files are opened. No discovery or interpolation.
-Use the shipped `m8s-config/examples/m8s.toml` and `m8s-models/models/examples.toml`
+Use the shipped `m8s-config/examples/m8s.toml` and `m8s-core/models/examples.toml`
 with explicit absolute paths, or your own documents using those existing schemas.
 
 Exit 0 means **intent validated, not authorized or executable** under the fixed
@@ -219,12 +219,12 @@ feature flag, daemon, terminal, provider or credential. Supply your own explicit
 absolute catalog path (replace `/absolute/workspace/m8s` below with your checkout):
 
 ```sh
-m8s models --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml list
-m8s models --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml show example-27b-q4km --json
+m8s models --catalog /absolute/workspace/m8s/crates/m8s-core/models/examples.toml list
+m8s models --catalog /absolute/workspace/m8s/crates/m8s-core/models/examples.toml show example-27b-q4km --json
 m8s models --help
 # Use a catalog ID in your configuration, validate all intent, then inspect a tier:
-m8s config validate --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml --json
-m8s plan --local-development --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml --tier small --json
+m8s config validate --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-core/models/examples.toml --json
+m8s plan --local-development --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-core/models/examples.toml --tier small --json
 ```
 
 Grammar: `models --catalog ABS list [--json]` or
@@ -319,7 +319,7 @@ Supply hypothetical capacity explicitly; this does not discover local hardware
 or search/evaluate a live provider offer. For example, using the shipped catalog:
 
 ```sh
-m8s models fit --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml --model example-27b-q4km --gpu-count 2 --vram-bytes-per-gpu 80000000000 --layout a --context-tokens 1024 --minimum-sequences 1 --reserved-bytes-per-gpu 0 --json
+m8s models fit --catalog /absolute/workspace/m8s/crates/m8s-core/models/examples.toml --model example-27b-q4km --gpu-count 2 --vram-bytes-per-gpu 80000000000 --layout a --context-tokens 1024 --minimum-sequences 1 --reserved-bytes-per-gpu 0 --json
 m8s models fit --help
 ```
 
@@ -379,7 +379,7 @@ After `config validate`, the daemon can enforce configured membership/replica
 bounds without deploying models or selecting a real provider:
 
 ```sh
-m8sd /private/tmp/my-private-mock-state synthetic-mock-owner --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-models/models/examples.toml
+m8sd /private/tmp/my-private-mock-state synthetic-mock-owner --config /absolute/workspace/m8s/crates/m8s-config/examples/m8s.toml --catalog /absolute/workspace/m8s/crates/m8s-core/models/examples.toml
 # Separate terminal:
 m8s --socket /private/tmp/my-private-mock-state/control.sock up small
 m8s --socket /private/tmp/my-private-mock-state/control.sock scale small 2

@@ -1,7 +1,7 @@
 //! Explicit optional read-only HTTPS. No environment/key-file/default provider.
 //! Construction performs no provider I/O. All mutation is refused before supplier.
 use super::{MAX_BODY, Method, Reply, Request, Transport, UniqueKeys, number, numeric_path_id};
-use m8s_provider::{Error, Result};
+use m8s_core::provider::{Error, Result};
 use m8s_secrets::SecretValue;
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_TYPE, HeaderValue};
 use serde_json::{Value, json};

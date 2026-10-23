@@ -15,7 +15,6 @@ m8s-config = { path = "../m8s-config" }
 m8s-provider-local = { path = "../m8s-provider-local", optional = true }
 m8s-provider-vast = { path = "../m8s-provider-vast", optional = true, default-features = false, features = ["watchdog", "launch-https"] }
 m8s-core.workspace = true
-m8s-provider.workspace = true
 m8s-api.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -6,8 +6,8 @@ environment interpolation/discovery, keychain, credentials, model discovery or
 downloads. No daemon/CLI integration in this slice.
 
 ```rust
-let catalog: m8s_models::ModelCatalog =
-    toml::from_str(m8s_models::EXAMPLE_CATALOG)?; // explicit supplied example data
+let catalog: m8s_core::models::ModelCatalog =
+    toml::from_str(m8s_core::models::EXAMPLE_CATALOG)?; // explicit supplied example data
 let limits = m8s_config::ValidationLimits::default(); // trusted caller envelope
 let config = m8s_config::Config::parse(m8s_config::EXAMPLE.as_bytes(), &catalog, &limits)?;
 let normalized_ttl_seconds = config.dms().ttl_seconds;
@@ -83,7 +83,7 @@ lowercase letter and contain only lowercase letters/digits/`-_.`, no path syntax
 ADR0009 was a sketch, not a finished public contract. Draft schema1 explicitly
 uses integer microUSD vs float USD, byte GPU capacities vs ambiguous GB, typed
 cold/queue tables vs DSL strings, explicit timezone and supplied actual
-`m8s_models::ModelCatalog` shape instead of discovering files. No scale-up axis,
+`m8s_core::models::ModelCatalog` shape instead of discovering files. No scale-up axis,
 cron execution, queue metric observation, provider calls, admission or Ready/Gone
 inference. Budget limits remain injected owner policy; no new Admin/security
 exception mechanism. Root reviews this bounded draft before final public schema.
