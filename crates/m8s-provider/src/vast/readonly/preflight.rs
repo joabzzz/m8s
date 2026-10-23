@@ -274,7 +274,7 @@ fn micros(v: &Value) -> Result<u64> {
     let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
     if whole.is_empty()
         || whole.len() > 9
-        || fraction.len() > 18
+        || fraction.len() > 32
         || !whole.bytes().all(|b| b.is_ascii_digit())
         || !fraction.bytes().all(|b| b.is_ascii_digit())
     {
@@ -464,9 +464,14 @@ mod tests {
             ("0.0000001", 1),
             ("0.125", 125000),
             ("6.24524799", 6245248),
+            ("0.0026041666666666665", 2605),
         ] {
             assert_eq!(micros(&json!(s)).unwrap(), n);
         }
+        // Actual provider JSON numbers can contain more than 18 fractional
+        // digits. Keep integer rounding and a bounded input representation.
+        assert_eq!(micros(&json!(0.0026041666666666665)).unwrap(), 2605);
+        assert!(micros(&json!(format!("0.{}", "1".repeat(33)))).is_err());
         for s in ["-1", "NaN", "1e-4", "1.2.3", ""] {
             assert!(micros(&json!(s)).is_err());
         }
