@@ -48,6 +48,8 @@ pub trait TeardownDriver {
     fn perform(&mut self, effect: Effect) -> Outcome;
 }
 
+pub mod worker;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TeardownState {
     Running,

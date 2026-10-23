@@ -7,6 +7,9 @@ use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_TYPE, Head
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, io::Read, sync::Arc, time::Duration};
 
+#[cfg(feature = "scoped-destroy-https")]
+pub mod destroy;
+
 const ORIGIN: &str = "https://console.vast.ai";
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -132,7 +135,9 @@ enum ReadKind {
 }
 fn allowed(request: &Request) -> Result<ReadKind> {
     match (&request.method, request.path.as_str(), &request.body) {
-        (Method::Get, "/api/v0/users/current", None) => Ok(ReadKind::Account),
+        (Method::Get, "/api/v0/users/current" | "/api/v0/users/current/", None) => {
+            Ok(ReadKind::Account)
+        }
         (Method::Get, "/api/v1/instances", None) => Ok(ReadKind::List),
         (Method::Get, path, None) if path.starts_with("/api/v0/instances/") => {
             numeric_path_id(&path["/api/v0/instances/".len()..]).map_err(|_| Error::Unavailable)?;
@@ -179,7 +184,11 @@ fn exchange_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
             } else {
                 reqwest::Method::GET
             },
-            url: format!("{ORIGIN}{}", request.path),
+            url: match kind {
+                // Live canonical route; do not follow the slashless 301 with auth.
+                ReadKind::Account => format!("{ORIGIN}/api/v0/users/current/"),
+                _ => format!("{ORIGIN}{}", request.path),
+            },
             authorization,
             body,
         })

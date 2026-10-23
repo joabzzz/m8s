@@ -1,5 +1,6 @@
 //! Vast mapping defaults to fixture-only; optional explicit readonly-https transport.
-//! The optional transport cannot launch/destroy and never certifies snapshot completeness.
+//! Read-only transport never mutates or certifies snapshot completeness. Separately
+//! enabled scoped cleanup separates acknowledgement from exact absence lookup.
 //! API field assumptions come from the supplied S1 research; live validation is outstanding.
 use m8s_core::{Instance, InstanceState, Observation, Offer};
 use m8s_provider::{Error, LaunchSpec, Provider, Result};

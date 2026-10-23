@@ -13,6 +13,7 @@ serde_json.workspace = true
 [features]
 default = []
 readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
+scoped-destroy-https = ["readonly-https"]
 
 [dependencies.reqwest]
 version = "=0.13.5"

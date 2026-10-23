@@ -424,3 +424,14 @@ transport evidence (including historical v1 intents) refuses recovery rather tha
 silently trusting a newly selected daemon. Existing retained live-session cleanup
 continues to work independently of bootstrap/model material. Both paths share
 one fenced inspection/removal algorithm, not separate destructive implementations.
+
+## Blocking provider cleanup
+
+`supervisor::worker::WorkerTeardown` dispatches bounded cleanup operations on a
+dedicated thread. The control executor never waits for provider I/O: pending
+operations return uncertainty, with at most one outstanding operation per effect.
+Each operation must supply its own deadline and exact-resource authorization.
+Dropping the dispatch handle does not join the worker or cancel queued cleanup.
+This worker does not survive process death and is not the independent owner
+watchdog required before a rental. Only explicit `ConfirmAbsent` evidence can
+produce a confirmed-absence outcome.

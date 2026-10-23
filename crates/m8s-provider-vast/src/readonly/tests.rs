@@ -1,13 +1,13 @@
 use super::*;
 use std::{cell::Cell, io::Cursor};
 const SYNTHETIC: &str = "SYNTHETIC-ONLY-FAKE-ACCOUNT-KEY";
-struct Fake {
-    calls: usize,
-    request: Option<WireRequest>,
-    reply: Option<WireReply>,
+pub(super) struct Fake {
+    pub(super) calls: usize,
+    pub(super) request: Option<WireRequest>,
+    pub(super) reply: Option<WireReply>,
 }
 impl Fake {
-    fn json(body: &[u8]) -> Self {
+    pub(super) fn json(body: &[u8]) -> Self {
         Self {
             calls: 0,
             request: None,
@@ -28,7 +28,7 @@ impl Backend for Fake {
         self.reply.take().ok_or(Error::Unavailable)
     }
 }
-fn key() -> Result<SecretValue> {
+pub(super) fn key() -> Result<SecretValue> {
     Ok(SecretValue::new(SYNTHETIC.as_bytes().to_vec()))
 }
 fn request(method: Method, path: &str, body: Option<Value>) -> Request {
@@ -72,7 +72,7 @@ fn fixed_origin_sensitive_header_and_sanitized_balance() {
         json!({"balance_micro_usd":6000000,"auto_topup":"unknown"})
     );
     let sent = fake.request.as_ref().unwrap();
-    assert_eq!(sent.url, "https://console.vast.ai/api/v0/users/current");
+    assert_eq!(sent.url, "https://console.vast.ai/api/v0/users/current/");
     assert_eq!(sent.method, reqwest::Method::GET);
     assert!(sent.authorization.is_sensitive());
     assert!(!format!("{:?}", sent.authorization).contains(SYNTHETIC));
