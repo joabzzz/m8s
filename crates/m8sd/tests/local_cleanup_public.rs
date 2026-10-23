@@ -1,7 +1,7 @@
 //! Independent PUBLIC cleanup diagnostics for explicitly owned sleep children.
 //! Not provider absence, billing, admission, settlement or parent-loss proof.
 #![cfg(all(unix, feature = "local-development"))]
-use m8s_provider_local::{DevelopmentCommand, LocalTerminationState};
+use m8s_provider::local::{DevelopmentCommand, LocalTerminationState};
 use m8sd::{
     Store,
     budget::*,
@@ -196,7 +196,7 @@ impl ChildScope {
         loop {
             match LocalDevelopmentExecutor::open(plan(journal), OWNER) {
                 Ok(e) => return Self(Some(e)),
-                Err(m8sd::Error::Provider(m8s_core::provider::Error::Unavailable))
+                Err(m8sd::Error::Provider(m8s_provider::Error::Unavailable))
                     if Instant::now() < end =>
                 {
                     thread::sleep(Duration::from_millis(10));

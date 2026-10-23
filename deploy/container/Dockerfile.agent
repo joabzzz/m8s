@@ -18,7 +18,7 @@ RUN --mount=type=cache,id=m8s-agent-registry-${TARGETARCH},target=/usr/local/car
 RUN --network=none \
     --mount=type=cache,id=m8s-agent-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=m8s-agent-target-${TARGETARCH},target=/src/m8s/target,sharing=locked \
-    cargo build --release --locked --offline -j2 -p m8s-agent --features vast-node \
+    cargo build --release --locked --offline -j2 -p m8s-provider --features vast-node \
     && mkdir /out && cp target/release/m8s-agent /out/m8s-agent
 
 FROM ${RUNTIME_IMAGE}

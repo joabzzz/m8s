@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Verify provider dependency boundaries without compiling or contacting providers."""
+import subprocess
+
+
+def dependencies(package, *features):
+    command = [
+        "cargo", "tree", "--locked", "-p", package, "--no-default-features",
+        "--edges", "normal,build", "--prefix", "none", "--format", "{p}",
+    ]
+    if features:
+        command += ["--features", ",".join(features)]
+    result = subprocess.run(command, check=True, capture_output=True, text=True)
+    return {line.split()[0] for line in result.stdout.splitlines() if line.strip()}
+
+
+def excludes(package, forbidden, *features):
+    found = dependencies(package, *features) & set(forbidden)
+    if found:
+        raise SystemExit(f"{package} features={features} unexpectedly includes {sorted(found)}")
+
+
+excludes("m8s-provider", ["libc", "reqwest", "rustls", "m8s-agent", "fs2", "sha2", "m8s-secrets"])
+excludes("m8s-provider", ["reqwest", "rustls", "m8s-secrets"], "local")
+excludes("m8s-provider", ["m8s-agent"], "vast-readonly-https")
+excludes("m8s-agent", ["m8s-provider"], "secure-runtime")
+excludes("m8s-core", ["m8s-provider", "m8s-agent", "libc", "reqwest", "rustls"])
+print("Provider feature dependency boundaries passed")

@@ -25,19 +25,17 @@ covers all 17 originals, and [code evidence](../original/CODE_EVIDENCE.md) recor
 specific divergences including the synchronous provider interface, owner-initiated
 bootstrap, explicit file secrets, and absent privacy-attestation levels.
 
-The cleanup consolidates 13 workspace crates to 10 without changing these wire
-or lifecycle contracts. `m8s-core::models` owns model fit arithmetic;
-`m8s-core::provider` owns the provider interface; `m8sd::mock_provider` owns the
-development mock. `m8s-cli::dashboard` supplies both `m8s top` and `m8s-top`.
-Rust imports and `cargo -p` selections for the three removed packages must change;
-operator command names, serialized records and native image pins stay the same.
+The provider consolidation reduces the workspace to nine crates. `m8s-core::models`
+owns model fit arithmetic; `m8s_provider` owns provider contracts and the `mock`,
+`vast`, and optional `local` modules. `m8sd::mock_provider` remains a re-export for
+existing callers. `m8s-cli::dashboard` supplies both `m8s top` and `m8s-top`.
 
-The retained boundaries isolate TOML/time-zone parsing, control socket types,
-secret backends, native identity/TLS, local process execution, Vast HTTP, daemon
-persistence, and worker supervision. Combining the local and Vast adapters would
-also create an agent dependency cycle: local depends on agent, and the Vast node
-agent depends on Vast's scoped cleanup transport. Reducing the count further
-requires changing those responsibilities, not only moving files.
+The provider crate assembles the `m8s-agent` executable, including Vast node
+composition, while the agent library keeps supervision and authenticated runtime
+primitives. This preserves the dependency direction `provider -> agent -> core`:
+core has no provider contracts or I/O, and the agent library has no provider
+dependency. Heavy local and HTTPS dependencies are optional provider features.
+Operator command names, serialized records and native image pins stay the same.
 
 A new Flint performance run must provide its own runtime/model pins, measured
 inference and cleanup evidence. Historical Qwen receipts and source tests cannot

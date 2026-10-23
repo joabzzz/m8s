@@ -24,7 +24,7 @@ certificate verifier, model readiness assertion, provider client or real destroy
 Local-only exercise (non-secret arguments only):
 
 ```sh
-cargo run -p m8s-agent -- --local 2 -- /bin/sleep 60
+cargo run -p m8s-provider --features agent-runtime --bin m8s-agent -- --local 2 -- /bin/sleep 60
 ```
 
 It starts a direct child with an empty inherited environment, null stdin/stdout/
@@ -447,7 +447,9 @@ produce a confirmed-absence outcome.
 
 ## Explicit Vast node entrypoint
 
-Build with `--features vast-node`. This adds:
+Build the executable with `cargo build -p m8s-provider --features vast-node --bin m8s-agent`.
+The provider crate assembles the executable; this crate remains a provider-independent
+library. For the local exerciser, use `-p m8s-provider --features agent-runtime`. This adds:
 
 ```text
 m8s-agent --vast-node CONFIG NONCE_FILE NODE_KEY_FILE

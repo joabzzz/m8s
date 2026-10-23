@@ -35,4 +35,4 @@ Production relay policy, NAT diversity, and recovery need separate qualification
 - [Live receipt](../../deploy/container/demo-proof.json)
 - [Native source revisions](../../deploy/container/native-source.json)
 - [Bootstrap contract](../../crates/m8s-bootstrap/README.md)
-- [Provisioning protocol](../../crates/m8s-provider-vast/src/provision_protocol.rs)
+- [Provisioning protocol](../../crates/m8s-provider/src/vast/provision_protocol.rs)

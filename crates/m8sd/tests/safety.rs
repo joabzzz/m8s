@@ -1,5 +1,5 @@
-use m8s_core::provider::Provider;
 use m8s_core::{Instance, InstanceState, Observation, Phase};
+use m8s_provider::Provider;
 use m8sd::Store;
 use m8sd::mock_provider::{Fault, Mock};
 use std::{
@@ -143,7 +143,7 @@ fn mock_provider_state_itself_survives_restart() {
         let offer = p.search().unwrap().remove(0);
         p.launch(
             &offer,
-            &m8s_core::provider::LaunchSpec {
+            &m8s_provider::LaunchSpec {
                 owner: "o".into(),
                 tier: "t".into(),
                 node_uid: "u".into(),

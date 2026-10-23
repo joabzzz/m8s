@@ -1902,16 +1902,12 @@ dependencies = [
  "libc",
  "m8s-bootstrap",
  "m8s-core",
- "m8s-provider-vast",
  "m8s-secrets",
- "mesh-llm-identity",
  "nix",
  "serde",
  "serde_json",
- "signal-hook",
  "thiserror 2.0.21",
  "tokio",
- "zeroize",
 ]
 
 [[package]]
@@ -1956,7 +1952,7 @@ dependencies = [
  "m8s-bootstrap",
  "m8s-config",
  "m8s-core",
- "m8s-provider-vast",
+ "m8s-provider",
  "m8s-secrets",
  "m8sd",
  "mesh-llm-identity",
@@ -1992,35 +1988,31 @@ name = "m8s-core"
 version = "0.1.0"
 dependencies = [
  "serde",
- "thiserror 2.0.21",
 ]
 
 [[package]]
-name = "m8s-provider-local"
+name = "m8s-provider"
 version = "0.1.0"
 dependencies = [
  "fs2",
+ "iroh",
  "libc",
  "m8s-agent",
- "m8s-core",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "m8s-provider-vast"
-version = "0.1.0"
-dependencies = [
- "libc",
+ "m8s-bootstrap",
  "m8s-core",
  "m8s-secrets",
+ "mesh-llm-identity",
+ "nix",
  "reqwest",
  "rustls",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "signal-hook",
+ "thiserror 2.0.21",
  "tokio",
  "webpki-roots",
+ "zeroize",
 ]
 
 [[package]]
@@ -2047,8 +2039,7 @@ dependencies = [
  "m8s-bootstrap",
  "m8s-config",
  "m8s-core",
- "m8s-provider-local",
- "m8s-provider-vast",
+ "m8s-provider",
  "nix",
  "rusqlite",
  "serde",

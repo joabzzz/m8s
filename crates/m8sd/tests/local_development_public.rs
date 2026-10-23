@@ -2,7 +2,7 @@
 //! Owned Launching SQL fixtures are not admission, absence or billing proof.
 //! No private hooks, PID scans/signals, cloud/network/TLS/credentials/Keychain.
 #![cfg(all(unix, feature = "local-development"))]
-use m8s_provider_local::{DevelopmentCommand, Local, LocalTerminationState};
+use m8s_provider::local::{DevelopmentCommand, Local, LocalTerminationState};
 use m8sd::{
     Store,
     budget::*,
@@ -230,7 +230,7 @@ impl ChildScope {
                     drop(local);
                     return true;
                 }
-                Err(m8s_core::provider::Error::Unavailable) => {} // Expected retained-worker lock.
+                Err(m8s_provider::Error::Unavailable) => {} // Expected retained-worker lock.
                 Err(_) => return false, // Never hide storage/validation failures behind retry.
             }
             if Instant::now() >= end {

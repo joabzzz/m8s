@@ -73,10 +73,9 @@ its companion repository and the node image's source revision.
 
 | Component | Responsibility |
 | --- | --- |
-| `m8s-core`, `m8s-config` | Policy, provider contracts, model fit arithmetic; configuration parsing |
+| `m8s-core`, `m8s-config` | Policy, model fit arithmetic; configuration parsing |
 | `m8sd` | SQLite intent/nonce/accounting journals and operation coordinators |
-| `m8s-provider-vast` | Explicit bounded Vast transports, observation, cleanup |
-| `m8s-provider-local` | Local development execution and recovery |
+| `m8s-provider` | Provider contracts, Mock, feature-gated Vast/local adapters and node executable |
 | `m8s-bootstrap` | Canonical identity bridge, direct TLS delivery and control |
 | `m8s-agent` | Required-certificate native launch, supervision and dead-man switch |
 | `m8s-cli` | Operator commands and dashboard; builds `m8s` and `m8s-top` |

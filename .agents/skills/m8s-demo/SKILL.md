@@ -22,7 +22,7 @@ do not rent merely to explain or verify the existing result.
 - **Investigate a failed attempt:** start with saved receipts, watchdog events,
   and `m8s prototype audit`. A consumed claim cannot be reset. Preserve its
   directory and liability. Use exact-resource recovery contracts in
-  `crates/m8s-provider-vast/README.md`; never destroy by a broad account sweep.
+  `crates/m8s-provider/src/vast/README.md`; never destroy by a broad account sweep.
 - **Continue implementation:** read `docs/ROADMAP.md`, `docs/ORIGINAL_PLAN_STATUS.md`,
   and the original roadmap/ADRs under `docs/original/`. The shorter
   `docs/decisions/` records describe the proven prototype only.

@@ -452,7 +452,7 @@ fn wait_for_mock_nodes(f: &Fixture) {
 }
 
 fn assert_stopped_and_restart_zero(f: &Fixture) {
-    use m8s_core::provider::Provider;
+    use m8s_provider::Provider;
     let mut provider =
         m8sd::mock_provider::Mock::persistent(f.state().join("mock-provider.json")).unwrap();
     assert!(provider.list_owned(OWNER).unwrap().is_empty());

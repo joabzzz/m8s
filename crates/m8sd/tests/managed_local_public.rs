@@ -1,7 +1,7 @@
 //! Public managed LOCAL metadata qualification; synthetic accounting is NOT approval.
 //! No SQL fixtures, child execution, fabricated claims, absence or settlement.
 #![cfg(all(unix, feature = "local-development"))]
-use m8s_provider_local::DevelopmentCommand;
+use m8s_provider::local::DevelopmentCommand;
 use m8sd::{
     Store,
     budget::*,

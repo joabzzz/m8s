@@ -16,7 +16,7 @@ established only by the receipts under
 | Crate / area | ADRs | Evidence to read |
 | --- | --- | --- |
 | [`m8s-core`](../../crates/m8s-core) | 0005, 0008, 0009 | `src/policy.rs` (location, bandwidth, launch-rate and budget admission), `src/queue.rs` |
-| [`core::provider`](../../crates/m8s-core/src/provider.rs), [`-local`](../../crates/m8s-provider-local), [`-vast`](../../crates/m8s-provider-vast) | 0003, 0004, 0007 | `Provider` trait and daemon `mock_provider`; Vast adapter, exact-resource destroy and watchdog |
+| [`m8s-provider`](../../crates/m8s-provider), [`local`](../../crates/m8s-provider/src/local), [`vast`](../../crates/m8s-provider/src/vast) | 0003, 0004, 0007 | `Provider` trait and `mock` (daemon re-export); Vast adapter, exact-resource destroy and watchdog |
 | [`m8s-bootstrap`](../../crates/m8s-bootstrap) | 0006 | `BOOT_ALPN`/`CONTROL_ALPN`, `NONCE_TTL_SECONDS`, `ControlAcl`, `src/mp001` |
 | [`m8s-agent`](../../crates/m8s-agent) | 0006, 0007 | `DeadManSwitch`, control bridge, `vast_node.rs` (per-instance container key) |
 | [`m8sd`](../../crates/m8sd) | 0008 | SQLite store, budget ledger, nonce ledger, operation claims |

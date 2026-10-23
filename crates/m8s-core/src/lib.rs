@@ -1,6 +1,5 @@
 //! Provider-independent domain types. Time is Unix seconds, money is micro-USD.
 pub mod models;
-pub mod provider;
 
 use serde::{Deserialize, Serialize};
 

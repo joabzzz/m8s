@@ -214,7 +214,7 @@ Requires prototype-vast. One durable paid attempt, fresh account/price checks, p
             return Err("invalid-vast-cleanup-worker-arguments");
         }
         #[cfg(all(unix, feature = "prototype-vast"))]
-        return m8s_provider_vast::watchdog::run(std::path::Path::new(&args[2]))
+        return m8s_provider::vast::watchdog::run(std::path::Path::new(&args[2]))
             .map_err(|_| "vast-cleanup-unresolved-retain-liability");
         #[cfg(not(all(unix, feature = "prototype-vast")))]
         return Err("vast-cleanup-worker-unavailable");

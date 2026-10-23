@@ -49,6 +49,9 @@ jobs:
       - name: Check formatting, tests, and Clippy
         run: ./scripts/check --no-pty --no-acl-mutation
 
+      - name: Check provider feature boundaries
+        run: python3 -B scripts/check-provider-features
+
       - name: Test container tooling
         run: python3 -B -m unittest discover -s deploy/container/tests -v
 
