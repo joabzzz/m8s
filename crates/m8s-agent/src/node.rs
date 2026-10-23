@@ -369,7 +369,7 @@ impl NodeMaterial {
                 }
                 .into(),
                 self.launch.gguf.as_ref().map_or_else(
-                    || self.launch.model.clone().into(),
+                    || native_model_ref(&self.launch.model).into(),
                     |path| path.as_os_str().into(),
                 ),
                 "--join-file".into(),
@@ -413,6 +413,24 @@ impl NodeMaterial {
         }
         Ok(command)
     }
+}
+// Artifact receipts use repo@commit/file, while the native CLI consumes
+// repo@commit:file. Preserve the exact repository, commit and filename; this
+// is a syntax conversion, never quantization or model-name substitution.
+fn native_model_ref(model: &str) -> String {
+    if let Some((head, file)) = model.rsplit_once('/')
+        && let Some((repo, revision)) = head.rsplit_once('@')
+        && repo.split('/').count() == 2
+        && revision.len() == 40
+        && revision.bytes().all(|b| b.is_ascii_hexdigit())
+        && file.ends_with(".gguf")
+        && file
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+    {
+        return format!("{repo}@{revision}:{file}");
+    }
+    model.to_owned()
 }
 fn check(anchors: &[Anchor]) -> Result<()> {
     for anchor in anchors {

@@ -1,0 +1,13 @@
+{
+  "cancellation": {
+    "authorization": "user-continue-demo-20261023-exact-uninvoked",
+    "cancelled_at": 1792788635
+  },
+  "claim_reset": false,
+  "original_reserved_micro_usd": 2369054,
+  "provider_absence_claimed": false,
+  "provider_calls": false,
+  "request_id": "qwen38-request-f6618ebe64",
+  "schema": "m8s.uninvoked-cancellation/v1",
+  "state": "CancelledUninvoked"
+}

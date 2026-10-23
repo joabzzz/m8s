@@ -49,6 +49,11 @@ unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD
 The [pinned quantization](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/tree/4ca720788d1e01f1bff70c033e0d0028fd02e502)
 is 16,464,440,224 bytes. Its upstream LFS SHA-256 is
 `322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482`.
+The artifact receipt form above is converted at the native CLI boundary to
+`repo@revision:filename`; the packaged native client resolves that exact selector
+to the pinned download URL in a metadata-only check. A slash after the revision
+is not native input syntax: it is interpreted as part of the revision.
+
 Only the public first MiB was fetched for GGUF header inspection: it identifies
 `qwen35`, GGUF v3, 866 tensors and 262,144 context. The whole-file hash has not
 been independently checked. The expected routed API identity is:
@@ -165,8 +170,10 @@ qualification.
    download happens **during billed rental time**, along with image pull,
    provisioning and loading. At 500 Mbps the weights alone have an ideal lower
    bound of about 264 seconds; no throughput guarantee follows from that rate.
-   The Qwen profile reserves 256 GB of transfer independently of its 64 GB
-   disk. Its native Hub and Xet request retry counts are fixed to zero, using
+   The Qwen profile reserves 64 GB of transfer independently of its 64 GB
+   disk: two complete 16.465 GB download paths plus the <5 GB unpacked image
+   leave >26 GB for metadata/framing. The pinned native artifact resolver
+   downloads exactly the selected non-sharded GGUF, not all variants. Its native Hub and Xet request retry counts are fixed to zero, using
    the pinned clients' public settings, to prevent retry amplification. Include
    the immutable image's download size, weights, metadata and transfer overhead
    in that reserve; fail admission if it cannot cover the selected flow.

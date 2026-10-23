@@ -391,7 +391,7 @@ fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags()
         &[
             "serve",
             "--model",
-            "org/repo@0123456789012345678901234567890123456789/model.gguf"
+            "org/repo@0123456789012345678901234567890123456789:model.gguf"
         ]
     );
     assert!(args.contains(&"--node-ownership-required"));
@@ -410,4 +410,21 @@ fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags()
         Some(std::ffi::OsStr::new("0"))
     );
     assert!(!args.contains(&"--gguf"));
+}
+
+#[test]
+fn native_selector_preserves_pinned_qwen_file_and_other_model_syntax() {
+    let input = "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf";
+    assert_eq!(
+        native_model_ref(input),
+        "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:Qwen3.8-27B-UD-Q4_K_M.gguf"
+    );
+    for unchanged in [
+        "catalog-model",
+        "org/repo@revision:Q4_K_M",
+        "org/repo@main/file.gguf",
+        "org/repo@0123456789012345678901234567890123456789/../file.gguf",
+    ] {
+        assert_eq!(native_model_ref(unchanged), unchanged);
+    }
 }

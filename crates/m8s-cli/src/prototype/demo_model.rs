@@ -53,8 +53,11 @@ impl DemoModel {
     pub(super) fn transfer_reserve_gb(self, disk_gb: u32) -> u64 {
         match self {
             // Cover native model/cache traffic, metadata, image pull and
-            // transfer framing separately from the disk allocation.
-            Self::Qwen38 => 256,
+            // transfer framing separately from the disk allocation. The pinned
+            // non-sharded artifact has one 16.465 GB file. 64 GB covers two
+            // full download paths plus the <5 GB image and >26 GB headroom;
+            // native retries and draft-model downloads are disabled.
+            Self::Qwen38 => 64,
             Self::Qwen | Self::Flint => u64::from(disk_gb),
         }
     }
@@ -108,7 +111,7 @@ mod tests {
         assert!(!model.accepts_disk(10));
         assert!(!model.accepts_disk(63));
         assert!(model.accepts_disk(64));
-        assert_eq!(model.transfer_reserve_gb(64), 256);
+        assert_eq!(model.transfer_reserve_gb(64), 64);
         let requirements = model.requirements();
         assert_eq!(requirements.min_gpu_memory_mib, 48000);
         assert_eq!(requirements.max_compute_hourly, 2_000_000);
