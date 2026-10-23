@@ -1,5 +1,5 @@
 #![cfg(unix)]
-//! Legacy rendering against only an owned synthetic peer.
+//! Control rendering against only an owned synthetic peer.
 mod support;
 use serde_json::{Value, json};
 use std::{
@@ -115,6 +115,52 @@ fn clean_legacy_text_and_json_are_exact_and_requests_once() {
     let mut r = r;
     r["secure_bootstrap"] = json!("unavailable; nodes cannot become Ready");
     assert!(serve(&r, &["status"], true, false).status.success());
+}
+#[test]
+fn real_cli_accepts_explicit_vast_commands_without_accepting_ready_or_extra_replicas() {
+    let mut base = reply();
+    base["mode"] = json!(m8s_api::VAST_DEMO_MODE);
+    base["secure_bootstrap"] = json!(m8s_api::VAST_DEMO_SECURITY);
+    base["nodes"][0]["phase"] = json!("Booting");
+    for json in [true, false] {
+        for command in [
+            vec!["up", "a"],
+            vec!["scale", "a", "1"],
+            vec!["status"],
+            vec!["logs"],
+            vec!["down"],
+        ] {
+            let mut value = base.clone();
+            if command == ["down"] {
+                value["tiers"] = json!([["a", 0]]);
+            }
+            let output = serve(&value, &command, json, false);
+            assert!(output.status.success());
+            assert!(output.stderr.is_empty());
+            assert!(
+                String::from_utf8(output.stdout)
+                    .unwrap()
+                    .contains("vast-prototype")
+            );
+        }
+        for (field, value) in [
+            ("tiers", json!([["a", 2]])),
+            ("secure_bootstrap", json!("unavailable")),
+        ] {
+            let mut invalid = base.clone();
+            invalid[field] = value;
+            refused(
+                serve(&invalid, &["status"], json, false),
+                "control-outcome-unknown",
+            );
+        }
+        let mut ready = base.clone();
+        ready["nodes"][0]["phase"] = json!("Ready");
+        refused(
+            serve(&ready, &["status"], json, false),
+            "control-outcome-unknown",
+        );
+    }
 }
 #[test]
 fn free_controls_and_unicode_are_escaped_without_raw_terminal_data() {

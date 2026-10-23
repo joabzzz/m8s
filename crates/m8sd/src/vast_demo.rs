@@ -104,10 +104,13 @@ impl Controller {
             }
         }
         let mut response = Response {
-            ok, mode: "vast-prototype".into(), nodes: vec![],
+            ok,
+            mode: m8s_api::VAST_DEMO_MODE.into(),
+            nodes: vec![],
             tiers: vec![(self.options.plan.tier.clone(), self.desired)],
-            events: vec![], error: (!ok).then(|| ERROR.into()),
-            secure_bootstrap: "real bounded prototype; readiness not advertised; retained status is not fresh provider absence".into(),
+            events: vec![],
+            error: (!ok).then(|| ERROR.into()),
+            secure_bootstrap: m8s_api::VAST_DEMO_SECURITY.into(),
         };
         let db = self.options.plan.directory.join("state.db");
         if db.exists() {
