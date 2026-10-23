@@ -298,6 +298,8 @@ mod process_tests;
 
 mod launcher;
 pub use launcher::ArmedCleanup;
+#[cfg(feature = "launch-https")]
+pub use launcher::OwnedResourceAbsence;
 
 fn arm_ack(plan: &Plan) -> Result<Vec<u8>> {
     let mut ack = b"armed ".to_vec();

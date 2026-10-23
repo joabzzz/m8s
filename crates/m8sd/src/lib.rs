@@ -2,7 +2,7 @@
 #[cfg(all(unix, feature = "local-development"))]
 pub mod local_demo;
 
-use m8s_core::policy::{LifecycleEvidence, may_delete, transition};
+use m8s_core::policy::{LifecycleEvidence, transition};
 use m8s_core::{GpuNode, InstanceState, Observation, Phase, Timestamp};
 use m8s_provider::{LaunchSpec, Provider};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -96,6 +96,7 @@ impl Store {
         nonce::initialize(&conn)?;
         budget::initialize(&conn)?;
         operation::initialize(&conn)?;
+        execution_domain::initialize(&conn)?;
         // Allocate before moving either lifetime-sensitive local into Self.
         // On every earlier error/unwind, conn (declared later) drops first.
         let origin = std::sync::Arc::new(StoreOrigin);
@@ -270,7 +271,14 @@ impl Store {
             |r| r.get(0),
         )?)
     }
+    /// The legacy provider loop must never interpret a managed launch journal
+    /// using a Mock (or another unbound provider). Managed executors own their
+    /// authenticated observations and budget settlement. Check before effects.
+    pub fn require_unmanaged_state(&self) -> Result<()> {
+        execution_domain::require_unmanaged(&self.conn, &self.owner)
+    }
     pub fn reconcile(&mut self, p: &mut impl Provider, now: Timestamp) -> Result<()> {
+        self.claim_unmanaged_execution()?;
         // A list failure does not become an empty snapshot.
         let owned = p.list_owned(&self.owner)?;
         for instance in owned {
@@ -316,26 +324,13 @@ impl Store {
                     *retained.entry(n.tier.clone()).or_default() += 1;
                 }
                 Ok(Observation::Absent) => {
-                    // The sole deletion site: explicit per-instance positive absence.
-                    // Advance through teardown even when the provider removed it externally.
-                    let evidence = LifecycleEvidence {
-                        provider_confirmed_absent: true,
-                        ..LifecycleEvidence::default()
-                    };
-                    let destroying = transition(n.phase, Phase::Destroying, evidence)
-                        .map_err(|_| Error::Corrupt)?;
-                    let gone = transition(destroying, Phase::Gone, evidence)
-                        .map_err(|_| Error::Corrupt)?;
-                    if !may_delete(gone, evidence) {
-                        return Err(Error::Corrupt);
-                    }
                     let tx = self
                         .conn
                         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-                    nonce::cancel_uid(&tx, &self.owner, &n.uid)?;
-                    tx.execute("DELETE FROM gpu_node WHERE uid=?", [&n.uid])?;
+                    if !removal::remove_absent_node(&tx, &self.owner, &n.uid, id, now)? {
+                        return Err(Error::Corrupt);
+                    }
                     tx.commit()?;
-                    self.event(now, "provider confirmed absence; finalizer released")?;
                 }
                 Ok(Observation::Present(i)) => {
                     if i.owner != self.owner || i.id != *id {
@@ -431,5 +426,7 @@ pub mod operation;
 mod control_snapshot;
 pub use control_snapshot::ControlSnapshot;
 mod diagnostics;
+mod execution_domain;
 mod manual;
 mod private;
+mod removal;

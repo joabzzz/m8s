@@ -187,17 +187,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|_| "another daemon owns this state directory")?;
     // Configured reopen checks persisted desired before provider opening,
     // reconciliation or even replacing the old socket. No clamp/reset/repair.
-    let configured_store = if let Some(policy) = &policy {
-        let store = Store::open(dir.join("state.db"), &owner)
-            .map_err(|_| "configured mock state unavailable; state retained")?;
+    let mut store = Store::open(dir.join("state.db"), &owner)
+        .map_err(|_| "mock state unavailable; state retained")?;
+    store.require_unmanaged_state().map_err(
+        |_| "managed launch state requires its original coordinator; mock daemon refused",
+    )?;
+    if let Some(policy) = &policy {
         let tiers = store
             .tiers()
             .map_err(|_| "configured mock state unavailable; state retained")?;
         policy.persisted(&tiers)?;
-        Some(store)
-    } else {
-        None
-    };
+    }
+    store.claim_unmanaged_execution().map_err(
+        |_| "managed launch state requires its original coordinator; mock daemon refused",
+    )?;
     let socket = dir.join("control.sock");
     if let Ok(meta) = fs::symlink_metadata(&socket) {
         if !meta.file_type().is_socket() {
@@ -208,10 +211,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listener = UnixListener::bind(&socket)?;
     fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
     listener.set_nonblocking(true)?;
-    let mut store = match configured_store {
-        Some(store) => store,
-        None => Store::open(dir.join("state.db"), &owner)?,
-    };
     let mut provider = Mock::persistent(dir.join("mock-provider.json"))?;
     let mut last = Instant::now() - Duration::from_secs(30);
     eprintln!(

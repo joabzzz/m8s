@@ -114,6 +114,9 @@ impl Fixture {
         Store::open(&self.db, OWNER).unwrap()
     }
     fn seed(&self, store: &Store, id: &str, now: i64) {
+        store
+            .initialize_budget(&self.policy, &period(), now)
+            .unwrap();
         store.scale("synthetic", 1).unwrap();
         // Only fixture creation uses direct SQL. All operation/budget transitions
         // go through public Store APIs, never private record/capability minting.

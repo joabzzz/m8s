@@ -8,13 +8,13 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 static NEXT: AtomicU64 = AtomicU64::new(0);
-struct Directory(PathBuf);
+pub(super) struct Directory(pub(super) PathBuf);
 impl Drop for Directory {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
-fn executor(offer: u64) -> VastExecutor {
+pub(super) fn executor(offer: u64) -> VastExecutor {
     let identity = RecoveryIntent::new(
         "owner",
         "node",
@@ -31,10 +31,11 @@ fn executor(offer: u64) -> VastExecutor {
         "owner",
         "node",
         "smoke",
+        NonZeroU64::new(7).unwrap(),
     )
     .unwrap()
 }
-fn setup(cap: u64, instances: u32) -> (Store, Directory) {
+pub(super) fn setup(cap: u64, instances: u32) -> (Store, Directory) {
     let path = std::env::temp_dir().join(format!(
         "m8sd-vast-{}-{}",
         std::process::id(),

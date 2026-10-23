@@ -23,7 +23,9 @@ do not rent merely to explain or verify the existing result.
   and `m8s prototype audit`. A consumed claim cannot be reset. Preserve its
   directory and liability. Use exact-resource recovery contracts in
   `crates/m8s-provider-vast/README.md`; never destroy by a broad account sweep.
-- **Continue implementation:** read `docs/ROADMAP.md` and `docs/decisions/`.
+- **Continue implementation:** read `docs/ROADMAP.md`, `docs/ORIGINAL_PLAN_STATUS.md`,
+  and the original roadmap/ADRs under `docs/original/`. The shorter
+  `docs/decisions/` records describe the proven prototype only.
   The opt-in prototype is proven; the normal daemon is still a development
   controller. Do not present its mock state as live readiness.
 

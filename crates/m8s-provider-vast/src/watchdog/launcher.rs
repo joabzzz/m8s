@@ -24,6 +24,39 @@ pub struct ArmedCleanup {
     started: Instant,
     remaining: Duration,
 }
+/// Fresh exact-resource absence observed with the original creator credential
+/// and immutable owner intent. A worker exit or destroy ACK cannot construct it.
+///
+/// ```compile_fail
+/// use m8s_provider_vast::watchdog::OwnedResourceAbsence;
+/// let _: OwnedResourceAbsence = serde_json::from_str("{}").unwrap();
+/// ```
+#[cfg(feature = "launch-https")]
+pub struct OwnedResourceAbsence {
+    pub(crate) creator_account_id: std::num::NonZeroU64,
+    pub(crate) instance: std::num::NonZeroU64,
+    pub(crate) intent: RecoveryIntent,
+    pub(crate) observed_at: i64,
+}
+#[cfg(feature = "launch-https")]
+impl OwnedResourceAbsence {
+    pub fn instance_id(&self) -> std::num::NonZeroU64 {
+        self.instance
+    }
+    pub fn observed_at(&self) -> i64 {
+        self.observed_at
+    }
+    pub fn matches(
+        &self,
+        intent: &RecoveryIntent,
+        creator_account_id: std::num::NonZeroU64,
+    ) -> bool {
+        self.creator_account_id == creator_account_id
+            && self.intent.label() == intent.label()
+            && self.intent.image() == intent.image()
+    }
+}
+
 impl ArmedCleanup {
     /// Only call from the m8s CLI: re-executes the current binary's fixed worker
     /// route. The already-private plan and original budget must be durable first.
@@ -153,14 +186,36 @@ impl ArmedCleanup {
     pub fn confirm_owned_absent(
         &self,
         access: &crate::readonly::access::NodeAccess,
-    ) -> m8s_provider::Result<Option<crate::readonly::destroy::ConfirmedResourceAbsence>> {
+        creator_account_id: std::num::NonZeroU64,
+    ) -> m8s_provider::Result<Option<OwnedResourceAbsence>> {
         if !access.matches(&self.intent) {
             return Err(m8s_provider::Error::Unavailable);
         }
-        ScopedDestroyHttps::new(access.instance_id(), || {
+        // Check the original account before interpreting exact-ID visibility.
+        // Both reads use the same retained credential that this handle dispatched.
+        crate::readonly::preflight::PreflightHttps::new(|| {
             Ok(SecretValue::new(self.secret.expose().to_vec()))
         })?
-        .confirm_absent()
+        .authenticate_account(creator_account_id)?;
+        let receipt = ScopedDestroyHttps::new(access.instance_id(), || {
+            Ok(SecretValue::new(self.secret.expose().to_vec()))
+        })?
+        .confirm_absent()?;
+        receipt
+            .map(|receipt| {
+                let observed_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .and_then(|d| i64::try_from(d.as_secs()).ok())
+                    .ok_or(m8s_provider::Error::Unavailable)?;
+                Ok(OwnedResourceAbsence {
+                    creator_account_id,
+                    instance: receipt.instance_id(),
+                    intent: self.intent.clone(),
+                    observed_at,
+                })
+            })
+            .transpose()
     }
 
     /// Uses the exact same account credential delivered to the acknowledged
@@ -223,6 +278,29 @@ fn read_ack(output: &mut std::process::ChildStdout, expected_ack: &[u8]) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "launch-https")]
+    #[test]
+    fn owned_absence_receipt_matches_account_and_exact_original_identity() {
+        let account = std::num::NonZeroU64::new(7).unwrap();
+        let identity = RecoveryIntent::new(
+            "owner",
+            "node",
+            "tier",
+            &format!("example.invalid/node@sha256:{}", "a".repeat(64)),
+        )
+        .unwrap();
+        let proof = OwnedResourceAbsence {
+            creator_account_id: account,
+            instance: std::num::NonZeroU64::new(42).unwrap(),
+            intent: identity.clone(),
+            observed_at: 100,
+        };
+        assert!(proof.matches(&identity, account));
+        assert!(!proof.matches(&identity, std::num::NonZeroU64::new(8).unwrap()));
+        let other = RecoveryIntent::new("owner", "other", "tier", identity.image()).unwrap();
+        assert!(!proof.matches(&other, account));
+    }
+
     #[test]
     fn arm_protocol_rejects_partial_wrong_and_unbound_receipts() {
         for (output, valid) in [

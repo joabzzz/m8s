@@ -125,6 +125,9 @@ impl Fixture {
     }
     fn seeded(&self) -> Store {
         let store = self.open();
+        store
+            .initialize_budget(&self.policy, &period(), 100)
+            .unwrap();
         store.scale("tier", 1).unwrap();
         // Synthetic fixture only. No production launch/admission API is claimed.
         Connection::open(&self.db).unwrap().execute(

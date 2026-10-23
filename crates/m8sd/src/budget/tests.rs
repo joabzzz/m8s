@@ -599,24 +599,25 @@ fn settlement_race_restart_never_double_debits_or_changes_final_cost() {
     assert_eq!(s.conn.total_changes(), changes);
 }
 #[test]
-fn mock_node_cleanup_cannot_delete_or_reset_budget_liability() {
+fn mock_history_refuses_managed_budget_without_mutating_resources() {
     let (_, mut s) = fixture();
     let mut mock = m8s_provider::Mock::default();
     s.scale("tier", 1).unwrap();
     s.reconcile(&mut mock, 0).unwrap();
     let mut r = request("a");
     r.node_uid = s.nodes().unwrap().remove(0).uid;
-    s.reserve_budget(&policy(), &period(), &r, 100).unwrap();
+    let changes = s.conn.total_changes();
+    assert!(s.reserve_budget(&policy(), &period(), &r, 100).is_err());
+    assert_eq!(s.conn.total_changes(), changes);
+    assert!(s.budget_reservations().unwrap().is_empty());
+    assert_eq!(s.nodes().unwrap().len(), 1);
+    assert!(mock.destroy_calls.is_empty());
     s.down().unwrap();
     s.reconcile(&mut mock, 101).unwrap();
     s.reconcile(&mut mock, 102).unwrap();
     assert!(s.nodes().unwrap().is_empty());
-    assert_eq!(s.budget_reservations().unwrap().len(), 1);
-    s.scale("tier", 1).unwrap();
-    assert!(
-        s.reserve_budget(&policy(), &period(), &request("b"), 103)
-            .is_err()
-    );
+    // Empty resources do not reset the committed execution domain.
+    assert!(s.reserve_budget(&policy(), &period(), &r, 103).is_err());
 }
 
 #[test]
@@ -833,4 +834,70 @@ fn distinct_initial_monthly_spend_and_lifetime_spend_survive_rollover() {
     r.quote.valid_until = next.starts_at + 2000;
     // New monthly cost fits, but retained lifetime5000+actual3000+new1766 does not.
     assert!(s.reserve_budget(&p, &next, &r, next.starts_at).is_err());
+}
+
+#[test]
+fn failed_account_initialization_rolls_back_execution_domain_together() {
+    let (_, s) = fixture();
+    s.conn.execute_batch("CREATE TRIGGER fail_account BEFORE INSERT ON budget_account BEGIN SELECT RAISE(ABORT,'synthetic'); END;").unwrap();
+    assert!(s.initialize_budget(&policy(), &period(), 100).is_err());
+    let domains: i64 = s
+        .conn
+        .query_row("SELECT count(*) FROM execution_domain", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(domains, 0);
+    s.claim_unmanaged_execution().unwrap();
+    s.conn.execute_batch("DROP TRIGGER fail_account;").unwrap();
+    assert!(s.initialize_budget(&policy(), &period(), 100).is_err());
+}
+
+#[test]
+fn legacy_account_claims_managed_domain_without_resetting_budget() {
+    let (_, s) = fixture();
+    let before = s
+        .reserve_budget(&policy(), &period(), &request("a"), 100)
+        .unwrap();
+    // Synthetic old-schema snapshot: the existing account predates the marker.
+    s.conn.execute("DELETE FROM execution_domain", []).unwrap();
+    assert!(s.claim_unmanaged_execution().is_err());
+    s.initialize_budget(&policy(), &period(), 101).unwrap();
+    let mode: String = s
+        .conn
+        .query_row(
+            "SELECT mode FROM execution_domain WHERE owner='owner'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(mode, "managed");
+    assert_eq!(s.budget_reservations().unwrap(), vec![before]);
+}
+
+#[test]
+fn missing_account_with_domain_or_period_history_never_resets_authorization() {
+    for legacy_without_domain in [false, true] {
+        let (_, s) = fixture();
+        s.initialize_budget(&policy(), &period(), 100).unwrap();
+        s.conn.execute("DELETE FROM budget_account", []).unwrap();
+        if legacy_without_domain {
+            s.conn.execute("DELETE FROM execution_domain", []).unwrap();
+        }
+        let before: i64 = s
+            .conn
+            .query_row("SELECT count(*) FROM budget_period", [], |r| r.get(0))
+            .unwrap();
+        assert!(before > 0);
+        assert!(s.initialize_budget(&policy(), &period(), 101).is_err());
+        assert!(s.claim_unmanaged_execution().is_err());
+        let accounts: i64 = s
+            .conn
+            .query_row("SELECT count(*) FROM budget_account", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(accounts, 0);
+        let after: i64 = s
+            .conn
+            .query_row("SELECT count(*) FROM budget_period", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after, before);
+    }
 }

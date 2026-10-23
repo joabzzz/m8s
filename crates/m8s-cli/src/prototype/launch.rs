@@ -268,8 +268,14 @@ fn run_with_client(
         RecoveryIntent::new(&p.owner, &p.node_uid, &p.tier, &p.image).map_err(|_| ERROR)?;
     let request = LaunchRequest::new(fresh.offer_id, identity.clone(), ssh_public, p.disk_gb)
         .map_err(|_| ERROR)?;
-    let mut executor =
-        VastExecutor::new(request, &p.owner, &p.node_uid, &p.tier).map_err(|_| ERROR)?;
+    let mut executor = VastExecutor::new(
+        request,
+        &p.owner,
+        &p.node_uid,
+        &p.tier,
+        NonZeroU64::new(fresh.account_id).ok_or(ERROR)?,
+    )
+    .map_err(|_| ERROR)?;
     let store = Store::open(p.directory.join("state.db"), &p.owner).map_err(|_| ERROR)?;
     store.scale(&p.tier, 1).map_err(|_| ERROR)?;
     let prepared = executor
@@ -342,7 +348,9 @@ fn run_with_client(
     cleanup.request_cleanup();
     let deadline = Instant::now() + Duration::from_secs(180);
     let absent = loop {
-        if let Ok(Some(receipt)) = cleanup.confirm_owned_absent(&access) {
+        if let Ok(Some(receipt)) =
+            cleanup.confirm_owned_absent(&access, NonZeroU64::new(fresh.account_id).ok_or(ERROR)?)
+        {
             break receipt;
         }
         if Instant::now() >= deadline {
@@ -352,33 +360,12 @@ fn run_with_client(
     };
     private_file(&p.directory.join("cleanup-evidence.json"), &serde_json::to_vec_pretty(&serde_json::json!({"schema":"m8s.vast-removal/v1","instance_id":absent.instance_id().get(),"image":p.image,"creator_account_id":p.expected_account_id,"provider_confirmed_absent":true,"observed_at":utc()?})).map_err(|_| ERROR)?)?;
     eprintln!("prototype stage: exact-instance-absence-confirmed");
-    let binding = store
-        .budget_reservations()
-        .map_err(|_| ERROR)?
-        .into_iter()
-        .find(|r| r.request.request_id == p.request.request_id)
-        .and_then(|r| r.binding)
-        .ok_or(ERROR)?;
-    let now = utc()?;
-    store
-        .settle_budget(
-            &p.request.request_id,
-            &reserved.period,
-            &SettlementEvidence {
-                binding,
-                observed_at: now,
-                status: EvidenceStatus::Complete,
-                resource: ResourceOutcome::OwnedAbsent,
-                volumes: VolumeOutcome::BoundVolumesAbsent,
-                billing: FinalBilling::Unknown,
-                provenance: "creator-account-exact-get-null".into(),
-            },
-            now,
-        )
-        .map_err(|_| ERROR)?;
+    executor
+        .finalize_removal(&store, &intent, &absent, &reserved.period)
+        .map_err(|_| "prototype-removal-finalization-refused")?;
     let completion = work?;
     Ok(
-        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":SERVED_MODEL,"artifact_name":MODEL,"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","completion":completion}),
+        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":SERVED_MODEL,"artifact_name":MODEL,"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
     )
 }
 #[allow(clippy::too_many_arguments)]
@@ -532,12 +519,16 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
         return Err(ERROR);
     }
     let store = Store::open(path, &args[3]).map_err(|_| "prototype-audit-unavailable")?;
-    let operations = store.create_operations().map_err(|_| ERROR)?;
+    let snapshot = store.vast_audit().map_err(|_| ERROR)?;
+    let operations = snapshot.operations;
     let records: Vec<_> = operations.iter().map(|r|serde_json::json!({"operation_id":r.intent.operation_id,"state":r.state,"invocation_started_at":r.invocation_started_at,"provider_result_recorded":r.result.is_some(),"uncertainty_observed":r.uncertainty_observed})).collect();
-    let budgets: Vec<_> = store.budget_reservations().map_err(|_| ERROR)?.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
-    println!(
-        "{}",
-        serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"provider_calls":false})
-    );
+    let removals = snapshot.removals;
+    let budgets: Vec<_> = snapshot.budgets.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
+    let output = serde_json::to_vec(&serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"removals":removals,"attempts":snapshot.attempts,"provider_calls":false,"scope":"stored-journal-snapshot"})).map_err(|_| ERROR)?;
+    // Refuse before writing any success bytes; no truncated audit can look empty.
+    if output.len() >= 1_048_576 {
+        return Err(ERROR);
+    }
+    println!("{}", std::str::from_utf8(&output).map_err(|_| ERROR)?);
     Ok(())
 }

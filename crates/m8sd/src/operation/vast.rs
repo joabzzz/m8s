@@ -11,6 +11,7 @@ use m8s_provider_vast::{
     watchdog::ArmedCleanup,
 };
 use sha2::{Digest, Sha256};
+use std::num::NonZeroU64;
 
 pub enum DispatchOutcome {
     Candidate(CreatedCandidate),
@@ -32,6 +33,7 @@ pub struct PreparedVastLaunch {
 pub struct VastExecutor {
     request: Option<LaunchRequest>,
     canonical: Vec<u8>,
+    creator_account_id: NonZeroU64,
     identity: RecoveryIntent,
     owner: String,
     node_uid: String,
@@ -39,10 +41,25 @@ pub struct VastExecutor {
     token: Arc<DriverOrigin>,
 }
 
+mod audit;
+pub use audit::{AttemptStage, RecoveryMetadata, VastAttemptStatus, VastAudit};
+mod recovery;
+pub use recovery::VastRecovery;
+mod removal;
+pub use removal::VastRemoval;
 #[cfg(test)]
 mod tests;
 impl VastExecutor {
-    pub fn new(request: LaunchRequest, owner: &str, node_uid: &str, tier: &str) -> Result<Self> {
+    /// The account ID is a trusted coordinator input from authenticated preflight
+    /// using the same retained credential as dispatch. Storing/fingerprinting it
+    /// is not a fresh account check and never grants credential access.
+    pub fn new(
+        request: LaunchRequest,
+        owner: &str,
+        node_uid: &str,
+        tier: &str,
+        creator_account_id: NonZeroU64,
+    ) -> Result<Self> {
         let identity = RecoveryIntent::new(owner, node_uid, tier, request.identity().image())?;
         if identity.label() != request.identity().label() {
             return Err(Error::Invalid);
@@ -51,6 +68,7 @@ impl VastExecutor {
         Ok(Self {
             request: Some(request),
             canonical,
+            creator_account_id,
             identity,
             owner: owner.into(),
             node_uid: node_uid.into(),
@@ -139,7 +157,8 @@ impl VastExecutor {
             return Err(Error::Invalid);
         }
         let mut hash = Sha256::new();
-        hash.update(b"m8s-vast-prototype-create-v1\0");
+        hash.update(b"m8s-vast-prototype-create-v2\0");
+        hash.update(self.creator_account_id.get().to_be_bytes());
         for field in [
             &intent.owner,
             &intent.run_id,
@@ -188,6 +207,7 @@ impl VastExecutor {
             if existing.intent != *intent || now < existing.last_at {
                 return Err(Error::Invalid);
             }
+            recovery::validate_persisted(&tx, self, intent)?;
             return Ok(existing); // metadata only, never a new invocation
         }
         let history: i64 = tx.query_row(
@@ -228,6 +248,7 @@ impl VastExecutor {
         if !inserted {
             return Err(Error::Corrupt);
         }
+        recovery::persist(&tx, self, intent)?;
         tx.commit()?;
         Ok(operation)
     }

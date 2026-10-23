@@ -109,6 +109,7 @@ fn intent(e: &LocalDevelopmentExecutor, id: &str) -> CreateIntent {
     i
 }
 fn seed(s: &Store, id: &str, now: i64, runtime: u64, p: &AdminBudget) {
+    s.initialize_budget(p, &period(now), now).unwrap();
     s.scale("tier", 1).unwrap();
     s.conn
         .execute(

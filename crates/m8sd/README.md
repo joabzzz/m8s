@@ -14,10 +14,11 @@ expiry or cancellation cannot produce successful confirmation. A failed or
 cancelled attempt after nonce burn retains cleanup intent and must not be
 retried with a new nonce. The caller supplies current trusted launch observation,
 owner-side signer custody, bundle settings, listener and surviving cleanup.
-This library composition does not yet wire the CLI, launch a native node,
-implement its DMS loop, or prove readiness/inference. Its new tests exercise
-record selection and persistence with synthetic fixtures; no endpoint or provider
-qualification was rerun.
+The opt-in prototype CLI now composes this library with the actual native node,
+DMS and owner-routed model canary; its historical live result is recorded in
+`deploy/container/demo-proof.json`. The default daemon main remains mock-only.
+These persistence tests use synthetic fixtures and do not rerun endpoint or
+provider qualification.
 
 ## One authority and public contracts
 
@@ -27,7 +28,9 @@ instance in Booting, desired>0, and not deleting. `LaunchIdentity` contains the
 owner label (must equal Store/pool owner), node UID and `m8s_bootstrap::LaunchBinding`
 (pinned owner transport endpoint, provider instance/container/IP, verified signed
 image digest). These are **trusted adapter inputs**, not proof supplied by agent
-request fields. Real provider identity/scoped self-destroy proof is not implemented.
+request fields. The prototype coordinator supplies positively observed Vast
+identity; full daemon wiring and isolated scoped-self-destroy qualification remain
+incomplete.
 
 `Store::redeem_bootstrap(session, request, expected, observation, now, cert_expires_at,
 join_token, signer, verifier) -> m8s_bootstrap::Result<PendingDelivery>` uses the
@@ -985,3 +988,106 @@ No provider call occurs during preparation, and neither method grants Ready.
 Desired-state admission, fresh evidence, signer custody, bootstrap/inference,
 recovery and cleanup settlement still require their explicit coordinators. The
 normal daemon binary remains mock-only.
+
+### Exact resource removal and retained billing
+
+`VastExecutor::finalize_removal` consumes a fresh, opaque creator-account absence
+receipt from the armed cleanup handle. It matches the exact immutable launch
+intent and persisted instance binding. One SQLite transaction records the
+`vast_removal` receipt, cancels the node's grants, removes its exact `gpu_node`
+row through the shared finalizer, and retains `BillingUnknown` accounting.
+Failure rolls all of these writes back together. The consumed create claim,
+nonce tombstones, revocation metadata and held cost survive. Repeating
+finalization cannot remint a claim or downgrade a settled final bill.
+
+`Store::vast_removals` and `m8s prototype audit` expose the retained observation,
+not a new provider read or settled-invoice claim. Older successful demo journals
+may have settlement evidence without a `vast_removal` record; they are not
+silently backfilled or reset. The historical live receipt remains authoritative
+for that historical run.
+
+The legacy `Store::reconcile` path and default mock daemon refuse a Store with
+managed budget/create history before touching a provider. A mock observation
+must never delete real managed node rows or launch replacement mocks into a
+managed account. Full live daemon recovery requires the original coordinator
+and authenticated provider evidence; it remains an explicit integration task.
+
+### Immutable restart metadata
+
+New Vast preparations atomically persist the exact canonical public launch
+specification alongside the managed intent. `Store::recover_vast` validates the
+original fingerprint, owner, node, tier and budget binding in one read snapshot.
+It returns original cleanup times anchored to reservation, even if overdue.
+It returns no create request or claim, cannot renew a deadline, and refuses
+missing legacy metadata or tampering without resetting or backfilling history.
+The stored SSH key is public; no credential, bootstrap nonce or owner key is saved.
+
+This is a recovery input boundary, not a running recovery worker. An authenticated
+creator-account transport and independently surviving cleanup still need to be
+composed for process restart. The capsule alone cannot destroy a resource or
+prove absence; removal still requires the opaque fresh observation receipt.
+
+### Bounded managed journal snapshot
+
+`Store::vast_audit` projects operations, budgets, atomic removal receipts and
+recovery-metadata availability in one DEFERRED transaction. Its per-attempt stage
+separates reservation, preparation, consumed claim, unresolved invocation,
+recorded binding and removal. Billing and cancellation are independent fields.
+A stored binding is not current resource presence; a missing binding is not
+absence. Missing older recovery metadata is reported explicitly; malformed
+present metadata refuses the whole snapshot.
+
+Each journal is capped at 128 owner rows and each JSON record at 64 KiB before
+Rust decoding; capsules remain capped at 4 KiB. Orphans, cross-linked budget
+records and a removal receipt with a retained node row refuse. Limits bound
+application collection size, not SQLite engine work. The query performs no
+mutation or provider calls and never consumes a claim or releases a hold.
+
+### Durable execution-domain isolation
+
+An `execution_domain` record permanently separates unmanaged/mock reconciliation
+from managed budget/operation custody. The mock daemon commits its domain after
+configuration admission and before opening its provider or control socket;
+`Store::reconcile` repeats that gate before its first provider read. Budget
+initialization claims the managed domain in the same SQLite write transaction,
+and managed operation mutations recheck it. Concurrent selection can have only
+one winner; no API converts or resets the selected domain, even after all nodes
+are removed.
+
+Older databases with managed journals can acquire managed custody while retaining
+their records. Older node/launch-attempt history without managed accounting cannot
+be implicitly converted. Managed fixtures initialize accounting before seeding
+node intent, matching the reservation-before-launch ordering. A missing or empty
+journal is not permission to erase history. The existing process lock remains
+required across provider effects within one domain; this is not multi-reconciler
+support or live-daemon enablement.
+
+### Original creator-account pin
+
+New Vast intents include the nonzero creator account ID in their v2 fingerprint.
+The CLI supplies the ID from its existing authenticated preflight, using the
+same retained credential later passed to the cleanup/dispatch handle. The
+bounded recovery envelope stores this public ID with the canonical request.
+`VastRecovery::creator_account_id` and audit metadata expose the original
+expected account; changing it fails fingerprint verification.
+
+This is an expected identity, not a fresh account observation. Restart transport
+must still authenticate that same account before any observation can establish
+absence. No new credential lookup or provider operation is introduced here.
+Older live journals without capsules remain auditable as `missing_legacy`;
+unversioned intermediate capsules refuse recovery rather than guessing an
+account or upgrading an old fingerprint. Existing proof artifacts are unchanged.
+
+The armed cleanup handle now authenticates the expected original account ID before
+its independent exact-instance absence GET, with the same retained credential for
+both reads. Account mismatch or failed authentication refuses before interpreting
+resource visibility. This identity-only check does not require a positive credit
+balance or empty account inventory; cleanup must remain possible after credit is
+spent. The opaque absence receipt carries the account pin, and the Store finalizer
+checks it against the original intent. Provider credential scope/visibility remains
+an adapter prerequisite; this source change is not new live qualification.
+
+Budget initialization also refuses a missing account row when a managed domain,
+period history or other managed records remain. Missing accounting is uncertainty,
+not a fresh approval epoch. Neither mock selection nor a new baseline can clear
+that retained history; an explicit future reconciliation design is required.

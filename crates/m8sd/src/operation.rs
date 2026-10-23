@@ -102,7 +102,11 @@ fn label(s: &str) -> Result<()> {
 }
 pub(crate) fn initialize(conn: &Connection) -> Result<()> {
     conn.execute_batch("CREATE TABLE IF NOT EXISTS create_operation(owner TEXT NOT NULL,operation_id TEXT NOT NULL,request_id TEXT NOT NULL,node_uid TEXT NOT NULL,record TEXT NOT NULL,
-        PRIMARY KEY(owner,operation_id),UNIQUE(owner,request_id),UNIQUE(owner,node_uid));")?;
+        PRIMARY KEY(owner,operation_id),UNIQUE(owner,request_id),UNIQUE(owner,node_uid));
+        CREATE TABLE IF NOT EXISTS vast_removal(owner TEXT NOT NULL,operation_id TEXT NOT NULL,record TEXT NOT NULL,
+        PRIMARY KEY(owner,operation_id));
+        CREATE TABLE IF NOT EXISTS vast_launch(owner TEXT NOT NULL,operation_id TEXT NOT NULL,tier TEXT NOT NULL,canonical BLOB NOT NULL,
+        PRIMARY KEY(owner,operation_id));")?;
     Ok(())
 }
 fn owned(tx: &Transaction<'_>, owner: &str) -> Result<()> {
@@ -117,6 +121,7 @@ fn owned(tx: &Transaction<'_>, owner: &str) -> Result<()> {
     Ok(())
 }
 fn account(tx: &Transaction<'_>, owner: &str, now: i64) -> Result<BudgetAccount> {
+    crate::execution_domain::claim(tx, owner, crate::execution_domain::Domain::Managed)?;
     let json: String = tx.query_row(
         "SELECT record FROM budget_account WHERE owner=?",
         [owner],
@@ -128,7 +133,7 @@ fn account(tx: &Transaction<'_>, owner: &str, now: i64) -> Result<BudgetAccount>
     }
     Ok(a)
 }
-fn budget(tx: &Transaction<'_>, intent: &CreateIntent) -> Result<BudgetReservation> {
+fn budget(tx: &Connection, intent: &CreateIntent) -> Result<BudgetReservation> {
     let (uid, json): (String, String) = tx.query_row(
         "SELECT node_uid,record FROM budget_reservation WHERE owner=? AND request_id=?",
         params![intent.owner, intent.request_id],

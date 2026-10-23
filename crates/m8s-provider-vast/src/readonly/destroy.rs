@@ -67,7 +67,7 @@ impl<S: FnMut() -> Result<SecretValue>> ScopedDestroyHttps<S> {
     }
 }
 
-fn destroy_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
+pub(super) fn destroy_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
     backend: &mut B,
     supplier: &mut S,
     instance: NonZeroU64,
@@ -79,7 +79,7 @@ fn destroy_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
     Ok(DestroyAcknowledged { instance })
 }
 
-fn observe_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
+pub(super) fn observe_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
     backend: &mut B,
     supplier: &mut S,
     instance: NonZeroU64,
