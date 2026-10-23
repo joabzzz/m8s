@@ -121,12 +121,36 @@
         "m8s down"
       ],
       "final_billing": "unknown; original allowance retained in journal; separate conservative reconciliation under user authorization"
+    },
+    {
+      "instance_id": 57433109,
+      "image": "ghcr.io/joabzzz/m8s-prototype@sha256:5266fe6e7e824cd4e343b084d74c9b251cdec130d12b72fbb8349f940f8048a6",
+      "reserved_micro_usd": 1751182,
+      "billing_state": "BillingUnknown",
+      "certificate_delivery_and_control_established": true,
+      "model_discovered": false,
+      "owner_routed_completion": false,
+      "provider_confirmed_absent": true,
+      "absence_observed_at": 1792795306,
+      "resource_row_removed": true,
+      "bootstrap_category": "transport",
+      "commands_exercised": [
+        "m8sd --vast-demo",
+        "m8s up",
+        "m8s scale 1",
+        "m8s status",
+        "m8s logs",
+        "m8s down"
+      ],
+      "host_memory_mib": 69975,
+      "failure_cause": "Unresolved transport failure on smaller host; not proven OOM. Future selection matches successful128GB-RAM profile."
     }
   ],
   "historical_holds_micro_usd": 13355168,
-  "new_paid_holds_micro_usd": 6110140,
-  "total_holds_micro_usd": 19465308,
+  "new_paid_holds_micro_usd": 8896504,
+  "total_holds_micro_usd": 22251672,
   "remaining_action": "Original journal allowances remain recorded; effective new baseline follows explicitly authorized conservative reconciliation receipts. Diagnose native child exit vs control failure; no completion claimed.",
   "totals_scope": "original journal allowances, not effective reconciled exposure; see authorized reconciliation receipts",
-  "reproduced_offline_blocker": "Normalized runtime manifest changed without enclosing product manifest/tree digests; native serve failed closed with product runtime manifest checksum mismatch. Repaired in3d746e8, no live inference yet."
+  "reproduced_offline_blocker": "Normalized runtime manifest changed without enclosing product manifest/tree digests; native serve failed closed with product runtime manifest checksum mismatch. Repaired in3d746e8, no live inference yet.",
+  "successful_manual_attempt_receipt": "qwen38-owner-canary-proof.json"
 }

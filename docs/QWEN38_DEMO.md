@@ -153,7 +153,7 @@ Do not replace the embedded runtime with an unrelated llama-server.
 ## Candidate hardware and scope
 
 Choose Vast on-demand, one SM120 Blackwell GPU with at least 48,000 MiB VRAM,
-64,000 MiB host RAM, 64 GB ephemeral disk and advertised download >=500 Mbps.
+128,000 MiB host RAM, 64 GB ephemeral disk and advertised download >=500 Mbps.
 Compute must be <=2,000,000 micro-USD/hour; storage and transfer are additional.
 Both transfer directions must be <=4,000 micro-USD/GB, so low hourly pricing
 cannot select a host whose native-download fees exhaust the bounded run budget.
@@ -373,3 +373,16 @@ extra contingency). Original journals and consumed claims remain unchanged.
 At22:38:22 UTC complete inventories were empty and15994476 credit minus13868190
 liabilities left2126286. The integrated repeat is capped at1900000, with1500
 seconds runtime,240cleanup,1000000contingency and the same64GBtransfer bound.
+
+## Reproducible host selection
+
+The successful57431708 host reported128652MiB RAM. The corrected-identity
+integrated repeat57433109 used69975MiB RAM and failed transport before model
+discovery; its exact absence is confirmed. That failure is not diagnosed as OOM.
+Qwen preflight now requires128000MiB host RAM and rechecks returned offers,
+matching the proven resource profile; the Flint profile retains64000MiB.
+[Sixth-run reconciliation](../deploy/container/qwen38-authorized-reconciliation-sixth.json)
+retains370497 micro-USD (original rates,71seconds,full64GBtransfer+100000 extra
+contingency). Original allowance1751182 and consumed claim remain. At22:45:46 UTC
+complete inventories were empty, credit15993756 minus14238687 liabilities left
+1755069; the next cap is1700000 with1500runtime,240cleanup and800000contingency.

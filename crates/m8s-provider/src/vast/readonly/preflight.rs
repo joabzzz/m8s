@@ -29,6 +29,7 @@ pub struct Requirements {
     pub max_compute_hourly: u64,
     pub max_transfer_micro_usd_per_gb: u64,
     pub min_gpu_memory_mib: u64,
+    pub min_host_memory_mib: u64,
     pub min_download_mbps: u64,
     pub blackwell_sm120: bool,
 }
@@ -38,6 +39,7 @@ impl Default for Requirements {
             max_compute_hourly: 300_000,
             max_transfer_micro_usd_per_gb: 100_000,
             min_gpu_memory_mib: 0,
+            min_host_memory_mib: 8192,
             min_download_mbps: 0,
             blackwell_sm120: false,
         }
@@ -158,7 +160,7 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         if requirements.min_gpu_memory_mib > 0 {
             query["gpu_ram"] = json!({"gte": requirements.min_gpu_memory_mib});
             query["num_gpus"] = json!({"eq": 1});
-            query["cpu_ram"] = json!({"gte": 64000});
+            query["cpu_ram"] = json!({"gte": requirements.min_host_memory_mib});
             query["inet_down"] = json!({"gte": requirements.min_download_mbps});
             query["geolocation"] = json!({"notin": ["CN", "CU", "IR", "KP", "SY", "RU", "BY"]});
         }
@@ -333,7 +335,7 @@ fn qualify(
     if requirements.min_gpu_memory_mib > 0 {
         if number(row, "gpu_ram", 1, false)? < requirements.min_gpu_memory_mib
             || number(row, "num_gpus", 1, false)? != 1
-            || number(row, "cpu_ram", 1, false)? < 64000
+            || number(row, "cpu_ram", 1, false)? < requirements.min_host_memory_mib
             || number(row, "inet_down", 1, false)? < requirements.min_download_mbps
         {
             return Err(Error::Unavailable);
@@ -418,6 +420,7 @@ mod tests {
             max_compute_hourly: 3_000_000,
             max_transfer_micro_usd_per_gb: 4000,
             min_gpu_memory_mib: 48000,
+            min_host_memory_mib: 64000,
             min_download_mbps: 4000,
             blackwell_sm120: true,
         };
@@ -426,6 +429,16 @@ mod tests {
             "rented":false,"verification":"verified","gpu_ram":48935,"num_gpus":1,
             "cpu_ram":64000,"inet_down":12000,"geolocation":"Virginia, US",
             "gpu_name":"RTX PRO 5000","cuda_max_good":13.0});
+        let qwen = Requirements {
+            min_host_memory_mib: 128000,
+            ..requirements
+        };
+        assert!(qualify(&row, 80, qwen).is_err());
+        let mut larger_host = row.clone();
+        larger_host["cpu_ram"] = json!(128000);
+        assert!(qualify(&larger_host, 80, qwen).is_ok());
+        larger_host["cpu_ram"] = json!(127999);
+        assert!(qualify(&larger_host, 80, qwen).is_err());
         let (_, compute, storage, transfer) = qualify(&row, 80, requirements).unwrap();
         assert_eq!((compute, storage, transfer), (740000, 23810, 4000));
         // A sub-micro hourly fraction must still reserve one whole micro-USD.
