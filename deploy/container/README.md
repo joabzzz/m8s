@@ -1,5 +1,13 @@
 # Full-node source image (not runtime-qualified)
 
+`Dockerfile.smoke` prepares a local CPU build from pinned Rust 1.98 and Node
+24.20.0 base manifests. Its dependency-preparation steps use public package
+registries and the native owner's pinned patch queue; product compilation then
+runs with networking disabled and at most two compiler jobs. It takes the same
+clean source archives, SHA256 arguments, checker, and model contract as the
+offline source recipe. No credentials or model weights enter the build context.
+This is local build preparation, with no provider deployment or Ready claim.
+
 `Dockerfile.source` builds the **complete Linux native product**, not the
 upstream `Dockerfile.client` (which explicitly cannot serve as a worker). It
 calls the mesh owner's `just bundle` for CPU, or `just release-build-cuda` followed

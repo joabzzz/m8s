@@ -1,0 +1,54 @@
+# Local CPU smoke build. Network is used only to prepare public dependencies;
+# product compilation runs offline. No credentials, provider tools, or weights.
+FROM node@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS node-tools
+FROM rust@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git cmake ninja-build pkg-config libssl-dev \
+    libdbus-1-dev python3 build-essential clang libclang-dev mold \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=node-tools /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-tools /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && npm install -g pnpm@10.34.5
+ENV CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2
+RUN cargo install --locked --version 1.40.0 just \
+    && cargo install --locked --version 0.16.0 sccache
+COPY artifacts.py /checks/artifacts.py
+COPY mesh-source.tar m8s-source.tar /inputs/
+ARG MESH_SOURCE_SHA256
+ARG M8S_SOURCE_SHA256
+RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh \
+    && python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
+WORKDIR /src/mesh
+# Preparation follows the native owner's pinned patch queue; no substitute ABI.
+RUN cargo fetch --locked \
+    && pnpm --dir mesh/crates/mesh-llm-ui install --frozen-lockfile \
+    && scripts/prepare-llama.sh pinned
+WORKDIR /src/m8s
+RUN cargo fetch --locked
+ENV CARGO_NET_OFFLINE=true
+WORKDIR /src/mesh
+RUN --network=none just bundle /out/mesh-bundle.tar.gz
+RUN --network=none mkdir /out/product && tar -xzf /out/mesh-bundle.tar.gz -C /out/product \
+    && python3 /checks/artifacts.py check-native /out/product/mesh-bundle/mesh-llm
+WORKDIR /src/m8s
+RUN --network=none cargo build --release --locked --offline -j2 -p m8s-cli -p m8s-agent \
+    --features m8s-agent/secure-runtime,m8s-cli/prototype-container
+
+FROM node@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 ca-certificates libgomp1 libdbus-1-3 libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/product/mesh-bundle/ /opt/mesh/
+COPY --from=build --chmod=0555 /src/m8s/target/release/m8s /usr/local/bin/m8s
+COPY --from=build --chmod=0555 /src/m8s/target/release/m8s-agent /usr/local/bin/m8s-agent
+COPY artifacts.py /usr/local/lib/m8s/artifacts.py
+COPY model-artifact.json /etc/m8s/model-artifact.json
+ENV MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR=/opt/mesh/native-runtimes \
+    MESH_LLM_ANALYTICS=0 DO_NOT_TRACK=1
+USER 65532:65532
+RUN --network=none python3 /usr/local/lib/m8s/artifacts.py check-contract /etc/m8s/model-artifact.json \
+    && python3 /usr/local/lib/m8s/artifacts.py check-native /opt/mesh/mesh-llm
+# Until secure executable wiring is complete, default launch refuses.
+ENTRYPOINT ["/usr/local/bin/m8s-agent"]
