@@ -1,0 +1,20 @@
+{
+  "schema": "m8s.vast-network-path-attempt/v1",
+  "instance_id": 57329116,
+  "listener_acknowledged": true,
+  "certificate_delivery_completed": false,
+  "failure_category": "direct TLS bootstrap failed or timed out",
+  "removal": {
+    "creator_account_id": 32349,
+    "image": "ghcr.io/joabzzz/m8s-prototype@sha256:760aa7ae9f27775e0c7a408dbbd2b2ad1801f28401df9adf60cf5f9bb8e964e9",
+    "instance_id": 57329116,
+    "observed_at": 1792735061,
+    "provider_confirmed_absent": true,
+    "schema": "m8s.vast-removal/v1"
+  },
+  "reservation_micro_usd": 1504746,
+  "total_retained_micro_usd": 11639131,
+  "unallocated_micro_usd": 4360869,
+  "authorized_total_micro_usd": 16000000,
+  "next_selection": "fresh verified offer on the public host network that previously completed certificate delivery; all identity/IP checks remain enforced"
+}
