@@ -2,7 +2,7 @@
 # No native rebuild, model weights, credentials or untracked source inputs.
 FROM rust@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS agent-build
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+    python3 cmake pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 ENV CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2
 COPY artifacts.py /checks/artifacts.py
 COPY m8s-source.tar /inputs/m8s-source.tar
