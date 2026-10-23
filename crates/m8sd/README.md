@@ -945,3 +945,25 @@ registry fails closed. No ACL/mode/nofollow/identity checks are relaxed or repai
 This coordinates **managed Store** connections only, not arbitrary raw SQLite
 connections in the same process or hostile same-UID replacement. It adds no
 cross-process authentication or new execution/permission authority.
+
+### Owner bootstrap/control session composition
+
+With `secure-bootstrap`, `Store::with_bootstrapped_node` accepts the expected
+TLS-authenticated node, performs the existing original-stream Store burn and
+signed delivery, then establishes pinned control and awaits the first heartbeat
+acknowledgement before invoking the caller's work. At most eight unrelated peers
+are considered within a maximum 60-second bootstrap window. Wrong peers cannot
+consume the nonce through this entrypoint.
+
+Heartbeats run concurrently with the caller's work and stop on cancellation,
+control failure, completion or certificate expiry. A monotonic deadline prevents
+wall-clock rollback from extending the session; current wall time is also checked
+before each heartbeat and before returning work output. A completed bootstrap or
+heartbeat does not prove model readiness. The caller must verify the served model
+and owner-routed canary, and retain output until exact owned cleanup is confirmed.
+
+This library composition creates no endpoint, reserves no budget and performs no
+provider mutation. The owner-side CLI LAUNCH command and independently surviving
+resource watchdog remain required; the caller retains cleanup custody on every
+return and cancellation. Existing completed E qualification is unchanged and is
+not rerun by the standard checks.

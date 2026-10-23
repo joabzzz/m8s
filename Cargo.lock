@@ -2065,6 +2065,7 @@ name = "m8sd"
 version = "0.1.0"
 dependencies = [
  "fs2",
+ "iroh",
  "libc",
  "m8s-api",
  "m8s-bootstrap",
@@ -2078,6 +2079,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.21",
+ "tokio",
  "zeroize",
 ]
 

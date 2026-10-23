@@ -111,6 +111,11 @@ pub async fn accept_boot(incoming: Incoming, owner: EndpointId) -> Result<BootCo
     })
 }
 impl BootConnection {
+    /// Peer identity established by the completed original TLS handshake.
+    pub fn peer_endpoint(&self) -> EndpointId {
+        self.session.peer
+    }
+
     pub fn session(&self) -> &IrohSession {
         &self.session
     }

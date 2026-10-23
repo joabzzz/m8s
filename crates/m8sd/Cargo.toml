@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 local-development = ["dep:m8s-provider-local"]
-secure-bootstrap = ["m8s-bootstrap/iroh-transport", "m8s-bootstrap/mp001-owner-signing"]
+secure-bootstrap = ["m8s-bootstrap/iroh-transport", "m8s-bootstrap/mp001-owner-signing", "dep:iroh", "dep:tokio"]
 
 [dependencies]
 m8s-config = { path = "../m8s-config" }
@@ -24,6 +24,8 @@ sha2.workspace = true
 
 m8s-bootstrap = { path = "../m8s-bootstrap" }
 zeroize.workspace = true
+iroh = { version = "=1.3.0", default-features = false, features = ["tls-aws-lc-rs"], optional = true }
+tokio = { version = "1", features = ["rt", "macros", "time"], optional = true }
 
 libc = "0.2"
 nix = { version = "0.29", default-features = false, features = ["poll"] }

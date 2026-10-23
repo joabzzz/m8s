@@ -10,6 +10,8 @@ use m8s_bootstrap::{
 };
 use zeroize::Zeroizing;
 
+pub mod session;
+
 /// Trusted inputs for one attempt. No Debug/Serialize: contains join/config bytes.
 pub struct DeliveryPlan<'a> {
     pub observation: LaunchIdentity<'a>,
