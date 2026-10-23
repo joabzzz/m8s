@@ -41,7 +41,7 @@
     "gpu_count": 1,
     "minimum_gpu_memory_mib": 48000,
     "minimum_host_memory_mib": 64000,
-    "minimum_download_mbps": 1000,
+    "minimum_download_mbps": 500,
     "disk_gb": 64,
     "cuda_architecture": "SM120 Blackwell",
     "compute_hourly_cap_micro_usd": 1500000,

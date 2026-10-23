@@ -62,7 +62,7 @@ Do not replace the embedded runtime with an unrelated llama-server.
 ## Candidate hardware and scope
 
 Choose Vast on-demand, one SM120 Blackwell GPU with at least 48,000 MiB VRAM,
-64,000 MiB host RAM, 64 GB ephemeral disk and advertised download >=1,000 Mbps.
+64,000 MiB host RAM, 64 GB ephemeral disk and advertised download >=500 Mbps.
 Compute must be <=2,000,000 micro-USD/hour; storage and transfer are additional.
 Both transfer directions must be <=4,000 micro-USD/GB, so low hourly pricing
 cannot select a host whose native-download fees exhaust the bounded run budget.
@@ -138,8 +138,8 @@ qualification.
 
    Preflight prices and advertised hardware are observations. Native model
    download happens **during billed rental time**, along with image pull,
-   provisioning and loading. At 1,000 Mbps the weights alone have an ideal lower
-   bound of about 132 seconds; no throughput guarantee follows from that rate.
+   provisioning and loading. At 500 Mbps the weights alone have an ideal lower
+   bound of about 264 seconds; no throughput guarantee follows from that rate.
    The Qwen profile reserves 256 GB of transfer independently of its 64 GB
    disk. Its native Hub and Xet request retry counts are fixed to zero, using
    the pinned clients' public settings, to prevent retry amplification. Include

@@ -65,7 +65,7 @@ impl DemoModel {
                 max_compute_hourly: 2_000_000,
                 max_transfer_micro_usd_per_gb: 4000,
                 min_gpu_memory_mib: 48000,
-                min_download_mbps: 1000,
+                min_download_mbps: 500,
                 blackwell_sm120: true,
             },
             Self::Flint => m8s_provider::vast::readonly::preflight::Requirements {
@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(requirements.min_gpu_memory_mib, 48000);
         assert_eq!(requirements.max_compute_hourly, 2_000_000);
         assert_eq!(requirements.max_transfer_micro_usd_per_gb, 4000);
-        assert!(requirements.min_download_mbps >= 1000);
+        assert_eq!(requirements.min_download_mbps, 500);
         assert!(requirements.blackwell_sm120);
         assert_eq!(
             model.completion_request()["chat_template_kwargs"]["enable_thinking"],
