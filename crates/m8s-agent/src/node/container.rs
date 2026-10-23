@@ -626,7 +626,7 @@ impl ContainerSession {
         if self.state != ContainerState::RunningObserved || !self.inspect()? {
             return Err(ContainerError);
         }
-        let bytes = self.execute(&[
+        let mut args = vec![
             "container".into(),
             "exec".into(),
             self.id.clone().ok_or(ContainerError)?,
@@ -645,7 +645,16 @@ impl ContainerSession {
             "--timeout-ms".into(),
             self.spec.request_timeout_ms.to_string(),
             "--json".into(),
-        ])?;
+        ];
+        // Reserve at least half of the existing total request deadline for the
+        // single inference POST. Only bounded model-discovery GETs may retry.
+        if self.spec.request_timeout_ms >= 2 {
+            args.extend([
+                "--wait-model-ms".into(),
+                (self.spec.request_timeout_ms / 2).to_string(),
+            ]);
+        }
+        let bytes = self.execute(&args)?;
         self.recheck_material()?;
         let frame: CompletionFrame = serde_json::from_slice(&bytes).map_err(|_| ContainerError)?;
         if frame.schema != "m8s.prototype-completion/v1"

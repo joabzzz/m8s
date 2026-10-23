@@ -17,6 +17,9 @@ use m8s_bootstrap::{
 use std::{cell::RefCell, future::Future, path::Path, time::Duration};
 use tokio::time::Instant;
 
+mod bootstrap;
+pub use bootstrap::redeem_and_run;
+
 pub struct RuntimePlan<'a> {
     pub material_root: &'a Path,
     pub launch: MeshLaunch,
@@ -38,6 +41,22 @@ impl BootGate for ReceiptGate {
     fn authorize(&mut self) -> bool {
         std::mem::take(&mut self.0)
     }
+}
+
+fn validate_plan(endpoint: &Endpoint, plan: &RuntimePlan<'_>) -> Result<()> {
+    if endpoint.is_closed()
+        || EndpointId(*endpoint.id().as_bytes()) != plan.launch.node
+        || plan.cleanup_timeout.is_zero()
+        || plan.cleanup_timeout > Duration::from_secs(60)
+        || plan.native_id_timeout.is_zero()
+        || plan.native_id_timeout > Duration::from_secs(60)
+        || plan.max_lifetime_seconds <= 0
+        || plan.launch.heartbeat_ttl_seconds == 0
+        || i64::try_from(plan.launch.heartbeat_ttl_seconds).is_err()
+    {
+        return Err(Error::Policy);
+    }
+    Ok(())
 }
 
 fn endpoint_text(id: EndpointId) -> Result<String> {
@@ -91,12 +110,8 @@ pub async fn run<D: TeardownDriver>(
     shutdown: impl Future<Output = ()>,
     wall_clock: impl Fn() -> i64,
 ) -> Result<RuntimeExit> {
-    if endpoint.is_closed()
-        || EndpointId(*endpoint.id().as_bytes()) != receipt.node()
-        || plan.cleanup_timeout.is_zero()
-        || plan.cleanup_timeout > Duration::from_secs(60)
-        || plan.max_lifetime_seconds <= 0
-    {
+    validate_plan(endpoint, &plan)?;
+    if EndpointId(*endpoint.id().as_bytes()) != receipt.node() {
         return Err(Error::Policy);
     }
     tokio::pin!(shutdown);

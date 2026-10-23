@@ -1,5 +1,14 @@
 # m8s-agent local lifecycle slice
 
+The default-off `secure-runtime` feature exposes
+`node::runtime::redeem_and_run`: one pinned TLS redemption followed by native
+identity/certificate checks and live heartbeat supervision. Invalid plans refuse
+before redemption. Startup failure attempts drain, wipe, destroy, and explicit
+absence lookup without allowing an earlier failure to suppress destruction.
+The caller retains the scoped cleanup driver for independent retries; cancellation
+and local child exit never establish resource absence. This library path does
+not yet wire the executable entrypoint or establish provider destruction authority.
+
 This binary is **not a production node entrypoint**. Default invocation fails
 closed without spawning a child. It has no network listener, secure bootstrap,
 certificate verifier, model readiness assertion, provider client or real destroy.
