@@ -352,33 +352,12 @@ fn run_with_client(
     };
     private_file(&p.directory.join("cleanup-evidence.json"), &serde_json::to_vec_pretty(&serde_json::json!({"schema":"m8s.vast-removal/v1","instance_id":absent.instance_id().get(),"image":p.image,"creator_account_id":p.expected_account_id,"provider_confirmed_absent":true,"observed_at":utc()?})).map_err(|_| ERROR)?)?;
     eprintln!("prototype stage: exact-instance-absence-confirmed");
-    let binding = store
-        .budget_reservations()
-        .map_err(|_| ERROR)?
-        .into_iter()
-        .find(|r| r.request.request_id == p.request.request_id)
-        .and_then(|r| r.binding)
-        .ok_or(ERROR)?;
-    let now = utc()?;
-    store
-        .settle_budget(
-            &p.request.request_id,
-            &reserved.period,
-            &SettlementEvidence {
-                binding,
-                observed_at: now,
-                status: EvidenceStatus::Complete,
-                resource: ResourceOutcome::OwnedAbsent,
-                volumes: VolumeOutcome::BoundVolumesAbsent,
-                billing: FinalBilling::Unknown,
-                provenance: "creator-account-exact-get-null".into(),
-            },
-            now,
-        )
-        .map_err(|_| ERROR)?;
+    executor
+        .finalize_removal(&store, &intent, &absent, &reserved.period)
+        .map_err(|_| "prototype-removal-finalization-refused")?;
     let completion = work?;
     Ok(
-        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":SERVED_MODEL,"artifact_name":MODEL,"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","completion":completion}),
+        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":SERVED_MODEL,"artifact_name":MODEL,"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
     )
 }
 #[allow(clippy::too_many_arguments)]
@@ -534,10 +513,11 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
     let store = Store::open(path, &args[3]).map_err(|_| "prototype-audit-unavailable")?;
     let operations = store.create_operations().map_err(|_| ERROR)?;
     let records: Vec<_> = operations.iter().map(|r|serde_json::json!({"operation_id":r.intent.operation_id,"state":r.state,"invocation_started_at":r.invocation_started_at,"provider_result_recorded":r.result.is_some(),"uncertainty_observed":r.uncertainty_observed})).collect();
+    let removals = store.vast_removals().map_err(|_| ERROR)?;
     let budgets: Vec<_> = store.budget_reservations().map_err(|_| ERROR)?.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
     println!(
         "{}",
-        serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"provider_calls":false})
+        serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"removals":removals,"provider_calls":false})
     );
     Ok(())
 }

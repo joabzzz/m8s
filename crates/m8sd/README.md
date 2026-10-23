@@ -985,3 +985,26 @@ No provider call occurs during preparation, and neither method grants Ready.
 Desired-state admission, fresh evidence, signer custody, bootstrap/inference,
 recovery and cleanup settlement still require their explicit coordinators. The
 normal daemon binary remains mock-only.
+
+### Exact resource removal and retained billing
+
+`VastExecutor::finalize_removal` consumes a fresh, opaque creator-account absence
+receipt from the armed cleanup handle. It matches the exact immutable launch
+intent and persisted instance binding. One SQLite transaction records the
+`vast_removal` receipt, cancels the node's grants, removes its exact `gpu_node`
+row through the shared finalizer, and retains `BillingUnknown` accounting.
+Failure rolls all of these writes back together. The consumed create claim,
+nonce tombstones, revocation metadata and held cost survive. Repeating
+finalization cannot remint a claim or downgrade a settled final bill.
+
+`Store::vast_removals` and `m8s prototype audit` expose the retained observation,
+not a new provider read or settled-invoice claim. Older successful demo journals
+may have settlement evidence without a `vast_removal` record; they are not
+silently backfilled or reset. The historical live receipt remains authoritative
+for that historical run.
+
+The legacy `Store::reconcile` path and default mock daemon refuse a Store with
+managed budget/create history before touching a provider. A mock observation
+must never delete real managed node rows or launch replacement mocks into a
+managed account. Full live daemon recovery requires the original coordinator
+and authenticated provider evidence; it remains an explicit integration task.

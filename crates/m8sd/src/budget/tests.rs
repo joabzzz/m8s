@@ -599,7 +599,7 @@ fn settlement_race_restart_never_double_debits_or_changes_final_cost() {
     assert_eq!(s.conn.total_changes(), changes);
 }
 #[test]
-fn mock_node_cleanup_cannot_delete_or_reset_budget_liability() {
+fn mock_reconcile_refuses_managed_budget_without_mutating_resources_or_liability() {
     let (_, mut s) = fixture();
     let mut mock = m8s_provider::Mock::default();
     s.scale("tier", 1).unwrap();
@@ -608,9 +608,12 @@ fn mock_node_cleanup_cannot_delete_or_reset_budget_liability() {
     r.node_uid = s.nodes().unwrap().remove(0).uid;
     s.reserve_budget(&policy(), &period(), &r, 100).unwrap();
     s.down().unwrap();
-    s.reconcile(&mut mock, 101).unwrap();
-    s.reconcile(&mut mock, 102).unwrap();
-    assert!(s.nodes().unwrap().is_empty());
+    let changes = s.conn.total_changes();
+    assert!(s.reconcile(&mut mock, 101).is_err());
+    assert!(s.reconcile(&mut mock, 102).is_err());
+    assert_eq!(s.nodes().unwrap().len(), 1);
+    assert!(mock.destroy_calls.is_empty());
+    assert_eq!(s.conn.total_changes(), changes);
     assert_eq!(s.budget_reservations().unwrap().len(), 1);
     s.scale("tier", 1).unwrap();
     assert!(

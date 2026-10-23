@@ -807,48 +807,62 @@ impl Store {
         evidence: &SettlementEvidence,
         now: i64,
     ) -> Result<BudgetReservation> {
-        fresh(evidence.status, evidence.observed_at, now)?;
-        label(&evidence.provenance)?;
-        if evidence.resource != ResourceOutcome::OwnedAbsent
-            || evidence.volumes != VolumeOutcome::BoundVolumesAbsent
-        {
-            return Err(Error::Invalid);
-        }
-        if let FinalBilling::Known { provenance, .. } = &evidence.billing {
-            label(provenance)?;
-        }
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        owned(&tx, &self.owner)?;
-        let mut a = account(&tx, &self.owner)?.ok_or(Error::Invalid)?;
-        clock(&a, now)?;
-        let mut r = get_row(&tx, &self.owner, request_id)?;
-        if r.binding.as_ref() != Some(&evidence.binding) {
-            return Err(Error::Invalid);
-        }
-        if r.state == BudgetState::Settled || r.settlement.as_ref() == Some(evidence) {
-            return if r.settlement.as_ref() == Some(evidence)
-                && r.billing_period.as_ref() == Some(period)
-            {
-                Ok(r)
-            } else {
-                Err(Error::Invalid)
-            };
-        }
-        register_period(&tx, &self.owner, period)?;
-        advance(&mut a, period, now)?;
-        r.state = match evidence.billing {
-            FinalBilling::Unknown => BudgetState::BillingUnknown,
-            FinalBilling::Known { .. } => BudgetState::Settled,
-        };
-        r.settlement = Some(evidence.clone());
-        r.billing_period = Some(period.clone());
-        // Final actual may exceed quote/caps: record the debt, never reject or
-        // truncate it to make future capacity appear available.
-        save_row(&tx, &r)?;
-        save_account(&tx, &a)?;
+        let result = settle_in_transaction(&tx, &self.owner, request_id, period, evidence, now)?;
         tx.commit()?;
-        Ok(r)
+        Ok(result)
     }
+}
+
+/// Shared transaction boundary for lifecycle finalization. The caller owns the
+/// commit so exact absence, node removal and retained billing debt are atomic.
+pub(crate) fn settle_in_transaction(
+    tx: &Transaction<'_>,
+    owner: &str,
+    request_id: &str,
+    period: &CalendarPeriod,
+    evidence: &SettlementEvidence,
+    now: i64,
+) -> Result<BudgetReservation> {
+    fresh(evidence.status, evidence.observed_at, now)?;
+    label(&evidence.provenance)?;
+    if evidence.resource != ResourceOutcome::OwnedAbsent
+        || evidence.volumes != VolumeOutcome::BoundVolumesAbsent
+    {
+        return Err(Error::Invalid);
+    }
+    if let FinalBilling::Known { provenance, .. } = &evidence.billing {
+        label(provenance)?;
+    }
+    owned(tx, owner)?;
+    let mut a = account(tx, owner)?.ok_or(Error::Invalid)?;
+    clock(&a, now)?;
+    let mut r = get_row(tx, owner, request_id)?;
+    if r.binding.as_ref() != Some(&evidence.binding) {
+        return Err(Error::Invalid);
+    }
+    if r.state == BudgetState::Settled || r.settlement.as_ref() == Some(evidence) {
+        return if r.settlement.as_ref() == Some(evidence)
+            && r.billing_period.as_ref() == Some(period)
+        {
+            Ok(r)
+        } else {
+            Err(Error::Invalid)
+        };
+    }
+    register_period(tx, owner, period)?;
+    advance(&mut a, period, now)?;
+    r.state = match evidence.billing {
+        FinalBilling::Unknown => BudgetState::BillingUnknown,
+        FinalBilling::Known { .. } => BudgetState::Settled,
+    };
+    r.settlement = Some(evidence.clone());
+    r.billing_period = Some(period.clone());
+    // Final actual may exceed quote/caps: record the debt, never reject or
+    // truncate it to make future capacity appear available.
+    save_row(tx, &r)?;
+    save_account(tx, &a)?;
+    Ok(r)
 }
 #[cfg(test)]
 mod tests;

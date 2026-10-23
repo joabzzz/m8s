@@ -39,6 +39,8 @@ pub struct VastExecutor {
     token: Arc<DriverOrigin>,
 }
 
+mod removal;
+pub use removal::VastRemoval;
 #[cfg(test)]
 mod tests;
 impl VastExecutor {

@@ -24,6 +24,32 @@ pub struct ArmedCleanup {
     started: Instant,
     remaining: Duration,
 }
+/// Fresh exact-resource absence observed with the original creator credential
+/// and immutable owner intent. A worker exit or destroy ACK cannot construct it.
+///
+/// ```compile_fail
+/// use m8s_provider_vast::watchdog::OwnedResourceAbsence;
+/// let _: OwnedResourceAbsence = serde_json::from_str("{}").unwrap();
+/// ```
+#[cfg(feature = "launch-https")]
+pub struct OwnedResourceAbsence {
+    instance: std::num::NonZeroU64,
+    intent: RecoveryIntent,
+    observed_at: i64,
+}
+#[cfg(feature = "launch-https")]
+impl OwnedResourceAbsence {
+    pub fn instance_id(&self) -> std::num::NonZeroU64 {
+        self.instance
+    }
+    pub fn observed_at(&self) -> i64 {
+        self.observed_at
+    }
+    pub fn matches(&self, intent: &RecoveryIntent) -> bool {
+        self.intent.label() == intent.label() && self.intent.image() == intent.image()
+    }
+}
+
 impl ArmedCleanup {
     /// Only call from the m8s CLI: re-executes the current binary's fixed worker
     /// route. The already-private plan and original budget must be durable first.
@@ -153,14 +179,28 @@ impl ArmedCleanup {
     pub fn confirm_owned_absent(
         &self,
         access: &crate::readonly::access::NodeAccess,
-    ) -> m8s_provider::Result<Option<crate::readonly::destroy::ConfirmedResourceAbsence>> {
+    ) -> m8s_provider::Result<Option<OwnedResourceAbsence>> {
         if !access.matches(&self.intent) {
             return Err(m8s_provider::Error::Unavailable);
         }
-        ScopedDestroyHttps::new(access.instance_id(), || {
+        let receipt = ScopedDestroyHttps::new(access.instance_id(), || {
             Ok(SecretValue::new(self.secret.expose().to_vec()))
         })?
-        .confirm_absent()
+        .confirm_absent()?;
+        receipt
+            .map(|receipt| {
+                let observed_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .and_then(|d| i64::try_from(d.as_secs()).ok())
+                    .ok_or(m8s_provider::Error::Unavailable)?;
+                Ok(OwnedResourceAbsence {
+                    instance: receipt.instance_id(),
+                    intent: self.intent.clone(),
+                    observed_at,
+                })
+            })
+            .transpose()
     }
 
     /// Uses the exact same account credential delivered to the acknowledged
