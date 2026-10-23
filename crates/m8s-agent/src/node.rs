@@ -373,6 +373,8 @@ impl NodeMaterial {
                 "--trust-owner".into(),
                 self.launch.mesh_owner_id.clone().into(),
                 "--headless".into(),
+                "--log-format".into(),
+                "json".into(),
                 "--no-default-plugins".into(),
                 "--port".into(),
                 self.launch.port.to_string().into(),

@@ -523,6 +523,8 @@ impl ContainerSession {
             "--trust-owner".into(),
             self.launch.mesh_owner_id.clone(),
             "--headless".into(),
+            "--log-format".into(),
+            "json".into(),
             "--no-default-plugins".into(),
             "--port".into(),
             "9337".into(),

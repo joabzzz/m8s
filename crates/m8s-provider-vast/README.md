@@ -121,6 +121,17 @@ resource and advance Launching to Booting. Ready, real inference and settlement
 remain separate obligations. Tests use synthetic accounting and never dispatch
 to Vast.
 
+`ProvisionPacket` and `ProvisioningSession` implement the owner half of the
+restricted SSH handoff. The host public key carries its exact instance ID; the
+packet must match that observed instance and immutable image. A fresh private
+known-hosts file pins the host key. SSH has no ambient config/agent/passwords,
+forwarding, multiplexing, or command selection; the only remote command is
+`provision-v1`. The nonce and node private key travel in the bounded stdin frame,
+separately from public JSON, with no secret arguments or child output logging.
+The retained SSH child is not an authentication/readiness receipt: the original
+TLS bootstrap must still succeed and the caller must retain provider cleanup.
+Only generated literal paths without OpenSSH expansion tokens are accepted.
+
 Current official offer response example shows an object while historical fixture
 mapping expects a list. Only bounded explicit lists are supported, NOT guessed
 object wrapping. Offer prices remain unqualified (official units conflict).

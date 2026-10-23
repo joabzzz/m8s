@@ -15,7 +15,7 @@ default = []
 readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
 scoped-destroy-https = ["readonly-https"]
 watchdog = ["scoped-destroy-https", "dep:libc"]
-launch-https = ["scoped-destroy-https"]
+launch-https = ["scoped-destroy-https", "dep:libc", "dep:tokio"]
 
 [[bin]]
 name = "m8s-vast-watchdog"
@@ -43,4 +43,9 @@ optional = true
 
 [dependencies.m8s-secrets]
 path = "../m8s-secrets"
+optional = true
+
+[dependencies.tokio]
+version = "1"
+features = ["process", "io-util", "time"]
 optional = true

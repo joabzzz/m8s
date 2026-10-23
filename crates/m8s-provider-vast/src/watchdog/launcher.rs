@@ -110,6 +110,43 @@ impl ArmedCleanup {
         }
     }
 
+    /// Positive observation uses the same account and exact immutable intent as
+    /// create and cleanup. An empty lookup remains unresolved, never absence.
+    #[cfg(feature = "launch-https")]
+    pub fn observe_owned(
+        &mut self,
+    ) -> m8s_provider::Result<Option<crate::readonly::access::NodeAccess>> {
+        if !self.live().map_err(|_| m8s_provider::Error::Unavailable)? {
+            return Err(m8s_provider::Error::Unavailable);
+        }
+        let identity = self.intent.clone();
+        let mut lookup = RecoveryLookup::new(identity, || {
+            Ok(SecretValue::new(self.secret.expose().to_vec()))
+        })?;
+        let Some(candidate) = lookup.find()? else {
+            return Ok(None);
+        };
+        let mut access =
+            crate::readonly::access::OwnedAccessHttps::new(candidate, self.intent.clone(), || {
+                Ok(SecretValue::new(self.secret.expose().to_vec()))
+            })?;
+        access.observe()
+    }
+
+    #[cfg(feature = "launch-https")]
+    pub fn provisioning_host_key(
+        &self,
+        access: &crate::readonly::access::NodeAccess,
+    ) -> m8s_provider::Result<crate::readonly::provisioning_log::HostPublicKey> {
+        if !access.matches(&self.intent) {
+            return Err(m8s_provider::Error::Unavailable);
+        }
+        crate::readonly::provisioning_log::ProvisioningLog::new(access, || {
+            Ok(SecretValue::new(self.secret.expose().to_vec()))
+        })?
+        .host_key()
+    }
+
     /// Uses the exact same account credential delivered to the acknowledged
     /// cleanup worker. The coordinator must first burn its durable invocation.
     /// One attempt per handle, including construction/transport errors.

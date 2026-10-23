@@ -7,6 +7,9 @@ use m8s_provider::{Error, LaunchSpec, Provider, Result};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[cfg(all(unix, feature = "launch-https"))]
+pub mod provision;
+
 const MAX_BODY: usize = 1_048_576;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Method {

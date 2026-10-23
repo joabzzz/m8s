@@ -21,6 +21,11 @@ impl NodeAccess {
     pub fn observed_at(&self) -> i64 {
         self.observed_at
     }
+    pub fn matches_image_sha256(&self, digest: &str) -> bool {
+        self.image
+            .rsplit_once("@sha256:")
+            .is_some_and(|(_, hash)| hash == digest)
+    }
     pub fn instance_id(&self) -> NonZeroU64 {
         self.instance
     }

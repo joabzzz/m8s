@@ -145,6 +145,8 @@ fn exact_private_files_and_enforcing_native_command_never_expose_secret_bytes() 
             "--trust-owner".into(),
             "1".repeat(64),
             "--headless".into(),
+            "--log-format".into(),
+            "json".into(),
             "--no-default-plugins".into(),
             "--port".into(),
             "9337".into(),

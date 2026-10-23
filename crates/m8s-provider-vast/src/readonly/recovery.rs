@@ -5,6 +5,7 @@ use std::num::NonZeroU64;
 
 /// Nonsecret immutable launch identity. Syntax is not image provenance; the
 /// caller must supply its durable, approved image and never invent a retry intent.
+#[derive(Clone)]
 pub struct RecoveryIntent {
     label: String,
     image: String,

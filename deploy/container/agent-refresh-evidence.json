@@ -1,0 +1,26 @@
+{
+  "schema": "m8s.agent-refresh-evidence/v1",
+  "local_tag": "m8s-prototype-vast:32d1c8b",
+  "platform": "linux/amd64",
+  "image_index_digest": "sha256:3f6bbfaf47028aed1ae7b537fe27b820d533d6303ce22aac6a3bdd54ad8df7cf",
+  "agent_source_revision": "32d1c8bd24f22c70ea762aaa747151c6782ada73",
+  "agent_source_archive_sha256": "edf66cd54befeca3b6c6e6891ea9c1398c4491e907664727d33d6d1629fa3d00",
+  "recipe_revision": "f82fa76",
+  "base_image_digest": "sha256:4eb8934be463aa207501fed5403e4efbc638fac51fd1060e0d7983ade55953c2",
+  "base_filesystem_layers": 16,
+  "all_base_layers_preserved": true,
+  "refreshed_filesystem_layers": 17,
+  "native_mesh_recompiled": false,
+  "model_replaced": false,
+  "rust_release_build_seconds": 394.4,
+  "owner_initiated_bootstrap_included": true,
+  "publication": "not_run",
+  "vast_deployment": "not_run",
+  "real_model_inference": "not_run",
+  "provider_confirmed_removal": "not_run",
+  "build_log": "/private/tmp/m8s-agent-only-build-2.log",
+  "supersedes_failed_attempts": [
+    {"log":"/private/tmp/m8s-agent-refresh-build.log","result":"stopped_after_native_cache_miss_before_native_compilation"},
+    {"log":"/private/tmp/m8s-agent-only-build.log","result":"missing_source_parent_directory_fixed_without_changing_validation"}
+  ]
+}

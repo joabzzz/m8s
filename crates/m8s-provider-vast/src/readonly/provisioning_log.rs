@@ -9,10 +9,13 @@ pub struct ProvisioningLog<S> {
     transport: ReadonlyHttps<S>,
     instance: NonZeroU64,
 }
-pub struct HostPublicKey(String);
+pub struct HostPublicKey(String, NonZeroU64);
 impl HostPublicKey {
     pub fn as_openssh(&self) -> &str {
         &self.0
+    }
+    pub fn matches_access(&self, access: &NodeAccess) -> bool {
+        self.1 == access.instance_id()
     }
 }
 impl<S: FnMut() -> Result<SecretValue>> ProvisioningLog<S> {
@@ -76,7 +79,7 @@ impl<S: FnMut() -> Result<SecretValue>> ProvisioningLog<S> {
         if log.len() > 65536 || log.windows(bytes.len()).any(|w| w == bytes) {
             return Err(Error::Unavailable);
         }
-        host_key_from_log(&log)
+        host_key_from_log(&log, self.instance)
     }
 }
 
@@ -104,7 +107,7 @@ fn log_url(text: &str) -> Result<reqwest::Url> {
     Ok(url)
 }
 
-fn host_key_from_log(bytes: &[u8]) -> Result<HostPublicKey> {
+fn host_key_from_log(bytes: &[u8], instance: NonZeroU64) -> Result<HostPublicKey> {
     let text = std::str::from_utf8(bytes).map_err(|_| Error::Unavailable)?;
     let mut found = None;
     for line in text.lines() {
@@ -121,7 +124,7 @@ fn host_key_from_log(bytes: &[u8]) -> Result<HostPublicKey> {
         {
             return Err(Error::Unavailable);
         }
-        found = Some(HostPublicKey(key.into()));
+        found = Some(HostPublicKey(key.into(), instance));
     }
     found.ok_or(Error::Unavailable)
 }
@@ -129,6 +132,9 @@ fn host_key_from_log(bytes: &[u8]) -> Result<HostPublicKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn host_key_from_log(bytes: &[u8]) -> Result<HostPublicKey> {
+        super::host_key_from_log(bytes, NonZeroU64::new(42).unwrap())
+    }
     #[test]
     fn only_fixed_https_object_storage_routes_are_accepted() {
         for url in [
