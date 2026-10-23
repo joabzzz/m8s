@@ -1,0 +1,51 @@
+{
+  "schema": "m8s.qwen38-blocked-attempt/v1",
+  "observed_at_utc": "2026-10-23T20:31:05.435574+00:00",
+  "model": "Qwen/Qwen3.8-27B",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:be8d0675112d6a1051cb59aee61399abe4bdfaa1ac5a2b261dd1e37028c30dfb",
+  "operator_source_revision": "19e6ae9",
+  "node_image_source_revision": "92eebf0",
+  "commands_exercised": [
+    "m8sd --vast-demo",
+    "m8s up qwen38-27b",
+    "m8s scale qwen38-27b 1",
+    "m8s status",
+    "m8s logs",
+    "m8s down"
+  ],
+  "scope": "real coordinator admission only; no provider CREATE or model serving",
+  "failure": "cumulative trial cap was compared to per-attempt prototype ceiling after reservation",
+  "reservation_micro_usd": 2369054,
+  "reservation_state": "Reserved",
+  "reservation_retained": true,
+  "create_operations": 0,
+  "launch_attempts": 0,
+  "cleanup_armed": false,
+  "paid_resource_created": false,
+  "model_loaded": false,
+  "owner_routed_completion": false,
+  "controller_stopped": true,
+  "controller_claim_retained": true,
+  "fresh_account": {
+    "account_id": 32349,
+    "credit_micro_usd_floor": 16218436,
+    "balance": 0,
+    "complete_instance_count": 0,
+    "instance_next_token": null,
+    "volume_count": 0
+  },
+  "accounting": {
+    "historical_holds_micro_usd": 13355168,
+    "new_retained_hold_micro_usd": 2369054,
+    "total_retained_holds_micro_usd": 15724222,
+    "remaining_unreserved_micro_usd": 494214,
+    "minimum_new_attempt_contingency_micro_usd": 1000000,
+    "historical_reported_charge_micro_usd_unsettled": 25000,
+    "prior_holds_released": false
+  },
+  "limitations": [
+    "No Qwen3.8 GPU load or sensible completion proved.",
+    "Empty global inventories are fresh observations, not a teardown receipt for a resource that never existed.",
+    "No new attempt is funded while all retained holds remain."
+  ]
+}

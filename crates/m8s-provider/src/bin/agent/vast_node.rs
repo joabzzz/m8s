@@ -65,7 +65,11 @@ impl Config {
                         .bytes()
                         .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
             }
-            None => self.model == m8s_provider::vast::provision_protocol::FLINT_MODEL_REF,
+            None => [
+                m8s_provider::vast::provision_protocol::FLINT_MODEL_REF,
+                m8s_provider::vast::provision_protocol::QWEN38_MODEL_REF,
+            ]
+            .contains(&self.model.as_str()),
         }
     }
 
@@ -362,7 +366,16 @@ fn run_supervised(
             clock,
         )
         .await
-        .map_err(|_| REFUSED);
+        .map_err(|error| {
+            let label = match error {
+                m8s_agent::node::Error::Policy => "node-policy-error",
+                m8s_agent::node::Error::NativeId => "node-id-error",
+                m8s_agent::node::Error::Material => "node-material-error",
+                m8s_agent::node::Error::Certificate => "node-certificate-error",
+            };
+            eprintln!("m8s native diagnostic: {label}");
+            REFUSED
+        });
         let _ = tokio::time::timeout(Duration::from_secs(5), endpoint.close()).await;
         result.map(|_| ())
     })

@@ -32,7 +32,7 @@ const HELP: &str = concat!(
     "  local-demo --help                       Unix, local-development default OFF; synthetic only\n",
     "  local-inspect --help                    Unix, local-development default OFF; historical only\n",
     "  secrets --help                          Explicit local storage; Keychain default fails closed\n",
-    "  --socket PATH up TIER|down|shutdown|reload-config|status|logs|scale TIER N [--json]  Mock-only control\n",
+    "  --socket PATH up TIER|down|shutdown|reload-config|status|logs|scale TIER N [--json]  Mock or explicit bounded Vast demo control\n",
     "  explain-tier --help                    Stored launch-gate observations only\n",
     "  scale-batch --help                     Atomic manual desired updates, Mock-only\n",
     "  reload-config --help                   Explicit reload or check-only preflight\n",

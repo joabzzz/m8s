@@ -1,0 +1,40 @@
+{
+  "schema": "m8s.qwen38-owner-canary/v1",
+  "instance_id": 57431708,
+  "started_at": 1792794896,
+  "completed_at": 1792794896,
+  "model": "local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de",
+  "canonical_api_model": "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:UD-Q4_K_M",
+  "verified_peer_content_identity": "local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de",
+  "pinned_source_identity": {
+    "schema_version": 1,
+    "source": "hugging-face-gguf",
+    "repository": "unsloth/Qwen3.8-27B-GGUF",
+    "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+    "files": [
+      {
+        "path": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "bytes": 16464440224,
+        "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+      }
+    ]
+  },
+  "owner_and_peer_certificates_verified": true,
+  "owner_routed_inference": true,
+  "content": "A mesh network is a type of network where each device, or node, is connected to multiple other nodes, allowing data to travel along multiple paths for improved reliability and coverage.",
+  "finish_reason": "stop",
+  "integration_limitation": "Existing coordinator waited for raw blob SHA instead of canonical HF API alias. Exactly one separate bounded owner request was sent; coordinator did not send inference. m8s up/scale/status/logs/down control actual rental. Correct mapping before integrated rerun.",
+  "native_weight_payload_independently_hashed": false,
+  "provider_confirmed_absent": true,
+  "removal": {
+    "creator_account_id": 32349,
+    "image": "ghcr.io/joabzzz/m8s-prototype@sha256:5266fe6e7e824cd4e343b084d74c9b251cdec130d12b72fbb8349f940f8048a6",
+    "instance_id": 57431708,
+    "observed_at": 1792794900,
+    "provider_confirmed_absent": true,
+    "schema": "m8s.vast-removal/v1"
+  },
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:5266fe6e7e824cd4e343b084d74c9b251cdec130d12b72fbb8349f940f8048a6",
+  "automatic_coordinator_canary": false,
+  "acceptance_scope": "Actual model served and one verified owner-routed completion; daemon up/scale/status/logs/down and exact removal exercised. Repeat after coordinator API/response identity fix to establish automatic flow."
+}

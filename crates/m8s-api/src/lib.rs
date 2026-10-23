@@ -23,6 +23,9 @@ use std::{
 };
 use validation::diagnostic_id;
 pub const MAX_FRAME: usize = 65536;
+/// Explicit one-attempt prototype metadata, never provider/readiness proof.
+pub const VAST_DEMO_MODE: &str = "vast-prototype";
+pub const VAST_DEMO_SECURITY: &str = "real bounded prototype; readiness not advertised; retained status is not fresh provider absence";
 pub fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
     let mut frame = Vec::new();
     BufReader::new(stream.take((MAX_FRAME + 1) as u64)).read_until(b'\n', &mut frame)?;

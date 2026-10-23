@@ -1,0 +1,134 @@
+{
+  "api_model": "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:UD-Q4_K_M",
+  "artifact_name": "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "certificate_verified": true,
+  "completion": {
+    "content": "A mesh network is a distributed network where each device acts as both a host and a relay, allowing data to travel along multiple paths for improved connectivity and redundancy.",
+    "finish_reason": "stop"
+  },
+  "final_billing": "unknown-liability-retained",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:5266fe6e7e824cd4e343b084d74c9b251cdec130d12b72fbb8349f940f8048a6",
+  "instance_id": 57433800,
+  "model": "local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de",
+  "owner_routed_inference": true,
+  "provider_confirmed_absent": true,
+  "reserved_micro_usd": 1676737,
+  "resource_row_removed": true,
+  "schema": "m8s.qwen38-integrated-live-demo/v1",
+  "accepted_at_utc": "2026-10-23T22:54:32.608701+00:00",
+  "automatic_coordinator_canary": true,
+  "manual_inference_request_used": false,
+  "m8s_source_revision": "ac00486ba2ff4dea8f99bb84ed07eff34fa0e5e9",
+  "image_agent_source_revision": "3d746e843d33e672a5cea82a5d35463288b4f546",
+  "native_source_revision": "962aeb2faabe74f5fa809b8b61eaad2f9b816e18",
+  "native_runtime_release": "0.76.1",
+  "native_runtime_abi": "0.1.71",
+  "text_only": true,
+  "context_tokens": 4096,
+  "parallel_slots": 1,
+  "draft_model_disabled": true,
+  "multi_gpu_or_node_split_used": false,
+  "native_weight_payload_independently_hashed": false,
+  "pinned_source_identity": {
+    "schema_version": 1,
+    "source": "hugging-face-gguf",
+    "repository": "unsloth/Qwen3.8-27B-GGUF",
+    "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+    "files": [
+      {
+        "path": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "bytes": 16464440224,
+        "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+      }
+    ]
+  },
+  "provider_reported_gpu": {
+    "name": "RTX PRO 6000 S",
+    "memory_mib": 97887,
+    "host_memory_mib": 289882,
+    "advertised_download_mbps": 4503,
+    "driver_cuda_support": 13.2
+  },
+  "reserved_at": 1792795711,
+  "provider_confirmed_absent_at": 1792795993,
+  "runtime_seconds_bound": 1500,
+  "cleanup_seconds_bound": 240,
+  "contingency_micro_usd": 700000,
+  "transfer_gb_bound": 64,
+  "new_allowance_cap_micro_usd": 1700000,
+  "commands_exercised": [
+    "m8sd --vast-demo",
+    "m8s up qwen38-27b",
+    "m8s scale qwen38-27b 1",
+    "m8s status",
+    "m8s logs",
+    "m8s down"
+  ],
+  "stages": [
+    "prototype stage: certified-owner-client-ready",
+    "prototype stage: provisioning-key-created",
+    "prototype stage: selected-credential-read",
+    "prototype stage: provider-client-initialized",
+    "prototype stage: fresh-account-and-offer-qualified",
+    "prototype stage: cleanup-armed",
+    "prototype stage: exact-instance-network-observed",
+    "prototype stage: provisioning-host-key-pinned",
+    "prototype stage: ssh-provision-sent",
+    "prototype stage: provisioned-control-listener-ready",
+    "prototype stage: certificate-delivered-control-established",
+    "prototype native category: native-other-error",
+    "prototype stage: owner-routed-model-observed",
+    "prototype stage: owner-routed-inference-completed",
+    "prototype stage: completion-held-until-down-or-deadline",
+    "prototype stage: cleanup-requested",
+    "prototype stage: exact-instance-absence-confirmed"
+  ],
+  "watchdog_events": [
+    {
+      "event": "armed",
+      "instance_id": null,
+      "observed_at": 1792795711,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "exact_resource_bound",
+      "instance_id": 57433800,
+      "observed_at": 1792795714,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "destroy_acknowledged",
+      "instance_id": 57433800,
+      "observed_at": 1792795991,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "provider_confirmed_absent",
+      "instance_id": 57433800,
+      "observed_at": 1792795994,
+      "schema": "m8s.vast-watchdog-event/v1"
+    }
+  ],
+  "removal": {
+    "creator_account_id": 32349,
+    "image": "ghcr.io/joabzzz/m8s-prototype@sha256:5266fe6e7e824cd4e343b084d74c9b251cdec130d12b72fbb8349f940f8048a6",
+    "instance_id": 57433800,
+    "observed_at": 1792795993,
+    "provider_confirmed_absent": true,
+    "schema": "m8s.vast-removal/v1"
+  },
+  "private_run_material_removed": true,
+  "local_binaries_sha256": {
+    "m8s": "5a2293fca4ad8de20036a09316b4d1cb19dbe8f87ae9876d663248a22af9cc91",
+    "m8sd": "6d8312368f4c263a3486a27a21eb468ca3a8e825b574cba39c21ce09d5605fc1"
+  },
+  "acceptance": {
+    "exact_qwen38_27b_served": true,
+    "started_and_stopped_through_m8s_commands": true,
+    "sensible_owner_routed_completion": true,
+    "repeatable_runbook_committed": true,
+    "provider_confirmed_teardown": true,
+    "complete_final_inventories_empty": true
+  },
+  "final_account_observation": "qwen38-final-account-evidence.json"
+}

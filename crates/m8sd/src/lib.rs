@@ -432,4 +432,11 @@ mod diagnostics;
 mod execution_domain;
 mod manual;
 mod private;
+
+/// Check an owned 0700 directory without following symlinks or accepting ACLs.
+/// This is read-only filesystem validation, not managed execution authority.
+/// Callers must keep its ancestors trusted against replacement.
+pub fn verify_private_directory(path: &std::path::Path) -> Result<()> {
+    private::check_directory(path)
+}
 mod removal;

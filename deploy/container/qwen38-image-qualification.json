@@ -1,0 +1,48 @@
+{
+  "schema": "m8s.qwen38-image-qualification/v1",
+  "observed_at": "2026-10-23T19:54:30.415828+00:00",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:be8d0675112d6a1051cb59aee61399abe4bdfaa1ac5a2b261dd1e37028c30dfb",
+  "tag": "qwen38-92eebf0-cuda",
+  "platform": "linux/amd64",
+  "unpacked_bytes": 4653198675,
+  "anonymous_manifest_digest_verified": true,
+  "agent_source_revision": "92eebf0ed692314d1424e3657e0463b9964d6648",
+  "m8s_source_archive_sha256": "ab7c16bbdfd8350c8b13341aa552e00bd74a7e2860f19548306867dc2f475001",
+  "native_source": {
+    "repository": "https://github.com/joabzzz/m8s-mesh-llm",
+    "revision": "962aeb2faabe74f5fa809b8b61eaad2f9b816e18",
+    "archive_sha256": "e03b39b7186c5fe98fe137b3b622fe218976246f5daaf47767cc0bb78b8247f6",
+    "all_file_payloads_match_revision": true,
+    "directory_entries_omitted": true,
+    "llama_upstream_revision": "a37cc46104eb50900d5ab4a9ba02a0abdac039db",
+    "llama_patched_revision": "6085189ee2b42cad0a296bebdab486cae3a58dbe",
+    "qwen35_loader_present": true
+  },
+  "installed_runtime": {
+    "id": "meshllm-native-runtime-linux-x86_64-cuda12",
+    "release_version": "0.76.1",
+    "skippy_abi": "0.1.71",
+    "cuda_toolkit_major": 12,
+    "gpu_arches": [
+      "120a"
+    ],
+    "offline_catalog_check_passed": true
+  },
+  "offline_flags_present": [
+    "--node-ownership-required",
+    "--no-draft",
+    "--ctx-size",
+    "--parallel",
+    "--model"
+  ],
+  "owner_client": {
+    "revision": "7a101840af79c7509789b9e3152ca6c4605186e8",
+    "platform": "darwin/aarch64",
+    "display_version": "0.78.0",
+    "sha256": "48ca217a81c77a4bc7f40d8729e9324a0d6e32d5b5e3bcc7c64082415757d8cb",
+    "bytes": 101606024
+  },
+  "qualification_scope": "offline packaging and CLI/runtime compatibility; no GPU or exact model load",
+  "qwen38_loaded": false,
+  "live_completion": null
+}

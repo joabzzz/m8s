@@ -1,0 +1,136 @@
+{
+  "schema": "m8s.qwen38-preparation/v1",
+  "observed_on": "2026-10-23",
+  "issue": 6,
+  "upstream": {
+    "repository": "Qwen/Qwen3.8-27B",
+    "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+    "architecture": "Qwen3_5ForConditionalGeneration",
+    "model_type": "qwen3_5",
+    "parameters_billions": 27,
+    "native_context_tokens": 262144,
+    "license": "apache-2.0"
+  },
+  "gguf": {
+    "repository": "unsloth/Qwen3.8-27B-GGUF",
+    "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+    "filename": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "bytes": 16464440224,
+    "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+    "digest_source": "Hugging Face LFS metadata; full weights not downloaded or hashed locally",
+    "header_range_bytes": 1048576,
+    "header_version": 3,
+    "header_architecture": "qwen35",
+    "header_context_tokens": 262144,
+    "tensor_count": 866,
+    "served_identity": "local-gguf/sha256-322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+  },
+  "runtime_source_inspection": {
+    "mesh_revision": "9d97fbfa58c428fb95263a0de719bed959f2510a",
+    "llama_cpp_revision": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+    "family": "qwen35",
+    "source_support_present": true,
+    "exact_model_native_load_tested": false,
+    "cuda_image_qualified": false,
+    "companion_checkout_modified": false
+  },
+  "candidate_profile": {
+    "mode": "text-only",
+    "context_tokens": 4096,
+    "parallel_sequences": 1,
+    "gpu_count": 1,
+    "minimum_gpu_memory_mib": 48000,
+    "minimum_host_memory_mib": 64000,
+    "minimum_download_mbps": 500,
+    "disk_gb": 64,
+    "cuda_architecture": "SM120 Blackwell",
+    "compute_hourly_cap_micro_usd": 1500000,
+    "fit_status": "conservative candidate; actual runtime allocation not measured",
+    "multi_node_split": "not selected or qualified"
+  },
+  "account_observation": {
+    "observed_at": "2026-10-23T17:17:47Z",
+    "account_id": 32349,
+    "credit_micro_usd_rounded_down": 16218436,
+    "balance_micro_usd": 0,
+    "complete_instance_inventory_empty": true,
+    "instance_total": 0,
+    "instance_next_token": null,
+    "volume_inventory_empty": true,
+    "historical_retained_reservations_micro_usd": 13355168,
+    "historical_reported_charges_micro_usd": 25000,
+    "historical_billing_finality": "not-established",
+    "maximum_before_additional_liabilities_micro_usd": 2863268,
+    "new_run_budget_micro_usd": null,
+    "budget_status": "requires subsequent-journal reconciliation and authoritative/enforced native-download and image-transfer liability bound; disk-sized transfer allowance alone is insufficient"
+  },
+  "live_run": {
+    "rental_created": false,
+    "certificate_verified": false,
+    "owner_routed_completion": null,
+    "qwen38_teardown_verified": false,
+    "issue_acceptance_complete": false
+  },
+  "sources": [
+    "https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/config.json",
+    "https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md",
+    "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/tree/4ca720788d1e01f1bff70c033e0d0028fd02e502",
+    "https://unsloth.ai/docs/models/qwen3.8",
+    "https://docs.vast.ai/guides/instances/storage/types",
+    "https://docs.vast.ai/guides/instances/manage-instances"
+  ],
+  "readonly_offer_observation": {
+    "observed_on": "2026-10-23",
+    "offer_id": 52442956,
+    "gpu": "RTX PRO 6000 S",
+    "gpu_memory_mib": 97887,
+    "host_memory_mib": 289882,
+    "advertised_download_mbps": 4503.3,
+    "advertised_upload_mbps": 1078.6,
+    "driver_cuda_support": 13.2,
+    "compute_micro_usd_per_hour_rounded_up": 1468889,
+    "inbound_micro_usd_per_gb_rounded_up": 2605,
+    "outbound_micro_usd_per_gb_rounded_up": 3907,
+    "not_a_reservation": true
+  },
+  "local_runtime_compatibility_check": {
+    "scope": "isolated runtime catalog check, not a model load or certified mesh qualification",
+    "program_revision": "7a101840af79c7509789b9e3152ca6c4605186e8",
+    "manifest_url": "https://github.com/Mesh-LLM/mesh-llm/releases/download/v0.78.0/native-runtimes.json",
+    "candidate": {
+      "arch": "aarch64",
+      "backend": "metal",
+      "id": "meshllm-native-runtime-darwin-aarch64-metal",
+      "mesh_version": "0.78.0",
+      "os": "macos",
+      "rejection_reasons": [
+        {
+          "release_version_mismatch": {
+            "actual": "0.78.0",
+            "expected": "0.76.1"
+          }
+        },
+        {
+          "skippy_abi_mismatch": {
+            "actual": "0.1.66",
+            "expected": "0.1.71"
+          }
+        }
+      ],
+      "skippy_abi": "0.1.66",
+      "supported": false,
+      "url": "https://github.com/Mesh-LLM/mesh-llm/releases/download/v0.78.0/meshllm-native-runtime-darwin-aarch64-metal.tar.gz"
+    },
+    "runtime_installed": false,
+    "weights_downloaded": false,
+    "model_free_owner_client_affected": false
+  },
+  "superseded_by": "qwen38-live-proof.json",
+  "live_identity_correction": {
+    "original_served_identity_assumption_was_incorrect": true,
+    "reason": "The original preparation assumed the raw GGUF blob hash was the routed identity. Native HF identity instead hashes canonical repo, commit and ordered file path/size/blob-hash metadata.",
+    "canonical_api_model": "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:UD-Q4_K_M",
+    "verified_response_identity": "local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de",
+    "raw_gguf_blob_hash_unchanged": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+  }
+}

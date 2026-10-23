@@ -1,4 +1,4 @@
-//! Display-only validation of legacy Mock metadata, never authentication/eligibility.
+//! Display-only validation of explicit control metadata, never authentication/eligibility.
 use m8s_api::{Request, Response};
 use m8s_core::Phase;
 use std::{collections::BTreeSet, io::Write};
@@ -11,18 +11,24 @@ fn id(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 fn validate(r: &Response) -> Result<(), &'static str> {
-    if r.mode != "mock-only"
-        || !matches!(
+    let prototype =
+        r.mode == m8s_api::VAST_DEMO_MODE && r.secure_bootstrap == m8s_api::VAST_DEMO_SECURITY;
+    let mock = r.mode == "mock-only"
+        && matches!(
             r.secure_bootstrap.as_str(),
             "unavailable" | "unavailable; nodes cannot become Ready"
-        )
-    {
+        );
+    if !mock && !prototype {
         return Err(UNKNOWN);
     }
     if !r.ok {
         return Err("control-refused-or-outcome-unknown");
     }
     if r.error.is_some() || r.tiers.len() > 256 || r.nodes.len() > 256 || r.events.len() > 200 {
+        return Err(UNKNOWN);
+    }
+    if prototype && (r.tiers.len() != 1 || r.nodes.len() > 1 || r.tiers.iter().any(|(_, n)| *n > 1))
+    {
         return Err(UNKNOWN);
     }
     let mut tiers = BTreeSet::new();
@@ -151,6 +157,32 @@ mod tests {
             error: None,
             secure_bootstrap: "unavailable".into(),
         }
+    }
+    #[test]
+    fn explicit_vast_prototype_metadata_preserves_single_replica_and_unknown_guards() {
+        let mut r = response();
+        r.mode = m8s_api::VAST_DEMO_MODE.into();
+        r.secure_bootstrap = m8s_api::VAST_DEMO_SECURITY.into();
+        r.tiers = vec![("qwen38-27b".into(), 1)];
+        assert!(
+            acknowledge(
+                &r,
+                &Request::Up {
+                    tier: "qwen38-27b".into()
+                }
+            )
+            .is_ok()
+        );
+        assert!(render(&r, true, false).is_ok());
+        r.tiers[0].1 = 2;
+        assert_eq!(validate(&r), Err(UNKNOWN));
+        r.tiers[0].1 = 0;
+        assert!(acknowledge(&r, &Request::Down {}).is_ok());
+        r.secure_bootstrap = "unavailable".into();
+        assert_eq!(validate(&r), Err(UNKNOWN));
+        r.secure_bootstrap = m8s_api::VAST_DEMO_SECURITY.into();
+        r.mode = "production".into();
+        assert_eq!(validate(&r), Err(UNKNOWN));
     }
     #[test]
     fn validated_metadata_bounds_and_empty_success_remain_distinct_from_refusal() {

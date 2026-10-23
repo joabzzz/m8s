@@ -1,0 +1,7 @@
+{
+  "schema": "m8s.local-model/v1",
+  "model": "unsloth/Qwen3.8-27B-GGUF",
+  "format": "gguf",
+  "bytes": 16464440224,
+  "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+}

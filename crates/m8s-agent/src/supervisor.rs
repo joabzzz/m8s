@@ -224,7 +224,24 @@ impl<D: TeardownDriver> Supervisor<D> {
         command.process_group(0);
         #[cfg(not(unix))]
         return Err(io::Error::other("process-group supervision unavailable"));
-        let child = command.spawn()?;
+        #[allow(unused_mut)] // mutable only when sealed-node stderr classification is enabled
+        let mut child = command.spawn()?;
+        #[cfg(all(unix, feature = "sealed-node"))]
+        if let Some(stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                crate::node::diagnostics::drain(stderr, |label| {
+                    eprintln!("m8s native diagnostic: {label}");
+                })
+            });
+        }
+        #[cfg(all(unix, feature = "sealed-node"))]
+        if let Some(stdout) = child.stdout.take() {
+            std::thread::spawn(move || {
+                crate::node::diagnostics::drain(stdout, |label| {
+                    eprintln!("m8s native diagnostic: {label}");
+                })
+            });
+        }
         Ok(Self {
             #[cfg(feature = "authenticated-control")]
             control_binding: crate::control::ControlBinding::default(),
@@ -265,8 +282,10 @@ impl<D: TeardownDriver> Supervisor<D> {
         }
         command
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            // JSON event sinks can write startup failures to either channel.
+            // Both are destructively classified; neither raw stream is logged.
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let node = material.node();
         let mut supervisor = Self::spawn_command(command, dms, driver, retry)?;
         supervisor.control_binding = crate::control::ControlBinding::pinned(node);
@@ -332,6 +351,10 @@ impl<D: TeardownDriver> Supervisor<D> {
         match self.process.observe_exit() {
             Ok(false) => Ok(()),
             Ok(true) => {
+                #[cfg(all(unix, feature = "sealed-node"))]
+                if self._node_material.is_some() {
+                    eprintln!("m8s native diagnostic: native-child-exited");
+                }
                 self.shutdown();
                 Ok(())
             }

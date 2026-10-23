@@ -168,7 +168,7 @@ fn exact_private_files_and_enforcing_native_command_never_expose_secret_bytes() 
         assert!(!args.iter().any(|a| a == forbidden));
     }
     let env: Vec<_> = command.get_envs().collect();
-    assert_eq!(env.len(), 4);
+    assert_eq!(env.len(), 6);
     assert!(
         env.iter()
             .any(|(k, v)| *k == "HOME" && *v == Some(f.root().as_os_str()))
@@ -391,11 +391,52 @@ fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags()
         &[
             "serve",
             "--model",
-            "org/repo@0123456789012345678901234567890123456789/model.gguf"
+            "org/repo@0123456789012345678901234567890123456789:model.gguf"
         ]
     );
     assert!(args.contains(&"--node-ownership-required"));
     assert!(args.contains(&"--join-file"));
     assert!(args.contains(&"--trust-owner"));
+    assert!(args.windows(2).any(|a| a == ["--ctx-size", "4096"]));
+    assert!(args.windows(2).any(|a| a == ["--parallel", "1"]));
+    assert!(args.contains(&"--no-draft"));
+    let env: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+    assert_eq!(
+        env[std::ffi::OsStr::new("PATH")],
+        Some(std::ffi::OsStr::new(
+            "/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ))
+    );
+    assert_eq!(
+        env[std::ffi::OsStr::new("LD_LIBRARY_PATH")],
+        Some(std::ffi::OsStr::new(
+            "/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/cuda/lib64"
+        ))
+    );
+    assert_eq!(
+        env[std::ffi::OsStr::new("MESH_HF_RETRY_MAX_ATTEMPTS")],
+        Some(std::ffi::OsStr::new("0"))
+    );
+    assert_eq!(
+        env[std::ffi::OsStr::new("HF_XET_CLIENT_RETRY_MAX_ATTEMPTS")],
+        Some(std::ffi::OsStr::new("0"))
+    );
     assert!(!args.contains(&"--gguf"));
+}
+
+#[test]
+fn native_selector_preserves_pinned_qwen_file_and_other_model_syntax() {
+    let input = "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf";
+    assert_eq!(
+        native_model_ref(input),
+        "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:Qwen3.8-27B-UD-Q4_K_M.gguf"
+    );
+    for unchanged in [
+        "catalog-model",
+        "org/repo@revision:Q4_K_M",
+        "org/repo@main/file.gguf",
+        "org/repo@0123456789012345678901234567890123456789/../file.gguf",
+    ] {
+        assert_eq!(native_model_ref(unchanged), unchanged);
+    }
 }

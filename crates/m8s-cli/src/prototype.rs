@@ -1,6 +1,10 @@
 #[cfg(all(unix, feature = "prototype-vast"))]
 mod benchmark;
 #[cfg(all(unix, feature = "prototype-vast"))]
+mod demo_control;
+#[cfg(all(unix, feature = "prototype-vast"))]
+mod demo_model;
+#[cfg(all(unix, feature = "prototype-vast"))]
 mod launch;
 #[cfg(all(unix, feature = "prototype-vast"))]
 mod owner;
@@ -198,12 +202,20 @@ Requires prototype-vast. One durable paid attempt, fresh account/price checks, p
     }
 
     #[cfg(all(unix, feature = "prototype-vast"))]
+    if args.first().is_some_and(|a| a == "cancel-uninvoked") {
+        return launch::cancel_uninvoked(&args[1..]);
+    }
+    #[cfg(all(unix, feature = "prototype-vast"))]
     if args.first().is_some_and(|a| a == "audit") {
         return launch::audit(&args[1..]);
     }
     #[cfg(all(unix, feature = "prototype-vast"))]
     if args.first().is_some_and(|a| a == "vast-preflight") {
         return launch::preflight(&args[1..]);
+    }
+    #[cfg(all(unix, feature = "prototype-vast"))]
+    if args.first().is_some_and(|a| a == "launch-check") {
+        return launch::check(&args[1..]);
     }
     #[cfg(all(unix, feature = "prototype-vast"))]
     if args.first().is_some_and(|a| a == "launch") {

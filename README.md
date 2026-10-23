@@ -20,7 +20,8 @@ Evidence:
 
 The tested model is **Qwen2.5-0.5B-Instruct Q4_K_M**, using the packaged CPU
 runtime. Its API identity is the GGUF SHA-256 identity, not its filename.
-This does not qualify 27B/70B models or GPU performance. Final billing remains
+That historical receipt does not qualify larger models or GPU performance;
+Qwen3.8 27B has its separate live proof below. Final billing remains
 unsettled; the accounting reservations are retained. Provider inventories were
 empty after the demo.
 
@@ -48,9 +49,10 @@ account for previous spending and retained liabilities. See the
 [container documentation](deploy/container/README.md). A consumed attempt is
 never reset or silently rented again.
 
-The published image already contains the native node, CPU runtime, model,
-restricted provisioning service, and control agent. A rented host does not
-compile Rust or fetch model weights separately. The owner's native client needs
+The historical small-model image already contains the native node, CPU runtime, model,
+restricted provisioning service, and control agent. That historical rental did not
+compile Rust or fetch model weights separately. The Qwen3.8 image instead uses
+the native download/cache flow described in its runbook. The owner's native client needs
 the certified-identity fix at revision `7a101840af79c7509789b9e3152ca6c4605186e8`;
 [the source integration record](deploy/container/native-source.json) identifies
 its companion repository and the node image's source revision.
@@ -106,7 +108,8 @@ above, validates the profile selection, tests the container tooling, and runs
 removal with the development controller. These checks use synthetic fixtures
 and mocks; live provider deployment and inference remain separate qualification.
 
-The crate consolidation passed **776 tests**, formatting and strict Clippy.
+The Qwen integration passed **804 Rust tests**, formatting, strict Clippy and
+**24 Python tests**. Linux CI also passed the current code.
 Five tests remained ignored and seven were filtered. The mock end-to-end demo
 also passed creation, scale, restart adoption and confirmed removal. The
 selected profile excludes four synthetic PTY tests and three ACL-mutation tests;
@@ -114,16 +117,33 @@ it is not an unfiltered OS qualification. Existing operator endpoint evidence is
 retained and was not rerun. `scripts/check` without flags retains the normal
 selection. See `scripts/check --help` and the crate READMEs for exact boundaries.
 
+## Qwen3.8 27B live demo
+
+The exact **Qwen3.8 27B UD-Q4_K_M** model completed a real owner-routed request
+through mesh-llm using `m8sd --vast-demo` and `m8s up`, `scale`, `status`, `logs`
+and `down`. Vast instance **57433800** was destroyed and full instance/volume
+inventories were verified empty. See the [repeatable runbook](docs/QWEN38_DEMO.md),
+[sanitized live proof](deploy/container/qwen38-live-proof.json) and
+[account observation](deploy/container/qwen38-final-account-evidence.json).
+
+This is the explicit bounded prototype mode: one attempt, text-only, context 4096,
+no automatic replacement or production Ready claim. Its image downloads weights
+through the native runtime during the billed lease; it does not compile Rust
+on the rental. Final billing remains unsettled with conservative liabilities
+recorded. The default mock controller is still development-only.
+
 ## Development controller
 
 ```sh
 target/debug/m8sd /private/tmp/m8s-example owner-example
 # Another terminal:
-target/debug/m8s --socket /private/tmp/m8s-example/control.sock up qwen27 --json
+target/debug/m8s --socket /private/tmp/m8s-example/control.sock up mock-demo --json
 target/debug/m8s --socket /private/tmp/m8s-example/control.sock status --json
 target/debug/m8s --socket /private/tmp/m8s-example/control.sock down --json
 ```
 
+`mock-demo` is a development tier label, with no upstream model mapping. The
+previous `qwen27` example was also only a tier label.
 This path reports mock/development state. A mock Booting node is not a live Ready
 node. Stopped is not destroyed, destroy acknowledgment is not absence, and an
 uncertain provider response never authorizes deleting a resource row or releasing

@@ -32,42 +32,7 @@ use std::{
 use zeroize::Zeroizing;
 type Result<T> = std::result::Result<T, &'static str>;
 const ERROR: &str = "prototype-launch-refused";
-#[derive(Clone, Copy, Default, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum DemoModel {
-    #[default]
-    Qwen,
-    Flint,
-}
-impl DemoModel {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Qwen => "qwen2.5-0.5b-instruct-q4_k_m",
-            Self::Flint => m8s_provider::vast::provision::FLINT_MODEL_REF,
-        }
-    }
-    fn served(self) -> &'static str {
-        match self {
-            Self::Qwen => {
-                "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
-            }
-            Self::Flint => {
-                "local-gguf/sha256-97cc8009ff9b132d5cf3c488e6767962bb5a5dc158a90ed661bbbddf876b8bde"
-            }
-        }
-    }
-    fn requirements(self) -> m8s_provider::vast::readonly::preflight::Requirements {
-        match self {
-            Self::Qwen => Default::default(),
-            Self::Flint => m8s_provider::vast::readonly::preflight::Requirements {
-                max_compute_hourly: 3_000_000,
-                min_gpu_memory_mib: 48000,
-                min_download_mbps: 4000,
-                blackwell_sm120: true,
-            },
-        }
-    }
-}
+use super::demo_model::DemoModel;
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Plan {
@@ -75,6 +40,8 @@ struct Plan {
     #[serde(default)]
     model: DemoModel,
     directory: PathBuf,
+    #[serde(default)]
+    control_directory: Option<PathBuf>,
     mesh: PathBuf,
     credential_file: PathBuf,
     image: String,
@@ -93,7 +60,8 @@ fn load(path: &Path) -> Result<Plan> {
         return Err(ERROR);
     }
     let p: Plan = serde_json::from_slice(&bytes).map_err(|_| ERROR)?;
-    if p.schema != "m8s.vast-demo/v1"
+    if !p.model.accepts_disk(p.disk_gb)
+        || p.schema != "m8s.vast-demo/v1"
         || p.owner != p.policy.owner
         || p.owner != p.request.owner
         || p.node_uid != p.request.node_uid
@@ -120,7 +88,7 @@ fn load(path: &Path) -> Result<Plan> {
 fn attempt_allowance(cumulative: u64, retained: u64) -> Result<u64> {
     cumulative
         .checked_sub(retained)
-        .filter(|n| (1..=16_000_000).contains(n))
+        .filter(|n| (1..=6_000_000).contains(n))
         .ok_or(ERROR)
 }
 // Explicitly selected dotenv file only. No environment search or shell evaluation.
@@ -203,11 +171,19 @@ fn ssh_key(root: &Path) -> Result<String> {
         .collect::<Vec<_>>()
         .join(" "))
 }
+pub(super) fn check(args: &[String]) -> Result<()> {
+    if args.len() != 2 || args[0] != "--plan" {
+        return Err(ERROR);
+    }
+    let p = load(Path::new(&args[1]))?;
+    super::demo_control::validate(&p.control_directory)
+}
 pub(super) fn run(args: &[String]) -> Result<()> {
     if args.len() != 2 || args[0] != "--plan" {
         return Err("invalid-prototype-launch-arguments");
     }
     let mut p = load(Path::new(&args[1]))?;
+    super::demo_control::validate(&p.control_directory)?;
     fs::DirBuilder::new()
         .mode(0o700)
         .create(&p.directory)
@@ -270,11 +246,14 @@ fn run_with_client(
     let invite = runtime.block_on(client.invite())?;
     eprintln!("prototype stage: certified-owner-client-ready");
     let ssh_public = ssh_key(&p.directory)?;
+    eprintln!("prototype stage: provisioning-key-created");
     let key = credential(&p.credential_file)?;
+    eprintln!("prototype stage: selected-credential-read");
     let mut preflight = m8s_provider::vast::readonly::preflight::PreflightHttps::new(|| {
         Ok(SecretValue::new(key.expose().to_vec()))
     })
     .map_err(|_| ERROR)?;
+    eprintln!("prototype stage: provider-client-initialized");
     let fresh = preflight
         .observe_sized(
             p.expected_account_id,
@@ -288,6 +267,7 @@ fn run_with_client(
                 .transport_failure()
                 .unwrap_or(preflight.last_stage())
         })?;
+    eprintln!("prototype stage: fresh-account-and-offer-qualified");
     if attempt_allowance(
         p.policy.trial_all_in,
         p.policy.baseline.prior_lifetime_spent,
@@ -315,9 +295,9 @@ fn run_with_client(
     p.request.quote.storage_hourly = fresh.storage_micro_usd_per_hour;
     p.request.quote.transfer_total = fresh
         .transfer_micro_usd_per_gb
-        .checked_mul(u64::from(p.disk_gb))
+        .checked_mul(p.model.transfer_reserve_gb(p.disk_gb))
         .ok_or(ERROR)?;
-    p.request.quote.provenance = "vast-on-demand-price-observed-disk-sized-transfer-reserve".into();
+    p.request.quote.provenance = "vast-on-demand-price-observed-model-transfer-reserve".into();
     private_file(
         &p.directory.join("preflight-evidence.json"),
         &serde_json::to_vec_pretty(&fresh).map_err(|_| ERROR)?,
@@ -334,6 +314,12 @@ fn run_with_client(
         NonZeroU64::new(fresh.account_id).ok_or(ERROR)?,
     )
     .map_err(|_| ERROR)?;
+    if p.control_directory
+        .as_ref()
+        .is_some_and(|d| super::demo_control::requested(d))
+    {
+        return Err("prototype-down-requested-before-reservation");
+    }
     let store = Store::open(p.directory.join("state.db"), &p.owner).map_err(|_| ERROR)?;
     store.scale(&p.tier, 1).map_err(|_| ERROR)?;
     let prepared = executor
@@ -355,6 +341,12 @@ fn run_with_client(
     let mut cleanup =
         ArmedCleanup::arm_cli(&plan_path, key).map_err(|_| "prototype-cleanup-arm-failed")?;
     eprintln!("prototype stage: cleanup-armed");
+    if p.control_directory
+        .as_ref()
+        .is_some_and(|d| super::demo_control::requested(d))
+    {
+        return Err("prototype-down-requested-before-create");
+    }
     match executor
         .dispatch_prepared(&store, &intent, &mut cleanup)
         .map_err(|_| ERROR)?
@@ -378,8 +370,12 @@ fn run_with_client(
         executor
             .bind_observed(&store, &intent, &access)
             .map_err(|_| ERROR)?;
-        if matches!(p.model, DemoModel::Flint) {
-            wait_provisioning_listener(access.ssh_address(), serving_at)?;
+        if !matches!(p.model, DemoModel::Qwen) {
+            wait_provisioning_listener(
+                access.ssh_address(),
+                serving_at,
+                p.control_directory.as_deref(),
+            )?;
         }
         // The adapter itself bounds asynchronous log generation. Do not retry
         // an authorization refusal, malformed host key, or unknown log route.
@@ -426,18 +422,25 @@ fn run_with_client(
         .map_err(|_| "prototype-removal-finalization-refused")?;
     let completion = work?;
     Ok(
-        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":p.model.served(),"artifact_name":p.model.label(),"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
+        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":p.model.served(),"api_model":p.model.request_model(),"artifact_name":p.model.label(),"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
     )
 }
 // Container "running" can precede SSH startup. A TCP listener is only
 // startup progress: provider-observed host-key pinning and TLS admission follow.
-fn wait_provisioning_listener(address: std::net::SocketAddr, serving_at: i64) -> Result<()> {
+fn wait_provisioning_listener(
+    address: std::net::SocketAddr,
+    serving_at: i64,
+    control: Option<&Path>,
+) -> Result<()> {
     let remaining = serving_at
         .checked_sub(utc()?)
         .filter(|n| *n > 0)
         .ok_or(ERROR)?;
     let deadline = Instant::now() + Duration::from_secs((remaining as u64).min(300));
     while Instant::now() < deadline && utc()? < serving_at {
+        if control.is_some_and(super::demo_control::requested) {
+            return Err("prototype-down-requested-before-provisioning");
+        }
         if std::net::TcpStream::connect_timeout(&address, Duration::from_secs(1)).is_ok() {
             return Ok(());
         }
@@ -498,7 +501,7 @@ async fn bootstrap(
             utc()?,
         )
         .map_err(|_| ERROR)?;
-    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":match p.model { DemoModel::Qwen => Some(format!("/models/{}.gguf",p.model.label())), DemoModel::Flint => None },"material_root":"/var/lib/m8s/material","model":p.model.label(),"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
+    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":p.model.gguf(),"material_root":"/var/lib/m8s/material","model":p.model.label(),"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
     let packet = ProvisionPacket::new(
         &config,
         SecretValue::new(nonce.to_vec()),
@@ -549,22 +552,27 @@ async fn bootstrap(
         .filter(|v| *v > 0)
         .ok_or(ERROR)?;
     let work_deadline = Instant::now() + Duration::from_secs(remaining as u64);
+    let complete = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let shutdown = super::demo_control::cancellation(p.control_directory.clone(), complete.clone());
+    let control_directory = p.control_directory.clone();
     let result = store.with_bootstrapped_node(&endpoint,plan,&mut signer,&verifier,|_| async move {
         eprintln!("prototype stage: certificate-delivered-control-established");
-        tokio::task::spawn_blocking(move || {
-            super::model_wait::wait(port,model.served(),(Instant::now()+Duration::from_secs(300)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+        let completion = tokio::task::spawn_blocking(move || {
+            super::model_wait::wait(port,model.request_model(),if matches!(model, DemoModel::Qwen38) { work_deadline } else { (Instant::now()+Duration::from_secs(300)).min(work_deadline) }).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-model-observed");
             if matches!(model, DemoModel::Flint) {
                 return super::benchmark::run(port, model.served(), work_deadline, &directory)
                     .map_err(|_| m8s_bootstrap::Error::Unavailable);
             }
-            let body = serde_json::to_vec(&serde_json::json!({"model":model.served(),"messages":[{"role":"user","content":"Reply with a short sentence explaining what a mesh network is."}],"stream":false,"max_tokens":48})).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            let body = serde_json::to_vec(&model.completion_request()).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let bytes = super::http::exchange(port,&body,(Instant::now()+Duration::from_secs(60)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let value = super::project(&bytes,model.served()).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-inference-completed");
             Ok(serde_json::json!({"content":value["content"],"finish_reason":value["finish_reason"]}))
-        }).await.map_err(|_| m8s_bootstrap::Error::Unavailable)?
-    },std::future::pending(),|| utc().unwrap_or(-1)).await.map_err(|error| { eprintln!("prototype bootstrap category: {error}"); "prototype-bootstrap-or-inference-failed" });
+        }).await.map_err(|_| m8s_bootstrap::Error::Unavailable)??;
+        super::demo_control::hold(control_directory, complete).await;
+        Ok(completion)
+    },shutdown,|| utc().unwrap_or(-1)).await.map_err(|error| { eprintln!("prototype bootstrap category: {}", bootstrap_category(&error)); "prototype-bootstrap-or-inference-failed" });
     let _ = provision.stop().await;
     endpoint.close().await;
     result
@@ -579,16 +587,23 @@ pub(super) fn preflight(args: &[String]) -> Result<()> {
         return Err("invalid-preflight-arguments");
     }
     let model = if args.len() == 8 {
-        if args[6] != "--model" || args[7] != "flint" {
+        if args[6] != "--model" {
             return Err("invalid-preflight-arguments");
         }
-        DemoModel::Flint
+        match args[7].as_str() {
+            "flint" => DemoModel::Flint,
+            "qwen3.8-27b" => DemoModel::Qwen38,
+            _ => return Err("invalid-preflight-arguments"),
+        }
     } else {
         DemoModel::Qwen
     };
     let key = credential(Path::new(&args[1]))?;
     let account = args[3].parse().map_err(|_| ERROR)?;
     let disk = args[5].parse().map_err(|_| ERROR)?;
+    if !model.accepts_disk(disk) {
+        return Err(ERROR);
+    }
     let mut client = m8s_provider::vast::readonly::preflight::PreflightHttps::new(|| {
         Ok(SecretValue::new(key.expose().to_vec()))
     })
@@ -603,6 +618,37 @@ pub(super) fn preflight(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn cancel_uninvoked(args: &[String]) -> Result<()> {
+    if args.len() != 8
+        || args[0] != "--directory"
+        || args[2] != "--owner"
+        || args[4] != "--request"
+        || args[6] != "--authorization"
+    {
+        return Err("invalid-cancel-uninvoked-arguments");
+    }
+    let root = Path::new(&args[1]);
+    if !root.is_absolute() || root.canonicalize().map_err(|_| ERROR)? != root {
+        return Err(ERROR);
+    }
+    let path = root.join("state.db");
+    if !fs::symlink_metadata(&path).map_err(|_| ERROR)?.is_file() {
+        return Err(ERROR);
+    }
+    let store = Store::open(path, &args[3]).map_err(|_| ERROR)?;
+    let reservation = store
+        .cancel_uninvoked_budget(&args[5], &args[7], utc()?)
+        .map_err(|_| "prototype-uninvoked-cancellation-refused")?;
+    println!(
+        "{}",
+        serde_json::json!({"schema":"m8s.uninvoked-cancellation/v1",
+        "request_id":reservation.request.request_id,"state":reservation.state,
+        "original_reserved_micro_usd":reservation.reserved_all_in,
+        "cancellation":reservation.uninvoked_cancellation,"provider_calls":false,
+        "claim_reset":false,"provider_absence_claimed":false})
+    );
+    Ok(())
+}
 pub(super) fn audit(args: &[String]) -> Result<()> {
     if args.len() != 4 || args[0] != "--directory" || args[2] != "--owner" {
         return Err("invalid-prototype-audit-arguments");
@@ -616,7 +662,7 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
     let operations = snapshot.operations;
     let records: Vec<_> = operations.iter().map(|r|serde_json::json!({"operation_id":r.intent.operation_id,"state":r.state,"invocation_started_at":r.invocation_started_at,"provider_result_recorded":r.result.is_some(),"uncertainty_observed":r.uncertainty_observed})).collect();
     let removals = snapshot.removals;
-    let budgets: Vec<_> = snapshot.budgets.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
+    let budgets: Vec<_> = snapshot.budgets.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at,"uninvoked_cancellation":r.uninvoked_cancellation})).collect();
     let output = serde_json::to_vec(&serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"removals":removals,"attempts":snapshot.attempts,"provider_calls":false,"scope":"stored-journal-snapshot"})).map_err(|_| ERROR)?;
     // Refuse before writing any success bytes; no truncated audit can look empty.
     if output.len() >= 1_048_576 {
@@ -626,13 +672,25 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+// Closed vocabulary only: neither native output nor contextual errors cross
+// the daemon's log boundary.
+fn bootstrap_category(error: &m8s_bootstrap::Error) -> &'static str {
+    match error {
+        m8s_bootstrap::Error::Refused => "refused",
+        m8s_bootstrap::Error::Unavailable => "unavailable",
+        m8s_bootstrap::Error::Storage => "storage",
+        m8s_bootstrap::Error::Transport => "transport",
+        m8s_bootstrap::Error::Certificate => "certificate",
+    }
+}
+
 #[cfg(test)]
 mod allowance_tests {
     use super::attempt_allowance;
     #[test]
     fn retained_claims_do_not_become_new_spendable_credit() {
-        assert_eq!(attempt_allowance(29_355_168, 13_355_168), Ok(16_000_000));
-        assert!(attempt_allowance(29_355_169, 13_355_168).is_err());
+        assert_eq!(attempt_allowance(19_355_168, 13_355_168), Ok(6_000_000));
+        assert!(attempt_allowance(19_355_169, 13_355_168).is_err());
         assert!(attempt_allowance(13_355_168, 13_355_168).is_err());
         assert!(attempt_allowance(1, 2).is_err());
         assert!(attempt_allowance(u64::MAX, 0).is_err());

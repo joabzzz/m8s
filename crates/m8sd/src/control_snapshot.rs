@@ -35,6 +35,16 @@ fn integer(value: ValueRef<'_>) -> Result<i64> {
     }
 }
 impl Store {
+    /// Stored metadata for a managed coordinator only. An unmanaged/mock Store
+    /// must never be displayed under a live execution mode. This is not Ready
+    /// or fresh provider evidence and does not select or change a domain.
+    pub fn managed_control_snapshot(&self) -> Result<ControlSnapshot> {
+        if !crate::execution_domain::managed_initialized(&self.conn, &self.owner)? {
+            return Err(Error::Invalid);
+        }
+        self.control_snapshot()
+    }
+
     /// One bounded DEFERRED stored snapshot for display, not a global-currentness proof.
     /// Refuses overflow/corruption without truncating tiers/nodes or mutating state.
     pub fn control_snapshot(&self) -> Result<ControlSnapshot> {
@@ -133,6 +143,23 @@ mod tests {
         s.conn
             .query_row("SELECT total_changes()", [], |r| r.get(0))
             .unwrap()
+    }
+    #[test]
+    fn managed_view_refuses_unmanaged_without_selecting_a_domain() {
+        let s = store();
+        s.conn.execute_batch("CREATE TABLE execution_domain(owner TEXT, mode TEXT); CREATE TABLE create_operation(x); CREATE TABLE budget_account(x); CREATE TABLE budget_reservation(x); CREATE TABLE budget_period(x); CREATE TABLE vast_launch(x); CREATE TABLE vast_removal(x);").unwrap();
+        let before = changes(&s);
+        assert!(s.managed_control_snapshot().is_err());
+        assert_eq!(changes(&s), before);
+        s.conn
+            .execute(
+                "INSERT INTO execution_domain VALUES ('synthetic','managed')",
+                [],
+            )
+            .unwrap();
+        let before = changes(&s);
+        assert!(s.managed_control_snapshot().unwrap().nodes.is_empty());
+        assert_eq!(changes(&s), before);
     }
     #[test]
     fn fitting_snapshot_matches_legacy_order_values_and_is_read_only() {

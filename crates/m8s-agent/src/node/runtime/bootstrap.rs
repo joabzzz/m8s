@@ -108,7 +108,17 @@ async fn bootstrap_and_run<D: TeardownDriver>(
         .await
     }
     .await;
-    if attempt.is_err() {
+    if let Err(error) = &attempt {
+        // A successful Destroy can tear down this SSH process immediately.
+        // Report only the closed error class BEFORE invoking that effect;
+        // reporting in the provider wrapper after cleanup can lose the cause.
+        let label = match error {
+            Error::Policy => "node-policy-error",
+            Error::NativeId => "node-id-error",
+            Error::Material => "node-material-error",
+            Error::Certificate => "node-certificate-error",
+        };
+        eprintln!("m8s native diagnostic: {label}");
         cleanup_failed_start(driver);
     }
     attempt

@@ -36,6 +36,9 @@ pub(super) fn executor(offer: u64) -> VastExecutor {
     .unwrap()
 }
 pub(super) fn setup(cap: u64, instances: u32) -> (Store, Directory) {
+    setup_with_prior(cap, instances, 0)
+}
+fn setup_with_prior(cap: u64, instances: u32, prior: u64) -> (Store, Directory) {
     let path = std::env::temp_dir().join(format!(
         "m8sd-vast-{}-{}",
         std::process::id(),
@@ -56,8 +59,8 @@ pub(super) fn setup(cap: u64, instances: u32) -> (Store, Directory) {
         owner: "owner".into(),
         approval_id: "synthetic-only".into(),
         baseline: AccountBaseline {
-            prior_lifetime_spent: 0,
-            prior_current_period_spent: 0,
+            prior_lifetime_spent: prior,
+            prior_current_period_spent: prior,
             initial_period: period.clone(),
             external_liability: ExternalLiability::NoneConfirmed,
             observed_at: 100,
@@ -289,4 +292,105 @@ fn shared_preparation_failure_retains_budget_without_claim() {
     );
     assert_eq!(store.budget_reservations().unwrap(), vec![original]);
     assert!(store.create_operations().unwrap().is_empty());
+}
+
+#[test]
+fn cumulative_cap_preserves_prior_spend_and_bounds_incremental_allowance() {
+    for (cap, accepted) in [(19_355_168, true), (19_355_169, false)] {
+        let (store, _directory) = setup_with_prior(cap, 1, 13_355_168);
+        let executor = executor(42);
+        let intent = executor.intent("run", "request", "operation").unwrap();
+        assert_eq!(
+            executor.prepare_at(&store, &intent, || Ok(100)).is_ok(),
+            accepted
+        );
+        let account = store.budget_account().unwrap().unwrap();
+        assert_eq!(account.policy.baseline.prior_lifetime_spent, 13_355_168);
+        assert_eq!(
+            account.policy.baseline.prior_current_period_spent,
+            13_355_168
+        );
+        assert_eq!(store.budget_reservations().unwrap().len(), 1);
+    }
+}
+#[test]
+fn invalid_prototype_policy_refuses_before_reserving_new_request() {
+    let (store, _directory) = setup(6_000_001, 1);
+    let account = store.budget_account().unwrap().unwrap();
+    let mut request = store.budget_reservations().unwrap().remove(0).request;
+    request.request_id = "fresh-request".into();
+    let executor = executor(42);
+    assert!(
+        executor
+            .prepare_launch_with_clock(
+                &store,
+                &account.policy,
+                &account.period,
+                &request,
+                "fresh-operation",
+                || Ok(100)
+            )
+            .is_err()
+    );
+    assert_eq!(store.budget_reservations().unwrap().len(), 1);
+    assert!(store.create_operations().unwrap().is_empty());
+}
+
+#[test]
+fn uninvoked_cancellation_preserves_history_and_cannot_mint_dispatch() {
+    let (store, _directory) = setup(6_000_000, 1);
+    let before = store.budget_reservations().unwrap().remove(0);
+    let cancelled = store
+        .cancel_uninvoked_budget("request", "synthetic-authorization", 101)
+        .unwrap();
+    assert_eq!(cancelled.state, BudgetState::CancelledUninvoked);
+    assert_eq!(cancelled.request, before.request);
+    assert_eq!(cancelled.reserved_all_in, before.reserved_all_in);
+    assert_eq!(cancelled.reserved_at, before.reserved_at);
+    assert_eq!(
+        store
+            .cancel_uninvoked_budget("request", "synthetic-authorization", 102)
+            .unwrap(),
+        cancelled
+    );
+    assert!(
+        store
+            .cancel_uninvoked_budget("request", "different", 102)
+            .is_err()
+    );
+    assert!(store.mark_budget_uncertain("request", 102).is_err());
+    let executor = executor(42);
+    let intent = executor.intent("run", "request", "operation").unwrap();
+    assert!(executor.prepare_at(&store, &intent, || Ok(102)).is_err());
+    assert!(store.create_operations().unwrap().is_empty());
+    assert_eq!(store.budget_reservations().unwrap().len(), 1);
+    assert_eq!(
+        store.vast_audit().unwrap().attempts[0].stage,
+        AttemptStage::ReservationCancelledUninvoked
+    );
+}
+#[test]
+fn cancellation_refuses_prepared_consumed_and_uncertain_attempts() {
+    for stage in 0..4 {
+        let (store, _directory) = setup(6_000_000, 1);
+        let executor = executor(42);
+        let intent = executor.intent("run", "request", "operation").unwrap();
+        if stage < 3 {
+            executor.prepare_at(&store, &intent, || Ok(100)).unwrap();
+            if stage == 1 {
+                store.cancel_create("operation", 101).unwrap();
+            } else if stage == 2 {
+                store.claim_create("operation", 101).unwrap();
+            }
+        } else {
+            store.mark_budget_uncertain("request", 101).unwrap();
+        }
+        let original = store.budget_reservations().unwrap();
+        assert!(
+            store
+                .cancel_uninvoked_budget("request", "synthetic", 102)
+                .is_err()
+        );
+        assert_eq!(store.budget_reservations().unwrap(), original);
+    }
 }

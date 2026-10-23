@@ -3,6 +3,7 @@
 //! obtain a real TLS bundle, bind its actual local endpoint/key and current policy,
 //! and retain control/DMS plus scoped destruction. No owner key is loaded here.
 pub mod container;
+pub(crate) mod diagnostics;
 mod preflight;
 mod process;
 #[cfg(feature = "secure-runtime")]
@@ -369,7 +370,7 @@ impl NodeMaterial {
                 }
                 .into(),
                 self.launch.gguf.as_ref().map_or_else(
-                    || self.launch.model.clone().into(),
+                    || native_model_ref(&self.launch.model).into(),
                     |path| path.as_os_str().into(),
                 ),
                 "--join-file".into(),
@@ -398,11 +399,50 @@ impl NodeMaterial {
             .args(spec.args)
             .env_clear()
             .env("HOME", &self.root)
+            // Fixed public image paths, never inherited environment. NVIDIA
+            // driver mounts appear after build-time ldconfig; cleared PATH and
+            // loader paths must not hide runtime GPU probes/driver libraries.
+            .env(
+                "PATH",
+                "/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            )
+            .env(
+                "LD_LIBRARY_PATH",
+                "/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/cuda/lib64",
+            )
             .env("MESH_LLM_NODE_KEY_PATH", &self.launch.node_key)
             .env("MESH_LLM_ANALYTICS", "0")
             .env("DO_NOT_TRACK", "1");
+        // Native downloads use a small, explicit demo working set rather than
+        // auto-scaling to the advertised model context or allocating four lanes.
+        if self.launch.gguf.is_none() {
+            command
+                .args(["--ctx-size", "4096", "--parallel", "1", "--no-draft"])
+                // Fixed public transfer policy for the pinned native Hub/Xet
+                // clients: one attempt, no retry amplification of model bytes.
+                .env("MESH_HF_RETRY_MAX_ATTEMPTS", "0")
+                .env("HF_XET_CLIENT_RETRY_MAX_ATTEMPTS", "0");
+        }
         Ok(command)
     }
+}
+// Artifact receipts use repo@commit/file, while the native CLI consumes
+// repo@commit:file. Preserve the exact repository, commit and filename; this
+// is a syntax conversion, never quantization or model-name substitution.
+fn native_model_ref(model: &str) -> String {
+    if let Some((head, file)) = model.rsplit_once('/')
+        && let Some((repo, revision)) = head.rsplit_once('@')
+        && repo.split('/').count() == 2
+        && revision.len() == 40
+        && revision.bytes().all(|b| b.is_ascii_hexdigit())
+        && file.ends_with(".gguf")
+        && file
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+    {
+        return format!("{repo}@{revision}:{file}");
+    }
+    model.to_owned()
 }
 fn check(anchors: &[Anchor]) -> Result<()> {
     for anchor in anchors {
