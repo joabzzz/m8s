@@ -1,0 +1,27 @@
+# Refresh only the m8s control agent. Never builds mesh-llm, llama.cpp, or the UI.
+# RUNTIME_IMAGE must be an existing, reviewed full-node/model image digest.
+ARG RUNTIME_IMAGE
+FROM rust@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS agent-build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates cmake clang pkg-config libssl-dev python3 \
+    && rm -rf /var/lib/apt/lists/*
+ENV CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2
+COPY artifacts.py /checks/artifacts.py
+COPY m8s-source.tar /inputs/m8s-source.tar
+ARG M8S_SOURCE_SHA256
+RUN --network=none python3 /checks/artifacts.py unpack-source \
+    /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
+WORKDIR /src/m8s
+ARG TARGETARCH
+RUN --mount=type=cache,id=m8s-agent-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
+    cargo fetch --locked
+RUN --network=none \
+    --mount=type=cache,id=m8s-agent-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=m8s-agent-target-${TARGETARCH},target=/src/m8s/target,sharing=locked \
+    cargo build --release --locked --offline -j2 -p m8s-agent --features vast-node \
+    && mkdir /out && cp target/release/m8s-agent /out/m8s-agent
+
+FROM ${RUNTIME_IMAGE}
+COPY --from=agent-build --chmod=0555 /out/m8s-agent /usr/local/bin/m8s-agent
+ARG M8S_SOURCE_REVISION
+LABEL io.m8s.agent-source-revision="${M8S_SOURCE_REVISION}"

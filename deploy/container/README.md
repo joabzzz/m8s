@@ -1,5 +1,12 @@
 # Full-node source image (not runtime-qualified)
 
+`Dockerfile.agent` refreshes only the Rust m8s agent in an existing full-node
+image. Supply the reviewed runtime image by immutable digest and a clean,
+SHA256-pinned `m8s-source.tar`. It does not compile mesh-llm, llama.cpp or the UI,
+and retains the runtime image's baked model and provisioning entrypoint.
+The registry and target caches are separate from the native mesh build caches;
+compilation runs with networking disabled and at most two jobs.
+
 ## Current checkpoint (2026-10-22)
 
 The Linux AMD64 CPU image **has built successfully**, including the actual mesh
