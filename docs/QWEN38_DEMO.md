@@ -51,8 +51,10 @@ is 16,464,440,224 bytes. Its upstream LFS SHA-256 is
 `322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482`.
 The artifact receipt form above is converted at the native CLI boundary to
 `repo@revision:filename`; the packaged native client resolves that exact selector
-to the pinned download URL in a metadata-only check. A slash after the revision
-is not native input syntax: it is interpreted as part of the revision.
+to the pinned download URL in a metadata-only check. The metadata command also
+normalizes artifact receipt syntax; neither form proves an actual GPU load.
+The lower-level model-ref parser uses the colon selector. This conversion
+removes ambiguity but is not a proven explanation of the failed live startup.
 
 Only the public first MiB was fetched for GGUF header inspection: it identifies
 `qwen35`, GGUF v3, 866 tensors and 262,144 context. The whole-file hash has not

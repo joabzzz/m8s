@@ -1,0 +1,19 @@
+# Update only the m8s agent in the qualified immutable Qwen CUDA image.
+# No native rebuild, model weights, credentials or untracked source inputs.
+FROM rust@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS agent-build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+ENV CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2
+COPY artifacts.py /checks/artifacts.py
+COPY m8s-source.tar /inputs/m8s-source.tar
+ARG M8S_SOURCE_SHA256
+RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
+WORKDIR /src/m8s
+RUN cargo fetch --locked
+ARG TARGETARCH
+RUN --network=none \
+    --mount=type=cache,id=m8s-vast-agent-target-${TARGETARCH},target=/src/m8s/target,sharing=locked \
+    cargo build --release --locked --offline -j2 -p m8s-provider --features vast-node \
+    && install -D target/release/m8s-agent /out/m8s-agent
+FROM ghcr.io/joabzzz/m8s-prototype@sha256:be8d0675112d6a1051cb59aee61399abe4bdfaa1ac5a2b261dd1e37028c30dfb
+COPY --from=agent-build --chmod=0555 /out/m8s-agent /usr/local/bin/m8s-agent

@@ -173,7 +173,40 @@ impl ProvisioningSession {
         file.sync_all().map_err(|_| Error::Unavailable)?;
         directory.sync_all().map_err(|_| Error::Unavailable)?;
         let mut command = ssh_command(root, identity_file, &known, address);
-        let child = command.spawn().map_err(|_| Error::Unavailable)?;
+        let mut child = command.spawn().map_err(|_| Error::Unavailable)?;
+        if let Some(mut stderr) = child.stderr.take() {
+            tokio::spawn(async move {
+                let mut line = Vec::with_capacity(256);
+                let mut block = [0; 512];
+                let mut overflow = false;
+                let mut seen = std::collections::BTreeSet::new();
+                while let Ok(n) = stderr.read(&mut block).await {
+                    if n == 0 {
+                        break;
+                    }
+                    for b in &block[..n] {
+                        if *b == b'\n' {
+                            if !overflow
+                                && let Some(label) = native_label(&line)
+                                && seen.insert(label)
+                            {
+                                eprintln!("prototype native category: {label}");
+                            }
+                            line.fill(0);
+                            line.clear();
+                            overflow = false;
+                        } else if line.len() < 256 && !overflow {
+                            line.push(*b);
+                        } else {
+                            line.fill(0);
+                            line.clear();
+                            overflow = true;
+                        }
+                    }
+                    block.fill(0);
+                }
+            });
+        }
         let mut session = Self { child };
         let mut input = session.child.stdin.take().ok_or(Error::Unavailable)?;
         tokio::time::timeout(Duration::from_secs(20), async {
@@ -286,7 +319,7 @@ fn ssh_command(
         .arg("provision-v1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .kill_on_drop(true);
     command
 }
@@ -327,6 +360,25 @@ fn private_file(file: &File) -> Result<()> {
         return Err(Error::Invalid);
     }
     m8s_secrets::check_no_extended_acl(file).map_err(|_| Error::Invalid)
+}
+
+fn native_label(line: &[u8]) -> Option<&'static str> {
+    let label = line.strip_prefix(b"m8s native diagnostic: ")?;
+    [
+        "native-argument-error",
+        "native-certificate-error",
+        "native-cuda-error",
+        "native-runtime-error",
+        "native-model-reference-error",
+        "native-download-error",
+        "native-other-error",
+        "node-policy-error",
+        "node-id-error",
+        "node-material-error",
+        "node-certificate-error",
+    ]
+    .into_iter()
+    .find(|v| label == v.as_bytes())
 }
 
 #[cfg(test)]

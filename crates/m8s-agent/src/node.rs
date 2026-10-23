@@ -3,6 +3,7 @@
 //! obtain a real TLS bundle, bind its actual local endpoint/key and current policy,
 //! and retain control/DMS plus scoped destruction. No owner key is loaded here.
 pub mod container;
+pub(crate) mod diagnostics;
 mod preflight;
 mod process;
 #[cfg(feature = "secure-runtime")]

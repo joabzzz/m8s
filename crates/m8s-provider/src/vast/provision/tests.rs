@@ -146,3 +146,18 @@ fn qwen38_requires_the_exact_download_pin_and_no_local_fixture() {
         assert!(packet(&value).is_err());
     }
 }
+
+#[test]
+fn native_diagnostics_accept_only_exact_closed_labels() {
+    assert_eq!(
+        native_label(b"m8s native diagnostic: native-download-error"),
+        Some("native-download-error")
+    );
+    for input in [
+        b"m8s native diagnostic: private-value".as_slice(),
+        b"m8s native diagnostic: native-download-error private-value",
+        b"ssh error private-value",
+    ] {
+        assert_eq!(native_label(input), None);
+    }
+}

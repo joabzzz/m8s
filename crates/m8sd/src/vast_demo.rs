@@ -192,6 +192,26 @@ fn capture_stages(output: impl std::io::Read, mut log: fs::File) {
 }
 fn safe_stage(line: &[u8]) -> bool {
     if let Some(label) = line
+        .strip_prefix(b"prototype native category: ")
+        .and_then(|v| v.strip_suffix(b"\n"))
+    {
+        return [
+            "native-argument-error",
+            "native-certificate-error",
+            "native-cuda-error",
+            "native-runtime-error",
+            "native-model-reference-error",
+            "native-download-error",
+            "native-other-error",
+            "node-policy-error",
+            "node-id-error",
+            "node-material-error",
+            "node-certificate-error",
+        ]
+        .iter()
+        .any(|v| label == v.as_bytes());
+    }
+    if let Some(label) = line
         .strip_prefix(b"preflight stage: ")
         .and_then(|s| s.strip_suffix(b"\n"))
     {
@@ -341,6 +361,15 @@ mod tests {
             assert!(!super::safe_stage(line));
         }
         assert!(super::safe_stage(b"prototype stage: cleanup-armed\n"));
+        assert!(super::safe_stage(
+            b"prototype native category: native-download-error\n"
+        ));
+        assert!(!super::safe_stage(
+            b"prototype native category: private-value\n"
+        ));
+        assert!(!super::safe_stage(
+            b"prototype native category: native-download-error extra\n"
+        ));
         assert!(super::safe_stage(
             b"preflight stage: vast-complete-inventory\n"
         ));
