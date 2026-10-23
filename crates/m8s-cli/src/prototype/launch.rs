@@ -572,7 +572,7 @@ async fn bootstrap(
         }).await.map_err(|_| m8s_bootstrap::Error::Unavailable)??;
         super::demo_control::hold(control_directory, complete).await;
         Ok(completion)
-    },shutdown,|| utc().unwrap_or(-1)).await.map_err(|error| { eprintln!("prototype bootstrap category: {error}"); "prototype-bootstrap-or-inference-failed" });
+    },shutdown,|| utc().unwrap_or(-1)).await.map_err(|error| { eprintln!("prototype bootstrap category: {}", bootstrap_category(&error)); "prototype-bootstrap-or-inference-failed" });
     let _ = provision.stop().await;
     endpoint.close().await;
     result
@@ -670,6 +670,18 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
     }
     println!("{}", std::str::from_utf8(&output).map_err(|_| ERROR)?);
     Ok(())
+}
+
+// Closed vocabulary only: neither native output nor contextual errors cross
+// the daemon's log boundary.
+fn bootstrap_category(error: &m8s_bootstrap::Error) -> &'static str {
+    match error {
+        m8s_bootstrap::Error::Refused => "refused",
+        m8s_bootstrap::Error::Unavailable => "unavailable",
+        m8s_bootstrap::Error::Storage => "storage",
+        m8s_bootstrap::Error::Transport => "transport",
+        m8s_bootstrap::Error::Certificate => "certificate",
+    }
 }
 
 #[cfg(test)]

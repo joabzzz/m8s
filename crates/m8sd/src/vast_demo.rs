@@ -192,6 +192,20 @@ fn capture_stages(output: impl std::io::Read, mut log: fs::File) {
 }
 fn safe_stage(line: &[u8]) -> bool {
     if let Some(label) = line
+        .strip_prefix(b"prototype bootstrap category: ")
+        .and_then(|v| v.strip_suffix(b"\n"))
+    {
+        return [
+            "refused",
+            "unavailable",
+            "storage",
+            "transport",
+            "certificate",
+        ]
+        .iter()
+        .any(|v| label == v.as_bytes());
+    }
+    if let Some(label) = line
         .strip_prefix(b"prototype native category: ")
         .and_then(|v| v.strip_suffix(b"\n"))
     {
@@ -361,6 +375,24 @@ mod tests {
             assert!(!super::safe_stage(line));
         }
         assert!(super::safe_stage(b"prototype stage: cleanup-armed\n"));
+        for label in [
+            "refused",
+            "unavailable",
+            "storage",
+            "transport",
+            "certificate",
+        ] {
+            assert!(super::safe_stage(
+                format!("prototype bootstrap category: {label}\n").as_bytes()
+            ));
+        }
+        for line in [
+            b"prototype bootstrap category: private-value\n".as_slice(),
+            b"prototype bootstrap category: transport extra\n",
+            b"prototype bootstrap category: transport\nprivate-value\n",
+        ] {
+            assert!(!super::safe_stage(line));
+        }
         assert!(super::safe_stage(
             b"prototype native category: native-download-error\n"
         ));

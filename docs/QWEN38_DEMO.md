@@ -31,6 +31,17 @@ PATH nor arbitrary environment/credentials are inherited. Native stderr is
 classified only into fixed categories in memory; raw output is not logged.
 These changes are preparation for diagnosis, not live serving proof.
 
+Additional controller diagnostics now preserve a closed bootstrap error category
+in `m8s logs`. Node startup errors are emitted before invoking resource destruction:
+reporting only after cleanup can lose the cause when destruction closes SSH.
+These reporting changes do not extend the lease or delay teardown. They are
+source-tested; the loader image linked above predates this reporting update.
+
+A fresh authenticated account read at 2026-10-23 21:50:55 UTC still reports
+16,204,104 micro-USD credit, below the 16,212,944 retained full holds. Complete
+instance inventory is empty. There is no funded allowance for another rental
+while the user's full-hold decision remains in effect.
+
 ## Earlier admission failure: blocked before CREATE
 
 The [sanitized attempt receipt](../deploy/container/qwen38-blocked-attempt.json)
@@ -42,11 +53,12 @@ micro-USD ceiling before reserving; historical spending stays in the cumulative
 policy and aggregate budget checks. It does not repair or release the failed
 attempt's reservation or replay its consumed controller claim.
 
-Fresh provider inventory is empty for both instances and volumes. Credit is
-16,218,436 micro-USD; historical holds of 13,355,168 plus the new retained
-2,369,054 leave only 494,214 unreserved. This cannot cover the required
-1,000,000 contingency, so another live attempt is blocked pending explicit
-accounting reconciliation. No top-up, reservation reset or live success is
+At that earlier 20:31 UTC checkpoint, provider inventories were empty for both
+instances and volumes. Credit was 16,218,436 micro-USD; historical holds of 13,355,168 plus the new retained
+2,369,054 left only 494,214 unreserved. That could not cover the required
+1,000,000 contingency; the later explicitly authorized uninvoked cancellation
+is recorded above. This paragraph describes the earlier checkpoint, not current
+spendable credit. No top-up, reservation reset or live success is
 claimed. The published image is qualified offline, not on a rented GPU.
 
 Budget `instance_hourly` and `total_hourly` include transfer and contingency
