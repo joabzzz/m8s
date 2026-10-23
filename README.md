@@ -101,6 +101,12 @@ scripts/check --no-pty --no-acl-mutation
 python3 -B -m unittest discover -s deploy/container/tests -v
 ```
 
+GitHub Actions runs on pull requests targeting `main`. CI uses the check profile
+above, validates the profile selection, tests the container tooling, and runs
+`scripts/mock-e2e` to exercise creation, scaling, restart adoption, and confirmed
+removal with the development controller. These checks use synthetic fixtures
+and mocks; live provider deployment and inference remain separate qualification.
+
 The crate consolidation passed **776 tests**, formatting and strict Clippy.
 Five tests remained ignored and seven were filtered. The mock end-to-end demo
 also passed creation, scale, restart adoption and confirmed removal. The
