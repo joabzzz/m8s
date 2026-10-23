@@ -185,6 +185,88 @@
       "version_id": "01a160e1-6b94-7793-810f-1de4959606a3",
       "version": 6,
       "sha256": "f6dfff3cccd6d544f669e866ec6b958d7f0ff6f68e23e08d173a482bc7277aee"
+    },
+    {
+      "path": "research/spike-s1-vast-provider-and-costs.md",
+      "title": "Spike S1: Vast.ai provider, security model, and cost model",
+      "source_uri": "agor://kb/document/01a15b4e-7d4e-740a-9a6d-e82f68e678ae",
+      "version_id": "01a15b4e-7d4e-775d-bfaf-0701c3672979",
+      "version": 1,
+      "sha256": "ecbcb3a6d7b7c5a0bcc62b8b0a1865be1071783e225298a0f717996f0a943d85"
+    },
+    {
+      "path": "research/spike-s2-mesh-llm-integration.md",
+      "title": "Spike S2: mesh-llm integration research for m8s",
+      "source_uri": "agor://kb/document/01a15b51-c388-76f8-b6ed-8f10d51fdb83",
+      "version_id": "01a15b51-c388-7649-89bb-11d9d4859b17",
+      "version": 1,
+      "sha256": "601c77ab3e8b6e336a35a4441ebd344b425a6e4eafe28359183a1f2c991cd29e",
+      "export_sha256": "d07fe3b5baa8341df5b2634a5fdad399d251c5a2901c8c69bf7a3ec418ca235a",
+      "transformations": [
+        "local checkout path `~/Development/m8s/mesh-llm` replaced by `<workspace>/mesh-llm`"
+      ]
+    },
+    {
+      "path": "research/spike-s3-confidential-compute-and-privacy.md",
+      "title": "Spike S3: Confidential Compute, ZDR and Privacy Audit for m8s",
+      "source_uri": "agor://kb/document/01a15b4c-9887-7452-a281-858ce1d16477",
+      "version_id": "01a15b4c-9887-76c7-9735-cc1e9f8cb3ce",
+      "version": 1,
+      "sha256": "99656b9ff071c5578d5dd60a574b7929b3faf8076a9ebb550fcf5cd1bfb30f65"
+    },
+    {
+      "path": "research/spike-s4-harnesses-evals-orchestration.md",
+      "title": "Spike S4: Agent harnesses, evals, orchestration",
+      "source_uri": "agor://kb/document/01a15b4e-43ee-7461-9bea-17f0edf8e5b3",
+      "version_id": "01a15b4e-43ee-74d1-beec-f4b683069d6e",
+      "version": 1,
+      "sha256": "49dc901978fd56025d5ce7de56bf6c4c942a1389980f36ceb19e455a1f1aafdb",
+      "export_sha256": "c06b7ff7e9f64b101dfa3e512ee2bc6b16d1905b5b7d373dabe71859c51bf04d",
+      "transformations": [
+        "local checkout path `~/Development/m8s/mesh-llm` replaced by `<workspace>/mesh-llm`"
+      ]
+    },
+    {
+      "path": "discussions/control-channel.md",
+      "title": "Discussion primer: securely handing a rented box its invite + owner auth",
+      "source_uri": "agor://kb/document/01a15b50-d7e4-7222-a99c-e65646b2a12e",
+      "version_id": "01a15b50-d7e4-754d-be07-09e8b054a958",
+      "version": 1,
+      "sha256": "cde68071ce28435b5bf735fca9921ca1a401bad0ce260abaf70ce7a0601aa508"
+    },
+    {
+      "path": "discussions/operator-vs-virtual-kubelet.md",
+      "title": "Discussion primer: kube-rs operator vs virtual-kubelet (vs no Kubernetes)",
+      "source_uri": "agor://kb/document/01a15b50-d7b4-76fc-9619-087c7122252e",
+      "version_id": "01a15b50-d7b4-7528-b5ba-0b157d548f03",
+      "version": 1,
+      "sha256": "10fe849c8e04b05157edae1780ccf91adb8318f822c1cd5bf806d7f2054ed791"
+    },
+    {
+      "path": "plans/briefs/mp-001-keyless-node-attestation.md",
+      "title": "Brief MP-001 \u2014 Key-less node attestation (mesh-llm patch)",
+      "source_uri": "agor://kb/document/01a15c1c-ac26-7000-970b-de909358ba57",
+      "version_id": "01a15cc1-ae3b-7446-a0f8-f222ef28ba15",
+      "version": 3,
+      "sha256": "b63bafc998ec01398f3981dd6a292ca272b0535dd96cc33800680719ce24faee",
+      "export_sha256": "530cd0e6a292f82b1f2792a713de0ffebb6309fb20b4e8e73cc1ebb817e63ced",
+      "transformations": [
+        "local checkout path replaced by `<workspace>`",
+        "worker session/branch links and the worker/model roster replaced by an inline `[Export redaction]` marker"
+      ]
+    },
+    {
+      "path": "notes/2026-10-20-architecture-kickoff-qa.md",
+      "title": "Architecture kickoff \u2014 Admin answers (2026-10-20)",
+      "source_uri": "agor://kb/document/01a15b4b-a774-720a-99c8-03d2cbce9eec",
+      "version_id": "01a15c09-40ba-7762-8d66-cc5ff3f9b4b8",
+      "version": 2,
+      "sha256": "b10710f49a4fad26b1656961633d49bd3f11d711c6285b10bbc174b5537fa986",
+      "export_sha256": "a9e71df9277d799725f0fe1a92bb08fd293202db186f60a50611073993ca8e9e",
+      "transformations": [
+        "five operational lines (agent-tooling availability, session management, agent naming, team/tooling-budget roster, account setup) replaced by inline `[Export redaction]` markers",
+        "\"Metal-0 session 'Architecture Plan'\" source line generalised to \"a coordinating-agent planning session\""
+      ]
     }
   ]
 }

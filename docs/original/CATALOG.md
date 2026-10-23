@@ -1,22 +1,24 @@
-# Knowledge catalog: recovered, not yet recovered, and why
+# Knowledge catalog: in the repository, not in the repository, and why
 
 Inventory of the Agor Knowledge space `m8s` (118 documents, archived included,
 enumerated on 2026-10-23) against what this repository holds. It complements
 the [recovery README](README.md) and the
 [implementation map](../ORIGINAL_PLAN_STATUS.md), and answers one question: *what
-design history exists in Knowledge that is not in the repo, and why?*
+design history exists in Knowledge that is not in the repo, and why?* (87 of 118 documents are not.)
 
-**Method and limits.** Disposition of documents that are not in the repository is
-from the Knowledge *tree metadata* (path, title, lifecycle status) only. Their
+**Method and limits.** The documents added in section 1 beyond the first recovery were read in full and
+reviewed for private detail; each edit is listed in the manifest. Disposition of
+documents that are not in the repository is from the Knowledge *tree metadata* (path, title, lifecycle status) only. Their
 bodies were **not** reviewed for this catalog, so "not added" reflects scope
 rules (working records, possible local detail), not a finding that a document is
 sensitive or unimportant. Lifecycle statuses (`published`, `draft`) are Knowledge
 document states, not decision statuses.
 
-## 1. Already in the repository (23 documents)
+## 1. In the repository (31 documents)
 
-Recovered by the earlier read-only snapshot and listed in
-[`manifest.json`](manifest.json) with source URI, version and SHA-256.
+All are listed in [`manifest.json`](manifest.json) with source URI, version and
+SHA-256 of the source. Documents with an `export_sha256` and `transformations`
+field were edited on export and are **not** verbatim.
 
 | Knowledge document | In repository as |
 | --- | --- |
@@ -24,6 +26,13 @@ Recovered by the earlier read-only snapshot and listed in
 | `decisions/index.md` | [`decisions/index.md`](decisions/index.md) |
 | `designs/architecture-v0.md` | [`designs/architecture-v0.md`](designs/architecture-v0.md) |
 | `plans/charter.md`, `plans/roadmap.md`, `plans/cost-model.md`, `plans/mesh-llm-patch-queue.md` | [`plans/`](plans/charter.md) |
+| `research/spike-s1-vast-provider-and-costs.md` | [`research/`](research/spike-s1-vast-provider-and-costs.md) — verbatim |
+| `research/spike-s2-mesh-llm-integration.md` | [`research/`](research/spike-s2-mesh-llm-integration.md) — one path normalised |
+| `research/spike-s3-confidential-compute-and-privacy.md` | [`research/`](research/spike-s3-confidential-compute-and-privacy.md) — verbatim |
+| `research/spike-s4-harnesses-evals-orchestration.md` | [`research/`](research/spike-s4-harnesses-evals-orchestration.md) — one path normalised |
+| `discussions/control-channel.md`, `discussions/operator-vs-virtual-kubelet.md` | [`discussions/`](discussions/control-channel.md) — verbatim |
+| `plans/briefs/mp-001-keyless-node-attestation.md` | [`plans/briefs/`](plans/briefs/mp-001-keyless-node-attestation.md) — path and worker details redacted |
+| `notes/2026-10-20-architecture-kickoff-qa.md` | [`notes/`](notes/2026-10-20-architecture-kickoff-qa.md) — operational lines redacted |
 
 Spot check for this catalog (2026-10-23): for the ADRs, architecture, charter,
 roadmap and patch queue (22 documents), the manifest's SHA-256 and version equal
@@ -41,23 +50,14 @@ credentials, and the session URLs are not resolvable from the repository. The
 inventory below is *not* a request to edit them: doing so would break the
 snapshot-equals-source property recorded in the manifest.
 
-## 2. Not in the repository — design rationale and research worth adding next
+## 2. Not in the repository — remaining technical candidate
 
-These are technical and likely belong in `docs/original` after a per-document
-privacy review (several may cite local artifacts). They are the highest-value gap:
-the ADRs on `main` cite S1–S4, the two primers, the MP-001 brief and the kickoff
-Q&A by name, but those documents are not in the repository.
+The research spikes, both primers, the MP-001 brief and the kickoff Q&A (the
+design inputs the ADRs cite by name) were added in section 1. One cited plan
+remains; it describes an unexecuted demo and is not a decision input.
 
 | Path (under `agor://kb/m8s/`) | Title | Knowledge status |
 | --- | --- | --- |
-| `research/spike-s1-vast-provider-and-costs.md` | Spike S1: Vast.ai provider, security model, and cost model | published |
-| `research/spike-s2-mesh-llm-integration.md` | Spike S2: mesh-llm integration research | published |
-| `research/spike-s3-confidential-compute-and-privacy.md` | Spike S3: Confidential Compute, ZDR and Privacy Audit | published |
-| `research/spike-s4-harnesses-evals-orchestration.md` | Spike S4: Agent harnesses, evals, orchestration | published |
-| `discussions/control-channel.md` | Discussion primer: handing a rented box its invite + owner auth | published |
-| `discussions/operator-vs-virtual-kubelet.md` | Discussion primer: kube-rs operator vs virtual-kubelet (vs no Kubernetes) | published |
-| `plans/briefs/mp-001-keyless-node-attestation.md` | Brief MP-001 — Key-less node attestation (mesh-llm patch) | published |
-| `notes/2026-10-20-architecture-kickoff-qa.md` | Architecture kickoff — owner answers (2026-10-20) | published |
 | `plans/demo-p3.md` | Self-recorded demo plan (after P3) | published |
 
 ## 3. Not in the repository — design notes for the local-development and MP-001 slices
@@ -188,9 +188,10 @@ watchdog spikes. Superseded in practice by the shipped crates.
 
 ## 8. Resolving ids cited by the recovered documents
 
-The recovered ADRs, charter, roadmap and patch queue link to some of these
-documents by Agor id (the links remain original, per the [README](README.md)).
-All are listed above by path; this table resolves the ids that occur in them.
+The recovered documents link to others by Agor id (the links remain original, per
+the [README](README.md)). Where the target is now in the repository (S1–S4, the
+primers, the MP-001 brief, the kickoff Q&A) use section 1; the rest are listed
+above by path. This table resolves the ids that occur in them.
 
 | Document id (prefix) | Path under `agor://kb/m8s/` |
 | --- | --- |

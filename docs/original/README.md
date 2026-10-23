@@ -36,6 +36,25 @@ not automatically current provider facts, permission grants or completed tests.
 - A pinned image digest and verified node certificate do not establish image
   signature verification, an audit pass, or a ZDR level. P3 remains unfinished.
 
+## Later additions: design inputs cited by the ADRs
+
+Added after review of their full text: research spikes S1–S4
+([`research/`](research/spike-s1-vast-provider-and-costs.md)), the two discussion
+primers ([`discussions/`](discussions/control-channel.md)), the MP-001 brief
+([`plans/briefs/`](plans/briefs/mp-001-keyless-node-attestation.md)) and the
+kickoff Q&A ([`notes/`](notes/2026-10-20-architecture-kickoff-qa.md)). They are
+**research and planning inputs, not decisions**: the spikes are desk research with
+`[unverified]` items, prices and vendor claims are as of 2026-10-20, and the brief
+and kickoff reflect plans since superseded in part (for example the fleet-key idea
+and a 10-minute nonce were replaced by the accepted ADR-0006). Spikes S1, S3 and
+the primers are verbatim; S2 and S4 changed one local path; the MP-001 brief and
+the kickoff Q&A omit operational lines (worker/session references, agent roster,
+account setup), each marked `[Export redaction]`. [`manifest.json`](manifest.json)
+records `export_sha256` and `transformations` for every edited document, and
+only those are non-verbatim. See [CATALOG.md](CATALOG.md) for everything else in
+Knowledge. [CODE_EVIDENCE.md](CODE_EVIDENCE.md) maps the ADRs to code and lists
+documentation drift.
+
 Do not rewrite these snapshots to make completed work appear to satisfy broader
 original acceptance criteria. Record implementation progress and later decisions
 in current documents, retaining the original source and status.
