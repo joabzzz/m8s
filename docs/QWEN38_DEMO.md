@@ -7,6 +7,30 @@ real bounded prototype coordinator: one admitted attempt, one replica, no
 replacement or automatic CREATE replay. Source tests and image builds are
 qualification steps, not successful Qwen3.8 serving evidence.
 
+## Latest attempt: blocked before CREATE
+
+The [sanitized attempt receipt](../deploy/container/qwen38-blocked-attempt.json)
+records the 2026-10-23 20:31 UTC outcome. Real daemon `up`, idempotent `scale 1`,
+`status`, `logs` and `down` ran, but no resource was created and no model loaded.
+A cumulative-cap bug rejected the launch after reserving 2,369,054 micro-USD.
+The fix checks the incremental allowance against the prototype's 6,000,000
+micro-USD ceiling before reserving; historical spending stays in the cumulative
+policy and aggregate budget checks. It does not repair or release the failed
+attempt's reservation or replay its consumed controller claim.
+
+Fresh provider inventory is empty for both instances and volumes. Credit is
+16,218,436 micro-USD; historical holds of 13,355,168 plus the new retained
+2,369,054 leave only 494,214 unreserved. This cannot cover the required
+1,000,000 contingency, so another live attempt is blocked pending explicit
+accounting reconciliation. No top-up, reservation reset or live success is
+claimed. The published image is qualified offline, not on a rented GPU.
+
+Budget `instance_hourly` and `total_hourly` include transfer and contingency
+amortized over serving runtime; they are **not** compute-only rates. For example,
+a 2,800,000 all-in ceiling over 900 seconds implies at most 11,200,000 micro-USD
+amortized hourly. The separate Qwen compute filter remains 2,000,000/hour.
+Always admit the actual refreshed quote within the unreserved all-in allowance.
+
 ## Exact model and runtime
 
 Use **Qwen/Qwen3.8-27B**, not Qwen3.5, Qwen3-32B, or the historical Qwen2.5 0.5B
@@ -120,7 +144,8 @@ qualification.
    charge from a hold, reset a consumed claim or treat the old $16 authorization
    as renewable. Current credit minus those holds is at most 2,863,268 micro-USD,
    before later liabilities and reserves. Reconcile subsequent private journals
-   with the coordinator. No concrete new run budget has been admitted yet.
+   with the coordinator. This earlier observation predates the retained reservation described above;
+   it must not be reused as current unreserved budget.
 
 3. Read the [fresh-run safety procedure](../.agents/skills/m8s-demo/references/run-demo.md)
    and [CLI launch contract](../crates/m8s-cli/README.md#one-attempt-vast-demo-default-off).
@@ -212,8 +237,9 @@ qualification.
 - Exercise the explicit daemon mode's `up`/`scale`/`status`/`logs`/`down` against
   the live model. It remains a one-attempt development integration, not a
   production fleet scheduler.
-- Admit the finite budget after all retained liabilities and native-download
-  costs, arm independent cleanup, execute once and verify teardown.
+- Reconcile the retained reservation before admitting another finite budget;
+  preserve all liabilities and claims, then arm independent cleanup and verify
+  actual serving and exact-resource teardown.
 
 [Sanitized preparation evidence](../deploy/container/qwen38-preparation-evidence.json)
 records what was actually inspected. No Qwen3.8 resource was rented by the

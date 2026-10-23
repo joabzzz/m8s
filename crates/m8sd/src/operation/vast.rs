@@ -49,6 +49,23 @@ mod removal;
 pub use removal::VastRemoval;
 #[cfg(test)]
 mod tests;
+// The prototype ceiling bounds NEW allowance, never historical consumed spend.
+// Check before reservation as well as when preparing the durable operation.
+fn prototype_policy(policy: &AdminBudget) -> Result<()> {
+    let allowance = policy
+        .trial_all_in
+        .checked_sub(policy.baseline.prior_lifetime_spent)
+        .filter(|v| (1..=6_000_000).contains(v))
+        .ok_or(Error::Invalid)?;
+    if allowance == 0
+        || policy.max_instances != 1
+        || policy.max_runtime_seconds > 1800
+        || policy.minimum_cleanup_seconds < 240
+    {
+        return Err(Error::Invalid);
+    }
+    Ok(())
+}
 impl VastExecutor {
     /// The account ID is a trusted coordinator input from authenticated preflight
     /// using the same retained credential as dispatch. Storing/fingerprinting it
@@ -105,6 +122,7 @@ impl VastExecutor {
         if request.owner != self.owner || request.node_uid != self.node_uid {
             return Err(Error::Invalid);
         }
+        prototype_policy(policy)?;
         let intent = self.intent(&request.run_id, &request.request_id, operation_id)?;
         self.available(store, &intent)?;
         let reservation = store.reserve_budget(policy, period, request, clock()?)?;
@@ -215,12 +233,8 @@ impl VastExecutor {
             [&store.owner],
             |r| r.get(0),
         )?;
-        if history != 0
-            || a.policy.trial_all_in > 6_000_000
-            || a.policy.max_instances != 1
-            || a.policy.max_runtime_seconds > 1800
-            || a.policy.minimum_cleanup_seconds < 240
-        {
+        prototype_policy(&a.policy)?;
+        if history != 0 {
             return Err(Error::Invalid);
         }
         let b = budget(&tx, intent)?;

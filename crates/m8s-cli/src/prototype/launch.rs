@@ -88,7 +88,7 @@ fn load(path: &Path) -> Result<Plan> {
 fn attempt_allowance(cumulative: u64, retained: u64) -> Result<u64> {
     cumulative
         .checked_sub(retained)
-        .filter(|n| (1..=16_000_000).contains(n))
+        .filter(|n| (1..=6_000_000).contains(n))
         .ok_or(ERROR)
 }
 // Explicitly selected dotenv file only. No environment search or shell evaluation.
@@ -646,8 +646,8 @@ mod allowance_tests {
     use super::attempt_allowance;
     #[test]
     fn retained_claims_do_not_become_new_spendable_credit() {
-        assert_eq!(attempt_allowance(29_355_168, 13_355_168), Ok(16_000_000));
-        assert!(attempt_allowance(29_355_169, 13_355_168).is_err());
+        assert_eq!(attempt_allowance(19_355_168, 13_355_168), Ok(6_000_000));
+        assert!(attempt_allowance(19_355_169, 13_355_168).is_err());
         assert!(attempt_allowance(13_355_168, 13_355_168).is_err());
         assert!(attempt_allowance(1, 2).is_err());
         assert!(attempt_allowance(u64::MAX, 0).is_err());
