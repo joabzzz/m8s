@@ -14,6 +14,8 @@ pub mod destroy;
 #[cfg(feature = "launch-https")]
 pub mod launch;
 #[cfg(feature = "launch-https")]
+pub mod preflight;
+#[cfg(feature = "launch-https")]
 pub mod provisioning_log;
 #[cfg(feature = "scoped-destroy-https")]
 pub mod recovery;
@@ -62,7 +64,7 @@ impl<S: FnMut() -> Result<SecretValue>> ReadonlyHttps<S> {
             .build()
             .map_err(|_| Error::Unavailable)?;
         Ok(Self {
-            backend: ReqwestBackend(client),
+            backend: ReqwestBackend(client, None),
             supplier,
         })
     }
@@ -99,7 +101,7 @@ struct WireReply {
 trait Backend {
     fn send(&mut self, request: WireRequest) -> Result<WireReply>;
 }
-struct ReqwestBackend(reqwest::blocking::Client);
+struct ReqwestBackend(reqwest::blocking::Client, Option<&'static str>);
 impl Backend for ReqwestBackend {
     fn send(&mut self, request: WireRequest) -> Result<WireReply> {
         let mut builder = self
@@ -111,11 +113,28 @@ impl Backend for ReqwestBackend {
         if let Some(body) = request.body {
             builder = builder.header(CONTENT_TYPE, "application/json").body(body);
         }
-        let response = builder.send().map_err(|_| Error::Unavailable)?;
+        self.1 = None;
+        let response = builder.send().map_err(|error| {
+            self.1 = Some(if error.is_connect() {
+                "vast-connection-failed"
+            } else if error.is_timeout() {
+                "vast-request-timeout"
+            } else {
+                "vast-transport-failed"
+            });
+            Error::Unavailable
+        })?;
         let header = |name| unique_header(response.headers(), name);
         let status = response.status().as_u16();
         // Never inspect error/redirect bodies or Location headers.
         if status != 200 {
+            self.1 = Some(match status {
+                401 => "vast-http-unauthorized",
+                403 => "vast-http-forbidden",
+                404 => "vast-http-not-found",
+                301 | 302 | 307 | 308 => "vast-http-redirect-refused",
+                _ => "vast-http-status-refused",
+            });
             return Err(Error::Unavailable);
         }
         let content_type = header("content-type")?;
@@ -195,6 +214,8 @@ fn exchange_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
             url: match kind {
                 // Live canonical route; do not follow the slashless 301 with auth.
                 ReadKind::Account => format!("{ORIGIN}/api/v0/users/current/"),
+                ReadKind::List => format!("{ORIGIN}/api/v1/instances/"),
+                ReadKind::Offers => format!("{ORIGIN}/api/v0/bundles/"),
                 _ => format!("{ORIGIN}{}", request.path),
             },
             authorization,

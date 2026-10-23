@@ -147,6 +147,22 @@ impl ArmedCleanup {
         .host_key()
     }
 
+    /// Independent exact-ID GET using the original creator account. The worker
+    /// may already have exited; absence is never inferred from its exit status.
+    #[cfg(feature = "launch-https")]
+    pub fn confirm_owned_absent(
+        &self,
+        access: &crate::readonly::access::NodeAccess,
+    ) -> m8s_provider::Result<Option<crate::readonly::destroy::ConfirmedResourceAbsence>> {
+        if !access.matches(&self.intent) {
+            return Err(m8s_provider::Error::Unavailable);
+        }
+        ScopedDestroyHttps::new(access.instance_id(), || {
+            Ok(SecretValue::new(self.secret.expose().to_vec()))
+        })?
+        .confirm_absent()
+    }
+
     /// Uses the exact same account credential delivered to the acknowledged
     /// cleanup worker. The coordinator must first burn its durable invocation.
     /// One attempt per handle, including construction/transport errors.

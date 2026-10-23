@@ -1,4 +1,8 @@
-//! Real HTTP request leg for explicitly local qualification, NOT mesh admission.
+#[cfg(all(unix, feature = "prototype-vast"))]
+mod launch;
+#[cfg(all(unix, feature = "prototype-vast"))]
+mod owner;
+// Real HTTP request leg for explicitly local qualification, NOT mesh admission.
 use std::{io::Write, path::PathBuf};
 const HELP: &str = "m8s prototype request --local-qualification --endpoint http://127.0.0.1:PORT --model ID --prompt-file ABS --max-tokens 1..128 --timeout-ms 1..60000 [--wait-model-ms 1..TIMEOUT-1] [--json]\nOptional wait polls /v1/models for the exact model within the total request deadline. This is model discovery, not Ready.\nOne non-streaming /v1/chat/completions request, no retries/download/launch. Explicit bounded UTF-8 prompt file<=8192 bytes; model ASCII<=128. Loopback HTTP only, no DNS/proxy/redirect/auth header. Does NOT implement or downgrade bootstrap/control TLS. A completion is not verified identity, Ready, owner routing or paid qualification. Timeout is outcome-unknown; computation may continue at server.\n";
 struct Options {
@@ -180,6 +184,25 @@ fn execute(_: &Options) -> Result<Vec<u8>, &'static str> {
     Err("prototype-request-platform-unavailable")
 }
 pub(super) fn run(args: &[String]) -> Result<(), &'static str> {
+    if args == ["launch", "--help"] {
+        return std::io::stdout().write_all(b"m8s prototype launch --plan ABSOLUTE_JSON
+Requires prototype-vast. One durable paid attempt, fresh account/price checks, pinned SSH and iroh TLS, owner-routed inference, then provider-confirmed removal. See crates/m8s-cli/README.md for the plan and retained accounting evidence.
+").map_err(|_| "prototype-output-unavailable");
+    }
+
+    #[cfg(all(unix, feature = "prototype-vast"))]
+    if args.first().is_some_and(|a| a == "owner-check") {
+        return owner::check(&args[1..]);
+    }
+
+    #[cfg(all(unix, feature = "prototype-vast"))]
+    if args.first().is_some_and(|a| a == "vast-preflight") {
+        return launch::preflight(&args[1..]);
+    }
+    #[cfg(all(unix, feature = "prototype-vast"))]
+    if args.first().is_some_and(|a| a == "launch") {
+        return launch::run(&args[1..]);
+    }
     if args.first().is_some_and(|a| a == "vast-cleanup-worker") {
         if args.len() != 3 || args[1] != "--plan" || !std::path::Path::new(&args[2]).is_absolute() {
             return Err("invalid-vast-cleanup-worker-arguments");

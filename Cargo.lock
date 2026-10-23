@@ -1946,9 +1946,13 @@ dependencies = [
 name = "m8s-cli"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.4.3",
+ "hex",
+ "iroh",
  "libc",
  "m8s-agent",
  "m8s-api",
+ "m8s-bootstrap",
  "m8s-config",
  "m8s-core",
  "m8s-models",
@@ -1956,11 +1960,14 @@ dependencies = [
  "m8s-secrets",
  "m8s-top",
  "m8sd",
+ "mesh-llm-identity",
  "nix",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "toml",
+ "zeroize",
 ]
 
 [[package]]

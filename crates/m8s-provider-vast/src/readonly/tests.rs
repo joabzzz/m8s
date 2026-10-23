@@ -144,7 +144,7 @@ fn offer_query_exact_and_object_schema_refused() {
         json!({"offers":[],"pricing_qualified":false})
     );
     let wire = fake.request.unwrap();
-    assert_eq!(wire.url, "https://console.vast.ai/api/v0/bundles");
+    assert_eq!(wire.url, "https://console.vast.ai/api/v0/bundles/");
     assert_eq!(
         serde_json::from_slice::<Value>(wire.body.as_ref().unwrap()).unwrap(),
         offer_query()

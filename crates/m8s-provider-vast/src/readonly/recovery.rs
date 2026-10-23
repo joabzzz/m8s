@@ -72,7 +72,7 @@ fn lookup_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
     supplier: &mut S,
     intent: &RecoveryIntent,
 ) -> Result<Option<RecoveryCandidate>> {
-    let mut url = reqwest::Url::parse(&format!("{ORIGIN}/api/v1/instances"))
+    let mut url = reqwest::Url::parse(&format!("{ORIGIN}/api/v1/instances/"))
         .map_err(|_| Error::Unavailable)?;
     // Provider filtering narrows disclosure; local exact matching remains mandatory.
     url.query_pairs_mut()
@@ -167,7 +167,7 @@ mod tests {
         let sent = backend.request.unwrap();
         let url = reqwest::Url::parse(&sent.url).unwrap();
         assert_eq!(url.origin().ascii_serialization(), ORIGIN);
-        assert_eq!(url.path(), "/api/v1/instances");
+        assert_eq!(url.path(), "/api/v1/instances/");
         let fields: std::collections::BTreeMap<_, _> = url.query_pairs().collect();
         assert_eq!(fields["limit"], "2");
         assert_eq!(

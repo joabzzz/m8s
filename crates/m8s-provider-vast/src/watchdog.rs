@@ -42,6 +42,7 @@ impl Plan {
             || self.destroy_at <= now
             || self.destroy_at <= self.created_at
             || self.destroy_at - self.created_at > 1800
+            || self.destroy_at - self.created_at <= 240
         {
             return Err(());
         }
@@ -194,7 +195,11 @@ fn run_inner(path: &Path) -> Result<()> {
     // an existing process-group leader. A failure to detach refuses before arm.
     detach()?;
     let started = Instant::now();
-    let remaining = Duration::from_secs(plan.destroy_at.checked_sub(utc()?).ok_or(())?);
+    // The persisted timestamp is the end of the reserved cleanup window.
+    // Begin destruction four minutes earlier, leaving room for the bounded
+    // 180-second reconciliation loop and in-flight HTTPS calls.
+    let cleanup_at = plan.destroy_at.checked_sub(240).ok_or(())?;
+    let remaining = Duration::from_secs(cleanup_at.saturating_sub(utc()?));
     record(&mut journal, "armed", None)?;
     std::io::stdout()
         .write_all(&arm_ack(&plan)?)
@@ -210,7 +215,7 @@ fn run_inner(path: &Path) -> Result<()> {
             started.elapsed(),
             remaining,
             now,
-            plan.destroy_at,
+            cleanup_at,
             STOP.load(Ordering::Relaxed),
         );
         if due && cleanup_started.is_none() {

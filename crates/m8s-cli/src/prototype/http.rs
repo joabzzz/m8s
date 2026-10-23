@@ -116,6 +116,10 @@ pub(super) fn exchange(port: u16, body: &[u8], deadline: Instant) -> io::Result<
 pub(super) fn models(port: u16, deadline: Instant) -> io::Result<Vec<u8>> {
     request(port, "GET /v1/models", &[], deadline)
 }
+#[cfg(feature = "prototype-vast")]
+pub(super) fn status(port: u16, deadline: Instant) -> io::Result<Vec<u8>> {
+    request(port, "GET /api/status", &[], deadline)
+}
 fn request(port: u16, route: &str, body: &[u8], deadline: Instant) -> io::Result<Vec<u8>> {
     if body.len() > BODY {
         return Err(invalid());

@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 prototype-container = ["dep:m8s-agent", "m8s-agent/sealed-node"]
-prototype-vast = ["dep:m8sd", "m8sd/prototype-vast", "dep:m8s-provider-vast", "m8s-provider-vast/watchdog", "m8s-provider-vast/launch-https"]
+prototype-vast = ["dep:iroh", "dep:tokio", "dep:mesh-llm-identity", "dep:zeroize", "dep:getrandom", "dep:hex", "dep:m8s-bootstrap", "dep:m8sd", "m8sd/prototype-vast", "dep:m8s-provider-vast", "m8s-provider-vast/watchdog", "m8s-provider-vast/launch-https"]
 local-development = ["dep:m8sd", "m8sd/local-development"]
 
 [dependencies]
@@ -36,3 +36,30 @@ nix = { version = "0.29", default-features = false, features = ["term", "signal"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 nix = { version = "0.29", default-features = false, features = ["user", "poll"] }
+
+[dependencies.iroh]
+version = "=1.3.0"
+default-features = false
+features = ["tls-aws-lc-rs"]
+optional = true
+[dependencies.tokio]
+version = "1"
+features = ["rt", "macros", "time", "process", "io-util"]
+optional = true
+[dependencies.mesh-llm-identity]
+path = "../../vendor/mesh-llm-identity"
+default-features = false
+optional = true
+[dependencies.zeroize]
+workspace = true
+optional = true
+[dependencies.getrandom]
+version = "0.4"
+optional = true
+[dependencies.hex]
+version = "0.4"
+optional = true
+[dependencies.m8s-bootstrap]
+path = "../m8s-bootstrap"
+features = ["iroh-transport", "mp001-owner-signing"]
+optional = true

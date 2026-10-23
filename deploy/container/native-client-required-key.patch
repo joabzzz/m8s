@@ -1,0 +1,46 @@
+diff --git a/mesh/crates/mesh-llm-host-runtime/src/mesh/node.rs b/mesh/crates/mesh-llm-host-runtime/src/mesh/node.rs
+index b9570823e..117bcdb64 100644
+--- a/mesh/crates/mesh-llm-host-runtime/src/mesh/node.rs
++++ b/mesh/crates/mesh-llm-host-runtime/src/mesh/node.rs
+@@ -732,7 +732,13 @@ impl Node {
+         config_path: Option<&std::path::Path>,
+         local_mesh_requirements: crate::MeshRequirements,
+     ) -> Result<(Self, TunnelChannels)> {
+-        let secret_key = startup_secret_key(&role).await?;
++        let secret_key = startup_secret_key(
++            &role,
++            owner_config
++                .as_ref()
++                .is_some_and(|config| config.node_ownership_required),
++        )
++        .await?;
+         let endpoint = bind_mesh_endpoint(secret_key.clone(), relay, quic_bind).await?;
+         if relay.policy.uses_relay() {
+             // Wait briefly for relay connection so the invite token includes the relay URL.
+diff --git a/mesh/crates/mesh-llm-host-runtime/src/mesh/node/startup.rs b/mesh/crates/mesh-llm-host-runtime/src/mesh/node/startup.rs
+index 13c8d0248..79d901777 100644
+--- a/mesh/crates/mesh-llm-host-runtime/src/mesh/node/startup.rs
++++ b/mesh/crates/mesh-llm-host-runtime/src/mesh/node/startup.rs
+@@ -12,7 +12,21 @@ pub fn detect_local_fit_bytes(max_vram_gb: Option<f64>, host_ram_offload: bool)
+     )
+ }
+ 
+-pub(super) async fn startup_secret_key(role: &NodeRole) -> Result<SecretKey> {
++pub(super) async fn startup_secret_key(
++    role: &NodeRole,
++    required_certificate: bool,
++) -> Result<SecretKey> {
++    if required_certificate {
++        anyhow::ensure!(
++            std::env::var_os("MESH_LLM_EPHEMERAL_KEY").is_none(),
++            "required node certificate conflicts with ephemeral key selection"
++        );
++        // A certificate binds an existing identity. Never generate a replacement,
++        // including for client-only nodes or when the configured key is missing.
++        return mesh_llm_membership::load_node_key_from_path(
++            &mesh_llm_membership::default_node_key_path()?,
++        );
++    }
+     if matches!(role, NodeRole::Client) || std::env::var("MESH_LLM_EPHEMERAL_KEY").is_ok() {
+         let key = SecretKey::generate();
+         tracing::info!("Using ephemeral key (unique identity)");

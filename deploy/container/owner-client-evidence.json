@@ -1,0 +1,21 @@
+{
+  "api_port": 61425,
+  "certificate_verified": true,
+  "client_stopped": true,
+  "invite_observed": true,
+  "local_inference_backend": false,
+  "node_key_removed": true,
+  "provider_calls": false,
+  "schema": "m8s.owner-client-check/v1",
+  "native_base_commit": "f2cbf8fd8159a16401040a3536550d49a3da8ce2",
+  "native_change": "required-certificate clients load the certified existing key; ordinary clients remain ephemeral",
+  "native_binary_sha256": "48ca217a81c77a4bc7f40d8729e9324a0d6e32d5b5e3bcc7c64082415757d8cb",
+  "native_build_log": "/private/tmp/m8s-owner-client-key-build.log",
+  "native_build_seconds": 347,
+  "native_production_clippy": "passed",
+  "native_release_all_targets_clippy": "failed: pre-existing test-only LockClass::ALL unused in release configuration",
+  "native_format": "passed",
+  "native_no_console_print": "passed for changed source",
+  "log": "/private/tmp/m8s-owner-client-check.log",
+  "native_source_commit": "7a101840af79c7509789b9e3152ca6c4605186e8"
+}

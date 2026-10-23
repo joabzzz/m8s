@@ -824,3 +824,45 @@ inspect/stop/remove. A present ID, malformed response or query failure produces
 no success output. This is read-only outcome resolution, not a destructive retry.
 The native source image recipe enables this optional CLI feature explicitly;
 the normal CLI build remains unchanged/default OFF.
+
+### One-attempt Vast demo (default OFF)
+
+Build with `--features prototype-vast`. The runtime image contains the native
+mesh server, its CPU runtime, the pinned small Qwen GGUF, and the restricted SSH
+provisioning service. Launching it does not compile Rust or download model weights.
+
+```sh
+m8s prototype owner-check --mesh /absolute/mesh-llm --directory /absolute/new-private-client
+m8s prototype vast-preflight --credential-file /absolute/selected.env --account ACCOUNT_ID --disk-gb 10
+m8s prototype launch --plan /absolute/demo-plan.json
+```
+
+`owner-check` runs a fresh certificate-enforcing client, checks its exact verified
+certificate and invite, then stops its process group and removes its private
+runtime directory. It does not call Vast. The native client must include the
+required-certificate identity fix: ordinary clients generate ephemeral keys;
+required-certificate clients must load the existing certified key.
+
+`vast-preflight` performs only fixed account, complete instance inventory, volume
+inventory and on-demand offer reads. It refuses nonempty inventories, insufficient
+credit, unqualified prices and redirects. Credentials are read only from the
+explicit file, never from environment discovery, argv values or provider metadata.
+
+The versioned launch plan supplies a new private run directory, native client
+path, immutable image digest, account ID, offer, root-disk size, exact owner/node/
+tier labels, and the existing `AdminBudget`/`BudgetRequest` records. Launch refreshes
+inventory and prices before reservation; it never resets prior spending or extends
+approval dates. It retains one durable create intent and an independently detached
+cleanup worker before the sole create request. SSH uses a provider-observed host
+key and a fresh provisioning key. Nonce redemption, certificate delivery and
+heartbeats use pinned iroh TLS. One bounded completion travels through the local
+owner client. Its text is released only after an independent creator-account GET
+confirms the exact instance absent.
+
+The run directory retains public preflight/removal/demo receipts, the ownership
+journal, and the SQLite accounting state. Unknown final billing retains the
+reservation; removal is not represented as a settled invoice. Failed or ambiguous
+creation never authorizes another rental or a fresh budget. The cleanup worker
+begins destruction four minutes before the original reserved cleanup deadline.
+A successful local check or published image alone is not paid demo proof; use the
+final `demo-evidence.json` receipt.
