@@ -19,11 +19,13 @@ Original paid-attempt holds total 2,857,776 micro-USD, in addition to all older
 13,355,168 micro-USD holds. Provisional daily charge reports are not final bills
 and have not released those reservations. The
 [closed-run liability proposal](../deploy/container/qwen38-closed-liability-proposal.json)
-is review-only, not an applied accounting change. Original journals and consumed
+was explicitly declined: **keep full launch allowances held**. It is not an
+applied accounting change. Original journals and consumed
 claims remain intact. The earlier uninvoked reservation was separately cancelled
 with explicit user authorization and a terminal audit record.
 
-The agent now supplies fixed public NVIDIA probe/loader paths after clearing its
+The [latest qualified image](../deploy/container/qwen38-loader-image-qualification.json)
+contains the agent with fixed public NVIDIA probe/loader paths after clearing its
 environment. Driver mounts appear after build-time `ldconfig`; neither personal
 PATH nor arbitrary environment/credentials are inherited. Native stderr is
 classified only into fixed categories in memory; raw output is not logged.

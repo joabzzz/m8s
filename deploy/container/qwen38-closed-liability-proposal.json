@@ -1,6 +1,6 @@
 {
   "schema": "m8s.closed-run-liability-proposal/v1",
-  "status": "PROPOSAL_ONLY_NOT_APPLIED",
+  "status": "DECLINED_NOT_APPLIED",
   "observed_at_utc": "2026-10-23T21:36:46.975337+00:00",
   "account_id": 32349,
   "credit_micro_usd_floor": 16204104,
@@ -41,5 +41,7 @@
   "proposed_unallocated_credit_micro_usd": 2031043,
   "billing_finality": "unknown; provisional reported charges are not final bills",
   "transfer_bound_basis": "One pinned 16464440224-byte non-sharded GGUF, two full download paths, <13GB unpacked image and >18GB metadata/framing headroom; retries/draft disabled in both images.",
-  "requested_accounting_action": "Only after explicit approval: retain original journals and claims, attach an immutable conservative exposure reconciliation for these two confirmed-absent runs; older holds remain untouched. No fabricated final billing."
+  "requested_accounting_action": "Only after explicit approval: retain original journals and claims, attach an immutable conservative exposure reconciliation for these two confirmed-absent runs; older holds remain untouched. No fabricated final billing.",
+  "user_decision": "Keep full launch allowances held",
+  "decision_recorded_at_utc": "2026-10-23T21:44:08.918685+00:00"
 }
