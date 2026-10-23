@@ -7,12 +7,13 @@ real bounded prototype coordinator: one admitted attempt, one replica, no
 replacement or automatic CREATE replay. Source tests and image builds are
 qualification steps, not successful Qwen3.8 serving evidence.
 
-## Current live outcome: startup failed, both resources destroyed
+## Current live outcome: startup failed, all rented resources destroyed
 
 The [live-attempt receipt](../deploy/container/qwen38-live-attempts.json) records
-instances **57423542** and **57426719**. Both reached verified certificate
-delivery/control, then failed before exact model discovery or inference.
-Both have independently confirmed provider absence and retained removal records;
+instances **57423542**, **57426719** and **57429936**. All reached certificate
+delivery/control, then failed before exact model discovery or inference. The third attempt reports the closed
+bootstrap category `transport` after the first authenticated heartbeat.
+All have independently confirmed provider absence and retained removal records;
 no paid resource remains. Issue #6 acceptance is **not met**.
 
 The original paid-attempt allowances total 2,857,776 micro-USD. The user later
@@ -27,7 +28,7 @@ available after these liabilities. The next allowance is capped at 1,900,000,
 including download, 1,500 seconds runtime, 240 seconds cleanup and 1,000,000
 contingency; launch must still requalify current account, inventory and prices.
 
-The [latest qualified image](../deploy/container/qwen38-diagnostics-image-qualification.json)
+The [latest qualified image](../deploy/container/qwen38-both-streams-image-qualification.json)
 contains the agent with fixed public NVIDIA probe/loader paths after clearing its
 environment. Driver mounts appear after build-time `ldconfig`; neither personal
 PATH nor arbitrary environment/credentials are inherited. Native stderr is
@@ -295,3 +296,18 @@ qualification.
 records what was actually inspected. No Qwen3.8 resource was rented by the
 preparation steps, so there is no new exact-resource teardown receipt or claimed
 live completion. The historical small-model proof remains separate.
+
+## Follow-up startup diagnosis
+
+The third attempt57429936 ended with independently confirmed absence at
+1792793232, 36 seconds after reservation. Under the updated user authorization,
+[its separate reconciliation](../deploy/container/qwen38-authorized-reconciliation-third.json)
+retains360417 micro-USD including the entire64GB transfer bound and100000 extra
+contingency. Original allowance1751182, journals and consumed claim remain.
+At22:12:27 UTC complete instance/volume inventories were empty and credits
+16169767 minus14533478 reconciled liabilities left1636289 micro-USD.
+
+Native JSON fatal output can use stdout. Agent077b377 classifies both channels
+with bounded destructive in-memory handling and logs an explicit child-exit
+category before destruction. This corrects a diagnostic gap, not a proven
+GPU startup cause. No raw native output is published.

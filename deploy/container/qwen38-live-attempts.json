@@ -76,10 +76,32 @@
         "prototype stage: exact-instance-absence-confirmed"
       ],
       "final_billing": "unknown; full original hold retained"
+    },
+    {
+      "instance_id": 57429936,
+      "image": "ghcr.io/joabzzz/m8s-prototype@sha256:9dfb54ecf3d3349a80c9a9ebfd7add566b4bf17d4c8fb6d7abb793cc4f08ab5b",
+      "reserved_micro_usd": 1751182,
+      "billing_state": "BillingUnknown",
+      "certificate_delivery_and_control_established": true,
+      "model_discovered": false,
+      "owner_routed_completion": false,
+      "provider_confirmed_absent": true,
+      "absence_observed_at": 1792793232,
+      "resource_row_removed": true,
+      "bootstrap_category": "transport",
+      "commands_exercised": [
+        "m8sd --vast-demo",
+        "m8s up",
+        "m8s scale 1",
+        "m8s status",
+        "m8s logs",
+        "m8s down"
+      ],
+      "final_billing": "unknown; original allowance retained in original journal, authorized separate closed-run reconciliation required before replacement"
     }
   ],
   "historical_holds_micro_usd": 13355168,
-  "new_paid_holds_micro_usd": 2857776,
-  "total_holds_micro_usd": 16212944,
-  "remaining_action": "Diagnose startup and obtain explicit conservative liability reconciliation before another rental; no hold reset or final-billing invention."
+  "new_paid_holds_micro_usd": 4608958,
+  "total_holds_micro_usd": 17964126,
+  "remaining_action": "Original journal allowances remain recorded; effective new baseline follows explicitly authorized conservative reconciliation receipts. Diagnose native child exit vs control failure; no completion claimed."
 }
