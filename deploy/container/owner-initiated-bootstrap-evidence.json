@@ -1,0 +1,18 @@
+{
+  "schema": "m8s.operator-test-evidence/v1",
+  "source_commit": "da10517",
+  "evidence_origin": "operator_supplied_terminal_output",
+  "independently_captured_log": false,
+  "test": "owner_initiated_bootstrap_preserves_identity_and_single_use",
+  "result": "passed",
+  "passed": 1,
+  "failed": 0,
+  "ignored": 0,
+  "filtered_out": 1,
+  "duration_seconds": 0.10,
+  "scope": "synthetic direct TLS, pinned owner rejection, resource binding and nonce replay in the owner-initiated connection direction",
+  "historical_E_repeated": false,
+  "vast_deployment_proven": false,
+  "real_inference_proven": false,
+  "provider_removal_proven": false
+}

@@ -29,7 +29,7 @@ owner-initiated bootstrap source must be qualified and packaged before use.
 The Mac owner host-only build completed successfully; log:
 `/private/tmp/m8s-owner-host-build-3.log`. That is compilation evidence only.
 
-### Pending owner-initiated transport check
+### Owner-initiated transport check: operator-reported PASS
 
 The owner can now initiate bootstrap to the provider-observed node UDP address,
 so the owner's Mac does not need an inbound port mapping. The node authenticates
@@ -39,9 +39,12 @@ and delivers on that original stream. Relay-only bootstrap remains refused.
 
 The new ignored transport test covers the changed direction, wrong-owner
 rejection before nonce disclosure, exact resource receipt, and nonce replay.
-It is **not yet runtime-qualified**. Historical E PASS remains separate and is
-not rerun. The current tool session cannot request an approval; run this bounded
-check in ordinary Terminal after other Cargo work finishes (two jobs maximum):
+The operator ran it in ordinary Terminal and supplied the result: **1 passed,
+0 failed, 1 filtered out, 0.10 seconds**. Evidence is recorded in
+`owner-initiated-bootstrap-evidence.json`; this is operator-reported output,
+not an independently captured log. Historical E PASS remains separate and was
+not rerun. The command below records what was run; do not repeat this completed
+qualification unchanged:
 
 ```sh
 cd /private/tmp/m8s-root-integration.VSK0VT
@@ -61,6 +64,16 @@ credentials, spend or security-setting changes. The test runtime is capped at
 No Vast instance has been rented by these steps. Secure owner-side LAUNCH,
 independent cleanup process qualification, owner-routed model inference, and
 provider-confirmed removal remain unfinished. No end-to-end success is claimed.
+
+The cleanup worker's production session-detachment function has passed a local
+parent-loss test: a synthetic launcher was placed in its own process group,
+the worker detached and acknowledged, that exact launcher group was killed,
+and the worker acknowledged survival after observing its parent change.
+Log: `/private/tmp/m8s-watchdog-parent-loss.log`. No provider client or credentials
+were used. This qualifies process survival only; it does not prove real provider
+reconciliation, destruction, billing containment, or survival of host loss.
+The subsequent repository check passed with the documented PTY/ACL exclusions:
+`/private/tmp/m8s-watchdog-survival-check.log`.
 
 The sections below include historical source-only and cutover checkpoints; their
 statements that no image exists or the node entrypoint is unwired are superseded

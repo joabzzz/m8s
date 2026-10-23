@@ -148,6 +148,22 @@ pub fn run(path: &Path) -> m8s_provider::Result<()> {
     run_inner(path).map_err(|_| m8s_provider::Error::Unavailable)
 }
 
+fn detach() -> Result<()> {
+    // Only a fresh ordinary child may call this; never an existing group leader.
+    if unsafe { libc::setsid() } < 0 {
+        return Err(());
+    }
+    unsafe {
+        if libc::signal(libc::SIGTERM, stop as *const () as libc::sighandler_t) == libc::SIG_ERR
+            || libc::signal(libc::SIGINT, stop as *const () as libc::sighandler_t) == libc::SIG_ERR
+            || libc::signal(libc::SIGHUP, stop as *const () as libc::sighandler_t) == libc::SIG_ERR
+        {
+            return Err(());
+        }
+    }
+    Ok(())
+}
+
 fn run_inner(path: &Path) -> Result<()> {
     let (plan, mut journal) = load(path)?;
     // Input is an anonymous pipe, never argv/environment/a credential pathname.
@@ -170,17 +186,7 @@ fn run_inner(path: &Path) -> Result<()> {
     // Own a session so the launching terminal/process group may exit without
     // killing cleanup. The caller must spawn this as an ordinary child, not as
     // an existing process-group leader. A failure to detach refuses before arm.
-    if unsafe { libc::setsid() } < 0 {
-        return Err(());
-    }
-    unsafe {
-        if libc::signal(libc::SIGTERM, stop as *const () as libc::sighandler_t) == libc::SIG_ERR
-            || libc::signal(libc::SIGINT, stop as *const () as libc::sighandler_t) == libc::SIG_ERR
-            || libc::signal(libc::SIGHUP, stop as *const () as libc::sighandler_t) == libc::SIG_ERR
-        {
-            return Err(());
-        }
-    }
+    detach()?;
     let started = Instant::now();
     let remaining = Duration::from_secs(plan.destroy_at.checked_sub(utc()?).ok_or(())?);
     record(&mut journal, "armed", None)?;
@@ -278,3 +284,6 @@ mod tests {
         assert!(serde_json::from_value::<Plan>(value).is_err());
     }
 }
+
+#[cfg(test)]
+mod process_tests;
