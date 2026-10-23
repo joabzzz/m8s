@@ -1,5 +1,43 @@
 # Full-node prototype image
 
+## Flint runtime-only image
+
+`Dockerfile.flint` packages the CUDA runtime and m8s agent without model weights.
+After authenticated provisioning, the agent invokes MeshLLM with `serve --model`
+and the immutable Flint Hugging Face file reference. MeshLLM owns downloading
+and caching the weights inside the rented container. The historical Qwen image
+below retains its small local test fixture.
+
+This source-tested checkpoint has **no published Flint image or live GPU proof**.
+The [evaluation plan](../../docs/evaluations/flint-plan.md) records the model pin,
+measurement method and remaining acceptance checks. Native Flint support is a
+separate dependency in [mesh-llm draft PR #1](https://github.com/joabzzz/m8s-mesh-llm/pull/1),
+at source commit `962aeb2faabe74f5fa809b8b61eaad2f9b816e18`.
+
+Use an isolated build context containing only:
+
+- `Dockerfile.flint`, `artifacts.py` and `vast_provision.py` from this directory;
+- `flint-model-artifact.json`, copied as `model-artifact.json`;
+- `mesh-source.tar`, a root-level source archive of the selected native commit;
+- `m8s-source.tar`, a root-level source archive of the reviewed m8s commit.
+
+Create source archives with `git archive --format=tar COMMIT`, and calculate
+their SHA-256 values. The build validates these hashes before unpacking. Never
+include credentials, weight files, caches or `.git` in the context. From that
+context, with the two hash variables set to the calculated values:
+
+```sh
+docker build --platform linux/amd64 -f Dockerfile.flint \
+  --build-arg MESH_SOURCE_SHA256="$MESH_SOURCE_SHA256" \
+  --build-arg M8S_SOURCE_SHA256="$M8S_SOURCE_SHA256" \
+  -t m8s-prototype-flint:cuda-sm120 .
+```
+
+Dependency preparation uses network access; compilation runs offline with at
+most two jobs. The image includes CUDA redistribution license material. Publish
+and qualify the resulting immutable image before allocating a rental. There is
+no `flint-model` build context and no custom weight-download bootstrap script.
+
 ## Proven end-to-end demo (2026-10-23)
 
 The complete CLI → Vast → canonical certificate → native mesh → owner-routed
