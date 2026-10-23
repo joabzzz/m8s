@@ -7,10 +7,14 @@ use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_TYPE, Head
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, io::Read, sync::Arc, time::Duration};
 
+#[cfg(feature = "launch-https")]
+pub mod access;
 #[cfg(feature = "scoped-destroy-https")]
 pub mod destroy;
 #[cfg(feature = "launch-https")]
 pub mod launch;
+#[cfg(feature = "launch-https")]
+pub mod provisioning_log;
 #[cfg(feature = "scoped-destroy-https")]
 pub mod recovery;
 

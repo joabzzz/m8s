@@ -38,6 +38,8 @@ pub use Transport as FixtureTransport;
 
 #[cfg(feature = "readonly-https")]
 pub mod readonly;
+#[cfg(all(unix, feature = "watchdog"))]
+pub mod watchdog;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Market {

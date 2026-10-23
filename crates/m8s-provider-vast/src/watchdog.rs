@@ -1,4 +1,5 @@
-use m8s_provider_vast::readonly::{
+//! Cleanup worker entrypoint for a fresh, dedicated child process only.
+use crate::readonly::{
     destroy::ScopedDestroyHttps,
     recovery::{RecoveryIntent, RecoveryLookup},
 };
@@ -140,12 +141,15 @@ fn cleanup_due(
     stop_requested || elapsed >= original_remaining || now >= destroy_at
 }
 
-pub fn run() -> Result<()> {
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    if args.len() != 2 || args[0] != "--plan" {
-        return Err(());
-    }
-    let (plan, mut journal) = load(Path::new(&args[1]))?;
+/// Call ONLY in the dedicated worker process: detaches its session, owns signal
+/// handlers, consumes credential stdin and runs through the original deadline.
+/// No runtime endpoint or provider create is performed here.
+pub fn run(path: &Path) -> m8s_provider::Result<()> {
+    run_inner(path).map_err(|_| m8s_provider::Error::Unavailable)
+}
+
+fn run_inner(path: &Path) -> Result<()> {
+    let (plan, mut journal) = load(path)?;
     // Input is an anonymous pipe, never argv/environment/a credential pathname.
     // The launcher writes the key and closes its pipe before awaiting readiness.
     let mut input = Vec::new();

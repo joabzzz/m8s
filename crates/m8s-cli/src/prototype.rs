@@ -180,6 +180,16 @@ fn execute(_: &Options) -> Result<Vec<u8>, &'static str> {
     Err("prototype-request-platform-unavailable")
 }
 pub(super) fn run(args: &[String]) -> Result<(), &'static str> {
+    if args.first().is_some_and(|a| a == "vast-cleanup-worker") {
+        if args.len() != 3 || args[1] != "--plan" || !std::path::Path::new(&args[2]).is_absolute() {
+            return Err("invalid-vast-cleanup-worker-arguments");
+        }
+        #[cfg(all(unix, feature = "prototype-vast"))]
+        return m8s_provider_vast::watchdog::run(std::path::Path::new(&args[2]))
+            .map_err(|_| "vast-cleanup-unresolved-retain-liability");
+        #[cfg(not(all(unix, feature = "prototype-vast")))]
+        return Err("vast-cleanup-worker-unavailable");
+    }
     if args.first().is_some_and(|a| a == "stop") {
         return crate::prototype_stop::run(&args[1..]);
     }

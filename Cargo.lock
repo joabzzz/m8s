@@ -1952,6 +1952,7 @@ dependencies = [
  "m8s-config",
  "m8s-core",
  "m8s-models",
+ "m8s-provider-vast",
  "m8s-secrets",
  "m8s-top",
  "m8sd",

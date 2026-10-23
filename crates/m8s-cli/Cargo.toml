@@ -7,6 +7,7 @@ license.workspace = true
 [features]
 default = []
 prototype-container = ["dep:m8s-agent", "m8s-agent/sealed-node"]
+prototype-vast = ["dep:m8s-provider-vast", "m8s-provider-vast/watchdog", "m8s-provider-vast/launch-https"]
 local-development = ["dep:m8sd", "m8sd/local-development"]
 
 [dependencies]
@@ -21,6 +22,7 @@ m8s-top = { path = "../m8s-top" }
 serde_json.workspace = true
 serde.workspace = true
 m8s-secrets = { path = "../m8s-secrets" }
+m8s-provider-vast = { path = "../m8s-provider-vast", optional = true, default-features = false }
 
 [[bin]]
 name = "m8s"

@@ -1,13 +1,16 @@
 //! Separate cleanup process. No create, credential discovery, or Ready grant.
 //! The caller must durably reserve its original liability before arming this
 //! process, and must not create until the `armed` receipt has been received.
-#[cfg(unix)]
-#[path = "watchdog/unix.rs"]
-mod unix;
-
 fn main() {
     #[cfg(unix)]
-    let result = unix::run();
+    let result = {
+        let args: Vec<_> = std::env::args_os().skip(1).collect();
+        if args.len() != 2 || args[0] != "--plan" {
+            Err(())
+        } else {
+            m8s_provider_vast::watchdog::run(std::path::Path::new(&args[1])).map_err(|_| ())
+        }
+    };
     #[cfg(not(unix))]
     let result: Result<(), ()> = Err(());
     if result.is_err() {
