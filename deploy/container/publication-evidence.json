@@ -1,0 +1,26 @@
+{
+  "schema": "m8s.prototype-publication-evidence/v1",
+  "platform": "linux/amd64",
+  "repository": "ghcr.io/joabzzz/m8s-prototype",
+  "tag": "cpu-amd64-a6e5a23",
+  "visibility": "public",
+  "index_digest": "sha256:776b2fdc8ae1f04b2aa127eab2abd0ed73bd30e95c2fce7edb822e3d3ced17ca",
+  "amd64_manifest_digest": "sha256:14f3a26da8bdad68efa6ac4fdfe101927817243eac57746033c8df62ee288882",
+  "mesh_commit": "f2cbf8fd8159a16401040a3536550d49a3da8ce2",
+  "m8s_image_commit": "a6e5a235c1eb26475437234ff3c53805b16270ff",
+  "build": "passed",
+  "required_ownership_option_check": "passed",
+  "publication": "passed",
+  "anonymous_digest_pull": "passed_with_cached_local_layers",
+  "vast_deployment": "not_run",
+  "secure_bootstrap": "not_run_for_this_image",
+  "real_model_inference": "not_run",
+  "provider_confirmed_removal": "not_run",
+  "provider_spend_micro_usd_this_work": 0,
+  "cumulative_provider_cap_micro_usd": 6000000,
+  "local_logs": {
+    "build": "/private/tmp/m8s-amd64-build-2.log",
+    "push": "/private/tmp/m8s-ghcr-push-public.log",
+    "anonymous_pull": "/private/tmp/m8s-ghcr-anonymous-pull.log"
+  }
+}

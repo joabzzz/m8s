@@ -1,5 +1,33 @@
 # Full-node source image (not runtime-qualified)
 
+## Current checkpoint (2026-10-22)
+
+The Linux AMD64 CPU image **has built successfully**, including the actual mesh
+node and `m8s-agent --vast-node` entrypoint. Local tag:
+`m8s-prototype-cpu-amd64:a6e5a23`; image index digest:
+`sha256:776b2fdc8ae1f04b2aa127eab2abd0ed73bd30e95c2fce7edb822e3d3ced17ca`.
+Native source is `f2cbf8fd8159a16401040a3536550d49a3da8ce2`; image m8s source is
+`a6e5a235c1eb26475437234ff3c53805b16270ff` (later owner-side changes are not
+included in that image). Build log: `/private/tmp/m8s-amd64-build-2.log`.
+The final-container ELF, required-ownership-option, and model-contract checks
+passed. No model request or secure bootstrap was run by those build checks.
+
+The user authorized publishing publicly at `ghcr.io/joabzzz/m8s-prototype`.
+After the operator completed GitHub package authorization and made the package
+public, the push succeeded. Public tag: `cpu-amd64-a6e5a23`. An anonymous Docker
+pull with an empty login configuration succeeded for the exact index digest above
+(the local layers were cached; this was an access/manifest check, not a fresh
+full-network download). Receipt: `publication-evidence.json`. Earlier registry
+denials are historical; no permission settings were changed by the agent.
+
+No Vast instance has been rented by these steps. Secure owner-side LAUNCH,
+independent cleanup process qualification, owner-routed model inference, and
+provider-confirmed removal remain unfinished. No end-to-end success is claimed.
+
+The sections below include historical source-only and cutover checkpoints; their
+statements that no image exists or the node entrypoint is unwired are superseded
+by this checkpoint. Their security requirements still apply.
+
 `Dockerfile.smoke` prepares a local CPU build from pinned Rust 1.98 and Node
 24.20.0 base manifests. Its dependency-preparation steps use public package
 registries and the native owner's pinned patch queue; product compilation then
