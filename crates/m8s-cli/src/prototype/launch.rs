@@ -246,11 +246,14 @@ fn run_with_client(
     let invite = runtime.block_on(client.invite())?;
     eprintln!("prototype stage: certified-owner-client-ready");
     let ssh_public = ssh_key(&p.directory)?;
+    eprintln!("prototype stage: provisioning-key-created");
     let key = credential(&p.credential_file)?;
+    eprintln!("prototype stage: selected-credential-read");
     let mut preflight = m8s_provider::vast::readonly::preflight::PreflightHttps::new(|| {
         Ok(SecretValue::new(key.expose().to_vec()))
     })
     .map_err(|_| ERROR)?;
+    eprintln!("prototype stage: provider-client-initialized");
     let fresh = preflight
         .observe_sized(
             p.expected_account_id,
@@ -264,6 +267,7 @@ fn run_with_client(
                 .transport_failure()
                 .unwrap_or(preflight.last_stage())
         })?;
+    eprintln!("prototype stage: fresh-account-and-offer-qualified");
     if attempt_allowance(
         p.policy.trial_all_in,
         p.policy.baseline.prior_lifetime_spent,

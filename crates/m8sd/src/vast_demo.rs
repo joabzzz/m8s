@@ -191,6 +191,23 @@ fn capture_stages(output: impl std::io::Read, mut log: fs::File) {
     }
 }
 fn safe_stage(line: &[u8]) -> bool {
+    if let Some(label) = line
+        .strip_prefix(b"preflight stage: ")
+        .and_then(|s| s.strip_suffix(b"\n"))
+    {
+        return [
+            "vast-sizing-validation",
+            "vast-account-read",
+            "vast-account-identity",
+            "vast-credit-check",
+            "vast-complete-inventory",
+            "vast-volume-inventory",
+            "vast-offer-read",
+            "vast-offer-price-qualification",
+        ]
+        .iter()
+        .any(|allowed| label == allowed.as_bytes());
+    }
     let Some(label) = line
         .strip_prefix(b"prototype stage: ")
         .and_then(|s| s.strip_suffix(b"\n"))
@@ -199,6 +216,10 @@ fn safe_stage(line: &[u8]) -> bool {
     };
     [
         "certified-owner-client-ready",
+        "provisioning-key-created",
+        "selected-credential-read",
+        "provider-client-initialized",
+        "fresh-account-and-offer-qualified",
         "cleanup-armed",
         "exact-instance-network-observed",
         "provisioning-host-key-pinned",
@@ -320,5 +341,14 @@ mod tests {
             assert!(!super::safe_stage(line));
         }
         assert!(super::safe_stage(b"prototype stage: cleanup-armed\n"));
+        assert!(super::safe_stage(
+            b"preflight stage: vast-complete-inventory\n"
+        ));
+        assert!(!super::safe_stage(
+            b"preflight stage: untrusted-private-value\n"
+        ));
+        assert!(!super::safe_stage(
+            b"preflight stage: vast-offer-read\nextra\n"
+        ));
     }
 }
