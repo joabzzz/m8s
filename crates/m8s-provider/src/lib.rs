@@ -35,3 +35,5 @@ pub mod local;
 /// Deterministic mock with optional persistent state.
 pub mod mock;
 pub mod vast;
+
+pub mod nebius;

@@ -23,6 +23,7 @@ def excludes(package, forbidden, *features):
 excludes("m8s-provider", ["libc", "reqwest", "rustls", "m8s-agent", "fs2", "sha2", "m8s-secrets"])
 excludes("m8s-provider", ["reqwest", "rustls", "m8s-secrets"], "local")
 excludes("m8s-provider", ["m8s-agent"], "vast-readonly-https")
+excludes("m8s-provider", ["m8s-agent", "tonic", "prost"], "nebius-readonly-https")
 excludes("m8s-agent", ["m8s-provider"], "secure-runtime")
 excludes("m8s-core", ["m8s-provider", "m8s-agent", "libc", "reqwest", "rustls"])
 print("Provider feature dependency boundaries passed")

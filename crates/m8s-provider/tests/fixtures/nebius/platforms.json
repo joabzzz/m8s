@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "metadata": {
+        "id": "computeplatform-h100",
+        "parentId": "project-fixture",
+        "name": "gpu-h100-sxm"
+      },
+      "spec": {
+        "gpuCountQuotaType": "synthetic.compute.h100.count",
+        "presets": [
+          {
+            "name": "1gpu-16vcpu-200gb",
+            "resources": {
+              "gpuCount": 1
+            }
+          },
+          {
+            "name": "8gpu-128vcpu-1600gb",
+            "resources": {
+              "gpuCount": 8
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -2,10 +2,12 @@
 
 `m8s_provider::{Provider, LaunchSpec, Error, Result}` owns the synchronous provider
 contract. `mock::Mock` retains deterministic faults and optional persistent state;
-`vast` exposes the existing fixture mapper. Defaults enable no heavy dependencies.
+`vast` exposes the existing fixture mapper; `nebius` adds catalog/quota mapping and
+fixture lifecycle reconciliation ([contract and API evidence](NEBIUS.md)). Defaults enable no heavy dependencies.
 
 | Feature | Capability |
 | --- | --- |
+| `nebius-readonly-https` | Explicit Nebius REST reads (catalog/platforms/quotas/inventory); no mutations |
 | `local` | Synthetic development processes and recovery; [contract](src/local/README.md) |
 | `vast-readonly-https` | Explicit read-only HTTPS transport; [contract](src/vast/README.md) |
 | `vast-scoped-destroy-https` | Exact-resource cleanup and independent absence lookup |
