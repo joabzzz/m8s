@@ -1,6 +1,6 @@
 # Refresh only the m8s control agent. Never builds mesh-llm, llama.cpp, or the UI.
 # RUNTIME_IMAGE must be an existing, reviewed full-node/model image digest.
-ARG RUNTIME_IMAGE
+ARG RUNTIME_IMAGE=ghcr.io/joabzzz/m8s-prototype@sha256:4eb8934be463aa207501fed5403e4efbc638fac51fd1060e0d7983ade55953c2
 FROM rust@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS agent-build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates cmake clang pkg-config libssl-dev python3 \
@@ -9,7 +9,7 @@ ENV CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2
 COPY artifacts.py /checks/artifacts.py
 COPY m8s-source.tar /inputs/m8s-source.tar
 ARG M8S_SOURCE_SHA256
-RUN --network=none python3 /checks/artifacts.py unpack-source \
+RUN --network=none mkdir -p /src && python3 /checks/artifacts.py unpack-source \
     /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
 ARG TARGETARCH
