@@ -4,6 +4,8 @@ mod log_page;
 mod mock_config;
 mod mock_shutdown;
 #[cfg(feature = "prototype-vast")]
+mod vast_daemon;
+#[cfg(feature = "prototype-vast")]
 mod vast_demo;
 use fs2::FileExt;
 use m8s_api::{Request, Response};
@@ -21,6 +23,7 @@ use std::{
 const HELP: &str = concat!(
     "m8sd <private-state-dir> [nonsecret-owner-label]\n",
     "m8sd --vast-demo --state-dir ABS --plan ABS --m8s ABS (prototype-vast; one bounded live attempt, no replacement)\n",
+    "m8sd --vast-daemon --state-dir ABS --owner LABEL --credential-file ABS [--cleanup-now] (prototype-vast; resumes an existing managed state for observation and cleanup only; no launch, no Ready)\n",
     "m8sd <private-state-dir> [nonsecret-owner-label] --config ABS --catalog ABS\n",
     "Legacy: no config flags, Store-valid tiers and existing cap16. Configured: paired flags once, whole inputs validated before state effects.\n",
     "Configured up selects max(1,min), within max; positive scale must be within min..max. Known-tier scale0 and emergency down remain allowed even min>0.\n",
@@ -159,6 +162,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|()| stdout.flush())
             .map_err(|_| "daemon-help-output-unavailable")?;
         return Ok(());
+    }
+    if args.first().is_some_and(|a| a == "--vast-daemon") {
+        #[cfg(feature = "prototype-vast")]
+        return vast_daemon::run(&args).map_err(Into::into);
+        #[cfg(not(feature = "prototype-vast"))]
+        return Err("Vast recovery daemon requires prototype-vast".into());
     }
     if args.first().is_some_and(|a| a == "--vast-demo") {
         #[cfg(feature = "prototype-vast")]
