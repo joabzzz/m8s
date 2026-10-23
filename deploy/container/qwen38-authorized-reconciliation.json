@@ -1,0 +1,52 @@
+{
+  "schema": "m8s.qwen38-authorized-liability-reconciliation/v1",
+  "observed_at_utc": "2026-10-23T22:05:26.637118+00:00",
+  "account_id": 32349,
+  "credit_micro_usd_floor": 16204104,
+  "complete_instance_count": 0,
+  "volume_count": 0,
+  "user_authorization": "Remove preserve-hold requirement; full access to available funds to finish the demo",
+  "status": "APPLIED_FOR_NEW_ACCOUNT_BUDGET_BASELINE",
+  "billing_finality": "unknown; conservative liabilities, not settled charges",
+  "historical_holds_retained_micro_usd": 13355168,
+  "attempts": [
+    {
+      "instance_id": 57423542,
+      "reserved_at": 1792788642,
+      "provider_confirmed_absent_at": 1792789011,
+      "elapsed_seconds_upper_bound": 369,
+      "original_reservation_micro_usd": 2328521,
+      "compute_micro_usd_per_hour": 1017778,
+      "storage_micro_usd_per_hour": 19048,
+      "transfer_micro_usd_per_gb": 3907,
+      "transfer_gb_upper_bound": 64,
+      "additional_contingency_micro_usd": 100000,
+      "proposed_closed_run_liability_micro_usd": 456324,
+      "original_journal_and_claim_retained": true,
+      "retained_closed_run_liability_micro_usd": 456324,
+      "cleanup_receipt_sha256": "eafcd3cfc20a5b8e406de5257b539fb73c67cf4cda80aa41a7cf0c5d143a1437",
+      "consumed_claim_sha256": "749c9a89955aa0a014e394e1c39709f28c85ec284c9301a683ae107f871f4757"
+    },
+    {
+      "instance_id": 57426719,
+      "reserved_at": 1792790771,
+      "provider_confirmed_absent_at": 1792790811,
+      "elapsed_seconds_upper_bound": 40,
+      "original_reservation_micro_usd": 529255,
+      "compute_micro_usd_per_hour": 1017778,
+      "storage_micro_usd_per_hour": 19048,
+      "transfer_micro_usd_per_gb": 3907,
+      "transfer_gb_upper_bound": 64,
+      "additional_contingency_micro_usd": 100000,
+      "proposed_closed_run_liability_micro_usd": 361569,
+      "original_journal_and_claim_retained": true,
+      "retained_closed_run_liability_micro_usd": 361569,
+      "cleanup_receipt_sha256": "3567f0afadff01f48914631e2b645a325e51c8d37914c29b02ac027fb7e0083b",
+      "consumed_claim_sha256": "749c9a89955aa0a014e394e1c39709f28c85ec284c9301a683ae107f871f4757"
+    }
+  ],
+  "retained_total_liability_micro_usd": 14173061,
+  "available_for_new_allowances_micro_usd": 2031043,
+  "original_stores_and_claims_unchanged": true,
+  "transfer_bound_basis": "One pinned 16464440224-byte non-sharded GGUF, two full download paths, <13GB unpacked image and >18GB metadata/framing headroom; retries/draft disabled in both images."
+}

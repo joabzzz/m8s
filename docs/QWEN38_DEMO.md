@@ -15,32 +15,27 @@ delivery/control, then failed before exact model discovery or inference.
 Both have independently confirmed provider absence and retained removal records;
 no paid resource remains. Issue #6 acceptance is **not met**.
 
-Original paid-attempt holds total 2,857,776 micro-USD, in addition to all older
-13,355,168 micro-USD holds. Provisional daily charge reports are not final bills
-and have not released those reservations. The
-[closed-run liability proposal](../deploy/container/qwen38-closed-liability-proposal.json)
-was explicitly declined: **keep full launch allowances held**. It is not an
-applied accounting change. Original journals and consumed
-claims remain intact. The earlier uninvoked reservation was separately cancelled
-with explicit user authorization and a terminal audit record.
+The original paid-attempt allowances total 2,857,776 micro-USD. The user later
+explicitly removed the requirement to keep those full allowances held and
+authorized available funds to finish. The [authorized reconciliation](../deploy/container/qwen38-authorized-reconciliation.json)
+retains 817,893 micro-USD of conservative closed-run exposure for those two
+provider-confirmed-absent attempts, plus all 13,355,168 micro-USD of older holds.
+Original journals, consumed claims and the earlier declined proposal remain as
+history; this is not final billing. The 22:05:26 UTC authenticated observation
+found 16,204,104 micro-USD credit, no instances/volumes, and 2,031,043 micro-USD
+available after these liabilities. The next allowance is capped at 1,900,000,
+including download, 1,500 seconds runtime, 240 seconds cleanup and 1,000,000
+contingency; launch must still requalify current account, inventory and prices.
 
-The [latest qualified image](../deploy/container/qwen38-loader-image-qualification.json)
+The [latest qualified image](../deploy/container/qwen38-diagnostics-image-qualification.json)
 contains the agent with fixed public NVIDIA probe/loader paths after clearing its
 environment. Driver mounts appear after build-time `ldconfig`; neither personal
 PATH nor arbitrary environment/credentials are inherited. Native stderr is
 classified only into fixed categories in memory; raw output is not logged.
-These changes are preparation for diagnosis, not live serving proof.
-
-Additional controller diagnostics now preserve a closed bootstrap error category
-in `m8s logs`. Node startup errors are emitted before invoking resource destruction:
-reporting only after cleanup can lose the cause when destruction closes SSH.
-These reporting changes do not extend the lease or delay teardown. They are
-source-tested; the loader image linked above predates this reporting update.
-
-A fresh authenticated account read at 2026-10-23 21:50:55 UTC still reports
-16,204,104 micro-USD credit, below the 16,212,944 retained full holds. Complete
-instance inventory is empty. There is no funded allowance for another rental
-while the user's full-hold decision remains in effect.
+Node startup errors are emitted before invoking destruction, because later
+reporting may lose SSH. The daemon retains closed bootstrap categories in
+`m8s logs`. These changes do not extend the lease or delay teardown, and remain
+offline qualification rather than successful GPU serving proof.
 
 ## Earlier admission failure: blocked before CREATE
 
