@@ -7,7 +7,7 @@ ENV CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2
 COPY artifacts.py /checks/artifacts.py
 COPY m8s-source.tar /inputs/m8s-source.tar
 ARG M8S_SOURCE_SHA256
-RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
+RUN --network=none mkdir -p /src && python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
 RUN cargo fetch --locked
 ARG TARGETARCH
