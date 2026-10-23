@@ -511,13 +511,16 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
         return Err(ERROR);
     }
     let store = Store::open(path, &args[3]).map_err(|_| "prototype-audit-unavailable")?;
-    let operations = store.create_operations().map_err(|_| ERROR)?;
+    let snapshot = store.vast_audit().map_err(|_| ERROR)?;
+    let operations = snapshot.operations;
     let records: Vec<_> = operations.iter().map(|r|serde_json::json!({"operation_id":r.intent.operation_id,"state":r.state,"invocation_started_at":r.invocation_started_at,"provider_result_recorded":r.result.is_some(),"uncertainty_observed":r.uncertainty_observed})).collect();
-    let removals = store.vast_removals().map_err(|_| ERROR)?;
-    let budgets: Vec<_> = store.budget_reservations().map_err(|_| ERROR)?.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
-    println!(
-        "{}",
-        serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"removals":removals,"provider_calls":false})
-    );
+    let removals = snapshot.removals;
+    let budgets: Vec<_> = snapshot.budgets.into_iter().map(|r|serde_json::json!({"request_id":r.request.request_id,"state":r.state,"reserved_micro_usd":r.reserved_all_in,"reserved_at":r.reserved_at})).collect();
+    let output = serde_json::to_vec(&serde_json::json!({"schema":"m8s.prototype-attempt-audit/v1","operations":records,"budgets":budgets,"removals":removals,"attempts":snapshot.attempts,"provider_calls":false,"scope":"stored-journal-snapshot"})).map_err(|_| ERROR)?;
+    // Refuse before writing any success bytes; no truncated audit can look empty.
+    if output.len() >= 1_048_576 {
+        return Err(ERROR);
+    }
+    println!("{}", std::str::from_utf8(&output).map_err(|_| ERROR)?);
     Ok(())
 }

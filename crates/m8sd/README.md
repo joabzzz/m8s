@@ -1023,3 +1023,19 @@ This is a recovery input boundary, not a running recovery worker. An authenticat
 creator-account transport and independently surviving cleanup still need to be
 composed for process restart. The capsule alone cannot destroy a resource or
 prove absence; removal still requires the opaque fresh observation receipt.
+
+### Bounded managed journal snapshot
+
+`Store::vast_audit` projects operations, budgets, atomic removal receipts and
+recovery-metadata availability in one DEFERRED transaction. Its per-attempt stage
+separates reservation, preparation, consumed claim, unresolved invocation,
+recorded binding and removal. Billing and cancellation are independent fields.
+A stored binding is not current resource presence; a missing binding is not
+absence. Missing older recovery metadata is reported explicitly; malformed
+present metadata refuses the whole snapshot.
+
+Each journal is capped at 128 owner rows and each JSON record at 64 KiB before
+Rust decoding; capsules remain capped at 4 KiB. Orphans, cross-linked budget
+records and a removal receipt with a retained node row refuse. Limits bound
+application collection size, not SQLite engine work. The query performs no
+mutation or provider calls and never consumes a claim or releases a hold.

@@ -39,6 +39,8 @@ pub struct VastExecutor {
     token: Arc<DriverOrigin>,
 }
 
+mod audit;
+pub use audit::{AttemptStage, RecoveryMetadata, VastAttemptStatus, VastAudit};
 mod recovery;
 pub use recovery::VastRecovery;
 mod removal;

@@ -132,7 +132,7 @@ fn account(tx: &Transaction<'_>, owner: &str, now: i64) -> Result<BudgetAccount>
     }
     Ok(a)
 }
-fn budget(tx: &Transaction<'_>, intent: &CreateIntent) -> Result<BudgetReservation> {
+fn budget(tx: &Connection, intent: &CreateIntent) -> Result<BudgetReservation> {
     let (uid, json): (String, String) = tx.query_row(
         "SELECT node_uid,record FROM budget_reservation WHERE owner=? AND request_id=?",
         params![intent.owner, intent.request_id],

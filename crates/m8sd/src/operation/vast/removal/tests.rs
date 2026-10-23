@@ -68,6 +68,9 @@ fn removal_is_atomic_keeps_claim_and_liability_and_survives_reopen() {
         record
     );
     assert_eq!(reopened.budget_reservations().unwrap(), vec![held]);
+    let status = reopened.vast_audit().unwrap().attempts.remove(0);
+    assert_eq!(status.stage, super::super::AttemptStage::RemovalRecorded);
+    assert_eq!(status.billing_state, BudgetState::BillingUnknown);
 }
 
 #[test]

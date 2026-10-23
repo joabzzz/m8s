@@ -882,8 +882,8 @@ billing remain separate evidence.
 
 The 2026-10-23 live attempt started the real image on Vast but did not reach
 bootstrap/inference because of missing UDP mapping and a dual-stack parser issue.
-The exact instance was destroyed and independently confirmed absent. Networking
-corrections are tested but await a separately authorized replacement attempt.
+The exact instance was destroyed and independently confirmed absent. That historical failure was resolved by the later successful attempt described
+below; it is retained as failure evidence, not a current bootstrap blocker.
 See `deploy/container/vast-networking-attempt-evidence.json`. Do not represent the
 published image, successful container startup, or source tests as inference proof.
 
@@ -896,3 +896,31 @@ resource destruction, and independent provider absence confirmation. See
 The served API model ID is `local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`;
 the filename remains the node's artifact-selection label. Heartbeats are capped
 at one second to stay inside the control stream's five-second idle timeout.
+
+### Consistent historical attempt audit
+
+`prototype audit` now reads one bounded SQLite snapshot, including `attempts`
+with these stages:
+
+| Stage | Stored evidence |
+| --- | --- |
+| `reservation_only` | Budget reserved; no managed operation recorded |
+| `prepared` | Durable intent exists; no claim consumed |
+| `cancelled_before_dispatch` | Cancelled before claim consumption |
+| `consumed_not_invoked` | Claim consumed; invocation entry not recorded |
+| `invocation_unresolved` | Invocation entry recorded; no resource binding |
+| `binding_recorded` | Exact resource binding recorded; no atomic removal receipt |
+| `removal_recorded` | Provider absence receipt and node finalization committed together |
+
+Cancellation and billing state remain separate fields. None of the stages is a
+current provider lookup, live Ready result, safe-retry permit or final invoice.
+`metadata.status=verified` reports fingerprint-checked public recovery inputs
+and original cleanup times; it does not claim a recovery worker is running.
+`missing_legacy` preserves older records without inventing new metadata.
+
+The query refuses malformed/cross-linked records and more than 128 rows per
+journal, rather than silently truncating. Each stored JSON record is limited to
+64 KiB before decoding. Output must fit 1 MiB including newline before any
+success bytes are emitted. These limits do not bound SQLite engine work.
+Opening the existing Store can perform normal schema migrations; no provider,
+credential supplier or account endpoint is used by this audit.

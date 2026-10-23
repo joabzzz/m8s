@@ -99,35 +99,43 @@ impl Store {
         label(operation_id)?;
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Deferred)?;
         owned(&tx, &self.owner)?;
-        let operation = get(&tx, &self.owner, operation_id)?.ok_or(Error::Invalid)?;
-        let (tier, canonical) = read(&tx, &self.owner, operation_id)?;
-        let request = LaunchRequest::from_canonical_intent(&canonical)?;
-        let mut executor =
-            VastExecutor::new(request, &self.owner, &operation.intent.node_uid, &tier)?;
-        if executor.fingerprint(&operation.intent)? != operation.intent.launch_fingerprint {
-            return Err(Error::Corrupt);
-        }
-        let current = budget(&tx, &operation.intent)?;
-        if current.request != operation.budget.request
-            || current.period != operation.budget.period
-            || current.reserved_at != operation.budget.reserved_at
-            || current.reserved_all_in != operation.budget.reserved_all_in
-            || current.reserved_hourly != operation.budget.reserved_hourly
-            || operation.result.as_ref() != current.binding.as_ref()
-        {
-            return Err(Error::Corrupt);
-        }
-        // Deliberately remove the reconstructed request before returning. Even
-        // internal accidental use of claim/execute fails the availability gate.
-        executor.request = None;
-        let recovered = VastRecovery {
-            executor,
-            operation,
-        };
-        recovered.cleanup_deadline()?;
+        let recovered = restore(&tx, &self.owner, operation_id)?;
         tx.commit()?;
         Ok(recovered)
     }
+}
+
+pub(super) fn restore(
+    conn: &rusqlite::Connection,
+    owner: &str,
+    operation_id: &str,
+) -> Result<VastRecovery> {
+    let operation = get(conn, owner, operation_id)?.ok_or(Error::Invalid)?;
+    let (tier, canonical) = read(conn, owner, operation_id)?;
+    let request = LaunchRequest::from_canonical_intent(&canonical)?;
+    let mut executor = VastExecutor::new(request, owner, &operation.intent.node_uid, &tier)?;
+    if executor.fingerprint(&operation.intent)? != operation.intent.launch_fingerprint {
+        return Err(Error::Corrupt);
+    }
+    let current = budget(conn, &operation.intent)?;
+    if current.request != operation.budget.request
+        || current.period != operation.budget.period
+        || current.reserved_at != operation.budget.reserved_at
+        || current.reserved_all_in != operation.budget.reserved_all_in
+        || current.reserved_hourly != operation.budget.reserved_hourly
+        || operation.result.as_ref() != current.binding.as_ref()
+    {
+        return Err(Error::Corrupt);
+    }
+    // Deliberately remove the reconstructed request before returning. Even
+    // internal accidental use of claim/execute fails the availability gate.
+    executor.request = None;
+    let recovered = VastRecovery {
+        executor,
+        operation,
+    };
+    recovered.cleanup_deadline()?;
+    Ok(recovered)
 }
 
 #[cfg(test)]
