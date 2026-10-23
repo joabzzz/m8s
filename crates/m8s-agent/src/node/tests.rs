@@ -47,6 +47,7 @@ impl Fixture {
             heartbeat_ttl_seconds: 10,
             port: 9337,
             console_port: 3131,
+            model_pin: None,
         }
     }
     fn root(&self) -> PathBuf {
@@ -380,6 +381,10 @@ fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags()
     let mut launch = f.launch();
     launch.gguf = None;
     launch.model = "org/repo@0123456789012345678901234567890123456789/model.gguf".into();
+    launch.model_pin = Some(model::ModelPin {
+        bytes: 1,
+        sha256: [0; 32],
+    });
     let mut received = bundle(b"");
     received.settings.model = launch.model.clone();
     let material =
@@ -439,4 +444,65 @@ fn native_selector_preserves_pinned_qwen_file_and_other_model_syntax() {
     ] {
         assert_eq!(native_model_ref(unchanged), unchanged);
     }
+}
+
+#[test]
+fn null_gguf_requires_pin_and_exact_pinned_ref() {
+    let good = "org/repo@0123456789012345678901234567890123456789/model.gguf";
+    let pin = model::ModelPin {
+        bytes: 1,
+        sha256: [0; 32],
+    };
+    for (model_ref, model_pin) in [
+        (good, None),
+        (
+            good,
+            Some(model::ModelPin {
+                bytes: 0,
+                sha256: [0; 32],
+            }),
+        ),
+        ("org/repo@main/model.gguf", Some(pin)),
+        ("synthetic-model", Some(pin)),
+    ] {
+        let f = Fixture::new();
+        let mut launch = f.launch();
+        launch.gguf = None;
+        launch.model = model_ref.into();
+        launch.model_pin = model_pin;
+        let mut received = bundle(b"");
+        received.settings.model = launch.model.clone();
+        let root = f.root();
+        assert!(matches!(
+            NodeMaterial::stage_with(&root, received, launch, &Checker::accept(), 20),
+            Err(Error::Policy)
+        ));
+        // Refused before any staging directory exists.
+        assert!(!root.exists());
+    }
+}
+
+#[test]
+fn null_gguf_child_gets_dictated_cache_and_watch_targets_snapshot() {
+    let f = Fixture::new();
+    let mut launch = f.launch();
+    launch.gguf = None;
+    launch.model = "org/repo@0123456789012345678901234567890123456789/model.gguf".into();
+    launch.model_pin = Some(model::ModelPin {
+        bytes: 1,
+        sha256: [0; 32],
+    });
+    let mut received = bundle(b"");
+    received.settings.model = launch.model.clone();
+    let root = f.root();
+    let material =
+        NodeMaterial::stage_with(&root, received, launch, &Checker::accept(), 20).unwrap();
+    let command = material.command().unwrap();
+    let env: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+    assert_eq!(
+        env[std::ffi::OsStr::new("HF_HUB_CACHE")],
+        Some(root.join("hf-cache").as_os_str())
+    );
+    let watch = material.model_watch().unwrap();
+    assert!(!watch.verified() && !watch.failed());
 }

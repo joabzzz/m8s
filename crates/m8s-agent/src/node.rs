@@ -4,6 +4,7 @@
 //! and retain control/DMS plus scoped destruction. No owner key is loaded here.
 pub mod container;
 pub(crate) mod diagnostics;
+pub mod model;
 mod preflight;
 mod process;
 #[cfg(feature = "secure-runtime")]
@@ -50,6 +51,8 @@ pub struct MeshLaunch {
     pub heartbeat_ttl_seconds: u64,
     pub port: u16,
     pub console_port: u16,
+    /// Required when `gguf` is None: the resolved file must match before serving.
+    pub model_pin: Option<model::ModelPin>,
 }
 #[derive(Clone, Copy)]
 enum Kind {
@@ -229,6 +232,9 @@ impl NodeMaterial {
             || std::str::from_utf8(&received.join_token).is_err()
             || received.certificate.0.is_empty()
             || received.certificate.0.len() > 128 * 1024
+            || (launch.gguf.is_none()
+                && (launch.model_pin.is_none_or(|p| p.bytes == 0)
+                    || model::parse_model_ref(&launch.model).is_none()))
             || received.settings.config.len() > 512 * 1024
             || std::str::from_utf8(&received.settings.config).is_err()
         {
@@ -342,6 +348,24 @@ impl NodeMaterial {
         }
         Ok(())
     }
+    fn cache_root(&self) -> PathBuf {
+        self.root.join("hf-cache")
+    }
+    /// Starts verification of the resolved model against its pin, if pinned.
+    pub(crate) fn model_watch(&self) -> Option<model::ModelWatch> {
+        let pin = self.launch.model_pin?;
+        Some(match &self.launch.gguf {
+            Some(path) => model::ModelWatch::spawn(path.clone(), None, pin),
+            None => {
+                let cache = self.cache_root();
+                model::ModelWatch::spawn(
+                    model::snapshot_path(&cache, &self.launch.model)?,
+                    Some(cache),
+                    pin,
+                )
+            }
+        })
+    }
     pub(crate) fn node(&self) -> EndpointId {
         self.launch.node
     }
@@ -418,6 +442,9 @@ impl NodeMaterial {
         if self.launch.gguf.is_none() {
             command
                 .args(["--ctx-size", "4096", "--parallel", "1", "--no-draft"])
+                // Node-dictated cache so the resolved file can be verified and,
+                // on mismatch, removed.
+                .env("HF_HUB_CACHE", self.cache_root())
                 // Fixed public transfer policy for the pinned native Hub/Xet
                 // clients: one attempt, no retry amplification of model bytes.
                 .env("MESH_HF_RETRY_MAX_ATTEMPTS", "0")

@@ -183,6 +183,8 @@ pub struct Supervisor<D: TeardownDriver> {
     process: Box<dyn ProcessOps>,
     #[cfg(all(unix, feature = "sealed-node"))]
     _node_material: Option<crate::node::NodeMaterial>,
+    #[cfg(all(unix, feature = "sealed-node"))]
+    model_watch: Option<crate::node::model::ModelWatch>,
     group_signalled: bool,
     stopping: bool,
     reaped: bool,
@@ -248,6 +250,8 @@ impl<D: TeardownDriver> Supervisor<D> {
             process: Box::new(LocalProcess { child }),
             #[cfg(all(unix, feature = "sealed-node"))]
             _node_material: None,
+            #[cfg(all(unix, feature = "sealed-node"))]
+            model_watch: None,
             group_signalled: false,
             stopping: false,
             reaped: false,
@@ -289,6 +293,7 @@ impl<D: TeardownDriver> Supervisor<D> {
         let node = material.node();
         let mut supervisor = Self::spawn_command(command, dms, driver, retry)?;
         supervisor.control_binding = crate::control::ControlBinding::pinned(node);
+        supervisor.model_watch = material.model_watch();
         supervisor._node_material = Some(material);
         Ok(supervisor)
     }
@@ -329,6 +334,11 @@ impl<D: TeardownDriver> Supervisor<D> {
     pub fn shutdown(&mut self) {
         self.dms.trigger();
         self.stopping = true;
+    }
+    /// True only after the resolved model matched its pinned size and digest.
+    #[cfg(all(unix, feature = "sealed-node"))]
+    pub fn model_verified(&self) -> bool {
+        self.model_watch.as_ref().is_some_and(|w| w.verified())
     }
     pub fn child_id(&self) -> u32 {
         self.process.id()
@@ -401,6 +411,13 @@ impl<D: TeardownDriver> Supervisor<D> {
     /// retry loop. Call local_termination_state for that separate evidence.
     pub fn tick(&mut self, now: Timestamp) -> io::Result<TeardownState> {
         let _ = self.inspect_natural_exit();
+        // Fail closed: a mismatched or truncated model stops the child and
+        // drives the normal destructive teardown.
+        #[cfg(all(unix, feature = "sealed-node"))]
+        if self.model_watch.as_ref().is_some_and(|w| w.failed()) {
+            eprintln!("m8s native diagnostic: model-digest-mismatch");
+            self.shutdown();
+        }
         let effects = self.dms.tick(now);
         if !effects.is_empty() {
             self.stopping = true;
@@ -522,6 +539,8 @@ mod nonblocking_tests {
             process: Box::new(SyntheticProcess(ops)),
             #[cfg(all(unix, feature = "sealed-node"))]
             _node_material: None,
+            #[cfg(all(unix, feature = "sealed-node"))]
+            model_watch: None,
             group_signalled: false,
             stopping: false,
             reaped: false,
@@ -614,6 +633,40 @@ mod nonblocking_tests {
             drop(supervisor);
             assert!(ops.lock().unwrap().calls.len() - before <= 3);
         }
+    }
+    #[cfg(all(unix, feature = "sealed-node"))]
+    #[test]
+    fn model_digest_mismatch_stops_child_and_drives_teardown() {
+        use crate::node::model::{ModelPin, ModelWatch};
+        let dir =
+            std::path::Path::new("/tmp").join(format!("m8s-sup-model-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("m.gguf");
+        std::fs::write(&file, b"truncated").unwrap();
+        let pin = ModelPin {
+            bytes: 1 << 20,
+            sha256: [0; 32],
+        };
+        let ops = Arc::new(Mutex::new(Operations::default()));
+        let (mut supervisor, calls) = synthetic(ops.clone(), false);
+        supervisor.model_watch = Some(ModelWatch::spawn_polling(
+            file,
+            None,
+            pin,
+            std::time::Duration::from_millis(5),
+        ));
+        for _ in 0..200 {
+            if supervisor.model_watch.as_ref().unwrap().failed() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!supervisor.model_verified());
+        assert_eq!(supervisor.tick(0).unwrap(), TeardownState::Pending);
+        assert!(supervisor.stopping);
+        assert_eq!(destroys(&calls), 1);
+        assert!(ops.lock().unwrap().killed);
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn only_reap_after_exit_and_never_signal_reusable_pid_after_reap() {
