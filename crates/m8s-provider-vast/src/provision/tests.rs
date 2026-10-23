@@ -112,3 +112,20 @@ fn ssh_command_is_fixed_pinned_noninteractive_and_has_no_secret_arguments() {
         .collect();
     assert_eq!(environment, ["HOME", "PATH"]);
 }
+
+#[test]
+fn flint_provisioning_requires_the_exact_model_path_pair() {
+    let mut value = config();
+    value["model"] = json!("flint-nvfp4");
+    assert!(packet(&value).is_err());
+    value["gguf"] = json!("/models/flint-nvfp4.gguf");
+    assert!(packet(&value).is_ok());
+    for path in [
+        "/tmp/flint-nvfp4.gguf",
+        "/models/../flint-nvfp4.gguf",
+        "/models/other.gguf",
+    ] {
+        value["gguf"] = json!(path);
+        assert!(packet(&value).is_err());
+    }
+}

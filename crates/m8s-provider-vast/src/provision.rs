@@ -64,8 +64,13 @@ impl ProvisionPacket {
             || config["schema"] != "m8s.vast-node/v1"
             || config["container_id"] != instance.to_string()
             || config["program"] != "/opt/mesh/mesh-llm"
-            || config["gguf"] != "/models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
-            || config["model"] != "qwen2.5-0.5b-instruct-q4_k_m"
+            || !matches!(
+                (config["model"].as_str(), config["gguf"].as_str()),
+                (
+                    Some("qwen2.5-0.5b-instruct-q4_k_m"),
+                    Some("/models/qwen2.5-0.5b-instruct-q4_k_m.gguf")
+                ) | (Some("flint-nvfp4"), Some("/models/flint-nvfp4.gguf"))
+            )
             || config["material_root"] != "/var/lib/m8s/material"
             || nonce.expose().len() != 32
             || node_key.expose().len() != 32

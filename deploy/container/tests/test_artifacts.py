@@ -47,6 +47,18 @@ class Artifacts(unittest.TestCase):
         with self.assertRaises(A.Refusal):
             A.model_contract(self.contract)
 
+    def test_flint_size_contract_and_upper_boundary(self):
+        self.metadata['bytes'] = 22863084160
+        self.save()
+        self.assertEqual(A.model_contract(self.contract)['bytes'], 22863084160)
+        self.metadata['bytes'] = 64 * 1024**3
+        self.save()
+        self.assertEqual(A.model_contract(self.contract)['bytes'], A.MAX_MODEL)
+        self.metadata['bytes'] += 1
+        self.save()
+        with self.assertRaises(A.Refusal):
+            A.model_contract(self.contract)
+
     def test_links_and_permissions(self):
         link = self.root / 'link'
         link.symlink_to(self.model)

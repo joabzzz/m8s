@@ -148,8 +148,8 @@ def packet(stream):
             and config.get('schema') == 'm8s.vast-node/v1')
     # The full schema is additionally checked by the Rust node before bootstrap.
     require(config.get('program') == '/opt/mesh/mesh-llm')
-    require(config.get('gguf') == '/models/' + MODEL + '.gguf')
-    require(config.get('model') == MODEL)
+    require(config.get('model') in (MODEL, 'flint-nvfp4'))
+    require(config.get('gguf') == '/models/' + config['model'] + '.gguf')
     require(config.get('material_root') == str(ROOT / 'material'))
     nonce = exact(stream, 32)
     node_key = exact(stream, 64)

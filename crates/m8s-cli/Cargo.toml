@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 prototype-container = ["dep:m8s-agent", "m8s-agent/sealed-node"]
-prototype-vast = ["dep:iroh", "dep:tokio", "dep:mesh-llm-identity", "dep:zeroize", "dep:getrandom", "dep:hex", "dep:m8s-bootstrap", "dep:m8sd", "m8sd/prototype-vast", "dep:m8s-provider-vast", "m8s-provider-vast/watchdog", "m8s-provider-vast/launch-https"]
+prototype-vast = ["dep:reqwest","dep:iroh", "dep:tokio", "dep:mesh-llm-identity", "dep:zeroize", "dep:getrandom", "dep:hex", "dep:m8s-bootstrap", "dep:m8sd", "m8sd/prototype-vast", "dep:m8s-provider-vast", "m8s-provider-vast/watchdog", "m8s-provider-vast/launch-https"]
 local-development = ["dep:m8sd", "m8sd/local-development"]
 
 [dependencies]
@@ -73,3 +73,9 @@ required-features = ["prototype-vast"]
 [[bin]]
 name = "m8s-top"
 path = "src/bin/m8s-top.rs"
+
+[dependencies.reqwest]
+version = "=0.13.5"
+default-features = false
+features = ["blocking", "json"]
+optional = true

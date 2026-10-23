@@ -868,6 +868,39 @@ begins destruction four minutes before the original reserved cleanup deadline.
 A successful local check or published image alone is not paid demo proof; use the
 final `demo-evidence.json` receipt.
 
+#### Flint GPU experiment
+
+Set `"model": "flint"` in a new plan and select the prepared Flint CUDA image by
+digest. Omitting `model` preserves the Qwen demo. Read-only GPU qualification is:
+
+```sh
+m8s prototype vast-preflight --credential-file /absolute/selected.env --account ACCOUNT_ID --disk-gb 80 --model flint
+```
+
+The Flint profile requires one US Blackwell RTX PRO 5000/6000 GPU with at least
+48,000 MiB VRAM, 64,000 MiB host RAM, CUDA driver support for 12.8 or newer, and
+1,000 Mbps advertised download speed. Capacity and price are rechecked locally.
+Disk allocation is bounded at 128 GB and compute at $3/hour. Ambiguous storage
+rates retain the conservative hourly interpretation and transfer reserves cover
+the allocated disk size. The additional allowance above retained historical
+claims is limited to $16 and must fit the freshly observed account credit.
+The combined work and cleanup window remains at most 30 minutes.
+
+The verified NVFP4 GGUF is 22,863,084,160 bytes. Its public contract is
+[`flint-model-artifact.json`](../../deploy/container/flint-model-artifact.json).
+The owner sends one first-after-discovery request, then three repetitions each
+of arithmetic, JSON formatting and a code-generation prompt. Each completed
+sample is saved before the next request, so later failure preserves partial
+evidence. Final acceptance still requires provider-confirmed removal.
+
+Streaming measurements distinguish first SSE event, first nonempty text
+(reasoning included), and first answer text. Throughput uses server-reported
+completion tokens; missing usage produces no token rate. The decode-window rate
+is an estimate because events can batch tokens. Repeated requests may reuse the
+prompt cache. Arithmetic/JSON exact-match checks are smoke tests; generated code
+is retained without execution. These results do not establish general model
+quality or multi-GPU performance.
+
 ### Inspect an existing attempt without provider calls
 
 ```sh

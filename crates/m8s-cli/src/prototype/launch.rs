@@ -32,14 +32,48 @@ use std::{
 use zeroize::Zeroizing;
 type Result<T> = std::result::Result<T, &'static str>;
 const ERROR: &str = "prototype-launch-refused";
-const MODEL: &str = "qwen2.5-0.5b-instruct-q4_k_m";
-// Native mesh identifies a local GGUF by its bytes, not its filename alias.
-const SERVED_MODEL: &str =
-    "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db";
+#[derive(Clone, Copy, Default, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum DemoModel {
+    #[default]
+    Qwen,
+    Flint,
+}
+impl DemoModel {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Qwen => "qwen2.5-0.5b-instruct-q4_k_m",
+            Self::Flint => "flint-nvfp4",
+        }
+    }
+    fn served(self) -> &'static str {
+        match self {
+            Self::Qwen => {
+                "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+            }
+            Self::Flint => {
+                "local-gguf/sha256-97cc8009ff9b132d5cf3c488e6767962bb5a5dc158a90ed661bbbddf876b8bde"
+            }
+        }
+    }
+    fn requirements(self) -> m8s_provider_vast::readonly::preflight::Requirements {
+        match self {
+            Self::Qwen => Default::default(),
+            Self::Flint => m8s_provider_vast::readonly::preflight::Requirements {
+                max_compute_hourly: 3_000_000,
+                min_gpu_memory_mib: 48000,
+                min_download_mbps: 1000,
+                blackwell_sm120: true,
+            },
+        }
+    }
+}
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Plan {
     schema: String,
+    #[serde(default)]
+    model: DemoModel,
     directory: PathBuf,
     mesh: PathBuf,
     credential_file: PathBuf,
@@ -63,7 +97,11 @@ fn load(path: &Path) -> Result<Plan> {
         || p.owner != p.policy.owner
         || p.owner != p.request.owner
         || p.node_uid != p.request.node_uid
-        || p.policy.trial_all_in > 6_000_000
+        || attempt_allowance(
+            p.policy.trial_all_in,
+            p.policy.baseline.prior_lifetime_spent,
+        )
+        .is_err()
         || p.policy.max_instances != 1
         || p.request
             .quote
@@ -76,6 +114,14 @@ fn load(path: &Path) -> Result<Plan> {
         return Err(ERROR);
     }
     Ok(p)
+}
+// Retained historical reservations remain charged against the cumulative cap.
+// Only the additional allowance is compared with today's spendable credits.
+fn attempt_allowance(cumulative: u64, retained: u64) -> Result<u64> {
+    cumulative
+        .checked_sub(retained)
+        .filter(|n| (1..=16_000_000).contains(n))
+        .ok_or(ERROR)
 }
 // Explicitly selected dotenv file only. No environment search or shell evaluation.
 fn credential(path: &Path) -> Result<SecretValue> {
@@ -230,13 +276,25 @@ fn run_with_client(
     })
     .map_err(|_| ERROR)?;
     let fresh = preflight
-        .observe(p.expected_account_id, p.offer_id, p.disk_gb)
+        .observe_sized(
+            p.expected_account_id,
+            p.offer_id,
+            p.disk_gb,
+            p.model.requirements(),
+        )
         .map_err(|_| {
             eprintln!("preflight stage: {}", preflight.last_stage());
             preflight
                 .transport_failure()
                 .unwrap_or(preflight.last_stage())
         })?;
+    if attempt_allowance(
+        p.policy.trial_all_in,
+        p.policy.baseline.prior_lifetime_spent,
+    )? > fresh.available_credit_micro_usd
+    {
+        return Err("prototype-credit-below-attempt-cap");
+    }
     // Only a fresh full empty inventory can refresh baseline currentness. Never
     // reset cumulative spent/reserved fields or silently extend approval dates.
     if p.policy.baseline.external_liability != ExternalLiability::NoneConfirmed {
@@ -257,9 +315,9 @@ fn run_with_client(
     p.request.quote.storage_hourly = fresh.storage_micro_usd_per_hour;
     p.request.quote.transfer_total = fresh
         .transfer_micro_usd_per_gb
-        .checked_mul(10)
+        .checked_mul(u64::from(p.disk_gb))
         .ok_or(ERROR)?;
-    p.request.quote.provenance = "vast-on-demand-price-observed-10gb-transfer-reserve".into();
+    p.request.quote.provenance = "vast-on-demand-price-observed-disk-sized-transfer-reserve".into();
     private_file(
         &p.directory.join("preflight-evidence.json"),
         &serde_json::to_vec_pretty(&fresh).map_err(|_| ERROR)?,
@@ -365,7 +423,7 @@ fn run_with_client(
         .map_err(|_| "prototype-removal-finalization-refused")?;
     let completion = work?;
     Ok(
-        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":SERVED_MODEL,"artifact_name":MODEL,"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
+        serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":p.model.served(),"artifact_name":p.model.label(),"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
     )
 }
 #[allow(clippy::too_many_arguments)]
@@ -421,7 +479,7 @@ async fn bootstrap(
             utc()?,
         )
         .map_err(|_| ERROR)?;
-    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf","material_root":"/var/lib/m8s/material","model":MODEL,"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
+    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":format!("/models/{}.gguf",p.model.label()),"material_root":"/var/lib/m8s/material","model":p.model.label(),"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
     let packet = ProvisionPacket::new(
         &config,
         SecretValue::new(nonce.to_vec()),
@@ -457,7 +515,7 @@ async fn bootstrap(
             cert_expires_at: expires,
             join_token: invite,
             settings: BundleSettings {
-                model: MODEL.into(),
+                model: p.model.label().into(),
                 config: Zeroizing::new(Vec::new()),
                 heartbeat_ttl_seconds: 30,
             },
@@ -465,6 +523,8 @@ async fn bootstrap(
         bootstrap_timeout: Duration::from_secs(60),
     };
     let port = client.port;
+    let model = p.model;
+    let directory = p.directory.clone();
     let remaining = expires
         .checked_sub(utc()?)
         .filter(|v| *v > 0)
@@ -473,11 +533,15 @@ async fn bootstrap(
     let result = store.with_bootstrapped_node(&endpoint,plan,&mut signer,&verifier,|_| async move {
         eprintln!("prototype stage: certificate-delivered-control-established");
         tokio::task::spawn_blocking(move || {
-            super::model_wait::wait(port,SERVED_MODEL,(Instant::now()+Duration::from_secs(120)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            super::model_wait::wait(port,model.served(),(Instant::now()+Duration::from_secs(300)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-model-observed");
-            let body = serde_json::to_vec(&serde_json::json!({"model":SERVED_MODEL,"messages":[{"role":"user","content":"Reply with a short sentence explaining what a mesh network is."}],"stream":false,"max_tokens":48})).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            if matches!(model, DemoModel::Flint) {
+                return super::benchmark::run(port, model.served(), work_deadline, &directory)
+                    .map_err(|_| m8s_bootstrap::Error::Unavailable);
+            }
+            let body = serde_json::to_vec(&serde_json::json!({"model":model.served(),"messages":[{"role":"user","content":"Reply with a short sentence explaining what a mesh network is."}],"stream":false,"max_tokens":48})).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let bytes = super::http::exchange(port,&body,(Instant::now()+Duration::from_secs(60)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
-            let value = super::project(&bytes,SERVED_MODEL).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            let value = super::project(&bytes,model.served()).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-inference-completed");
             Ok(serde_json::json!({"content":value["content"],"finish_reason":value["finish_reason"]}))
         }).await.map_err(|_| m8s_bootstrap::Error::Unavailable)?
@@ -488,13 +552,21 @@ async fn bootstrap(
 }
 
 pub(super) fn preflight(args: &[String]) -> Result<()> {
-    if args.len() != 6
+    if !matches!(args.len(), 6 | 8)
         || args[0] != "--credential-file"
         || args[2] != "--account"
         || args[4] != "--disk-gb"
     {
         return Err("invalid-preflight-arguments");
     }
+    let model = if args.len() == 8 {
+        if args[6] != "--model" || args[7] != "flint" {
+            return Err("invalid-preflight-arguments");
+        }
+        DemoModel::Flint
+    } else {
+        DemoModel::Qwen
+    };
     let key = credential(Path::new(&args[1]))?;
     let account = args[3].parse().map_err(|_| ERROR)?;
     let disk = args[5].parse().map_err(|_| ERROR)?;
@@ -502,10 +574,12 @@ pub(super) fn preflight(args: &[String]) -> Result<()> {
         Ok(SecretValue::new(key.expose().to_vec()))
     })
     .map_err(|_| "vast-client-initialization")?;
-    let proof = client.observe(account, None, disk).map_err(|_| {
-        eprintln!("preflight stage: {}", client.last_stage());
-        client.transport_failure().unwrap_or(client.last_stage())
-    })?;
+    let proof = client
+        .observe_sized(account, None, disk, model.requirements())
+        .map_err(|_| {
+            eprintln!("preflight stage: {}", client.last_stage());
+            client.transport_failure().unwrap_or(client.last_stage())
+        })?;
     println!("{}", serde_json::to_string(&proof).map_err(|_| ERROR)?);
     Ok(())
 }
@@ -531,4 +605,17 @@ pub(super) fn audit(args: &[String]) -> Result<()> {
     }
     println!("{}", std::str::from_utf8(&output).map_err(|_| ERROR)?);
     Ok(())
+}
+
+#[cfg(test)]
+mod allowance_tests {
+    use super::attempt_allowance;
+    #[test]
+    fn retained_claims_do_not_become_new_spendable_credit() {
+        assert_eq!(attempt_allowance(29_355_168, 13_355_168), Ok(16_000_000));
+        assert!(attempt_allowance(29_355_169, 13_355_168).is_err());
+        assert!(attempt_allowance(13_355_168, 13_355_168).is_err());
+        assert!(attempt_allowance(1, 2).is_err());
+        assert!(attempt_allowance(u64::MAX, 0).is_err());
+    }
 }

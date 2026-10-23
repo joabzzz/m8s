@@ -13,6 +13,24 @@ pub struct DemoPreflight {
     pub transfer_micro_usd_per_gb: u64,
     pub available_credit_micro_usd: u64,
 }
+/// Explicit experiment sizing. Prices still enter the durable budget admission.
+#[derive(Clone, Copy)]
+pub struct Requirements {
+    pub max_compute_hourly: u64,
+    pub min_gpu_memory_mib: u64,
+    pub min_download_mbps: u64,
+    pub blackwell_sm120: bool,
+}
+impl Default for Requirements {
+    fn default() -> Self {
+        Self {
+            max_compute_hourly: 300_000,
+            min_gpu_memory_mib: 0,
+            min_download_mbps: 0,
+            blackwell_sm120: false,
+        }
+    }
+}
 pub struct PreflightHttps<S> {
     transport: ReadonlyHttps<S>,
     stage: &'static str,
@@ -55,7 +73,28 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         selected_offer: Option<NonZeroU64>,
         disk_gb: u32,
     ) -> Result<DemoPreflight> {
-        if expected_account == 0 || !(1..=20).contains(&disk_gb) {
+        self.observe_sized(
+            expected_account,
+            selected_offer,
+            disk_gb,
+            Requirements::default(),
+        )
+    }
+    pub fn observe_sized(
+        &mut self,
+        expected_account: u64,
+        selected_offer: Option<NonZeroU64>,
+        disk_gb: u32,
+        requirements: Requirements,
+    ) -> Result<DemoPreflight> {
+        self.stage = "vast-sizing-validation";
+        if expected_account == 0
+            || !(1..=128).contains(&disk_gb)
+            || requirements.max_compute_hourly == 0
+            || requirements.max_compute_hourly > 3_000_000
+            || requirements.min_gpu_memory_mib > 192 * 1024
+            || requirements.min_download_mbps > 100_000
+        {
             return Err(Error::Invalid);
         }
         self.stage = "vast-account-read";
@@ -98,7 +137,18 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
         {
             return Err(Error::Unavailable);
         }
-        let query = json!({"limit":offer_read_limit(selected_offer),"type":"on-demand","verified":{"eq":true},"rentable":{"eq":true},"rented":{"eq":false},"cpu_cores_effective":{"gte":4},"cpu_ram":{"gte":8192},"disk_space":{"gte":disk_gb},"direct_port_count":{"gte":2},"dph_total":{"lte":0.30},"order":[["dph_total","asc"]]});
+        let mut query = json!({"limit":offer_read_limit(selected_offer),"type":"on-demand","verified":{"eq":true},"rentable":{"eq":true},"rented":{"eq":false},"cpu_cores_effective":{"gte":4},"cpu_ram":{"gte":8192},"disk_space":{"gte":disk_gb},"direct_port_count":{"gte":2},"dph_total":{"lte": requirements.max_compute_hourly as f64 / 1_000_000.0},"order":[["dph_total","asc"]]});
+        if requirements.min_gpu_memory_mib > 0 {
+            query["gpu_ram"] = json!({"gte": requirements.min_gpu_memory_mib});
+            query["num_gpus"] = json!({"eq": 1});
+            query["cpu_ram"] = json!({"gte": 64000});
+            query["inet_down"] = json!({"gte": requirements.min_download_mbps});
+            query["geolocation"] = json!({"notin": ["CN", "CU", "IR", "KP", "SY", "RU", "BY"]});
+        }
+        if requirements.blackwell_sm120 {
+            query["gpu_name"] = json!({"in": ["RTX PRO 5000", "RTX PRO 6000", "RTX PRO 6000 WS", "RTX PRO 6000 S"]});
+            query["cuda_max_good"] = json!({"gte": 12.8});
+        }
         // The API's `id` search filter does not address the returned bundle ID:
         // live observation returned no rows for an ID present in the same host
         // search. Keep a bounded catalog read and match the exact bundle locally.
@@ -113,7 +163,7 @@ impl<S: FnMut() -> Result<SecretValue>> PreflightHttps<S> {
             .ok_or(Error::Unavailable)?;
         let mut candidates = Vec::new();
         for row in rows {
-            if let Ok(candidate) = qualify(row, disk_gb) {
+            if let Ok(candidate) = qualify(row, disk_gb, requirements) {
                 candidates.push(candidate);
             }
         }
@@ -216,7 +266,11 @@ fn micros(v: &Value) -> Result<u64> {
         .and_then(|n| n.checked_add(extra))
         .ok_or(Error::Unavailable)
 }
-fn qualify(row: &Value, disk: u32) -> Result<(NonZeroU64, u64, u64, u64)> {
+fn qualify(
+    row: &Value,
+    disk: u32,
+    requirements: Requirements,
+) -> Result<(NonZeroU64, u64, u64, u64)> {
     let get = |key| row.get(key).ok_or(Error::Unavailable);
     let id = get("id")?
         .as_u64()
@@ -231,12 +285,42 @@ fn qualify(row: &Value, disk: u32) -> Result<(NonZeroU64, u64, u64, u64)> {
         .ok_or(Error::Unavailable)?;
     let transfer = micros(get("inet_up_cost")?)?.max(micros(get("inet_down_cost")?)?);
     if compute == 0
-        || compute > 300_000
-        || storage > 2_000_000
+        || compute > requirements.max_compute_hourly
+        || storage > 32_000_000
         || transfer > 100_000
         || get("rentable")?.as_bool() != Some(true)
         || get("rented")?.as_bool() != Some(false)
         || row.get("verification").and_then(Value::as_str) != Some("verified")
+    {
+        return Err(Error::Unavailable);
+    }
+    if requirements.min_gpu_memory_mib > 0 {
+        if number(row, "gpu_ram", 1, false)? < requirements.min_gpu_memory_mib
+            || number(row, "num_gpus", 1, false)? != 1
+            || number(row, "cpu_ram", 1, false)? < 64000
+            || number(row, "inet_down", 1, false)? < requirements.min_download_mbps
+        {
+            return Err(Error::Unavailable);
+        }
+        let country = row
+            .get("geolocation")
+            .and_then(Value::as_str)
+            .and_then(|s| s.rsplit(',').next())
+            .map(str::trim)
+            .ok_or(Error::Unavailable)?;
+        // This first GPU experiment is explicitly scoped to a US host.
+        if country != "US" {
+            return Err(Error::Unavailable);
+        }
+    }
+    if requirements.blackwell_sm120
+        && (!matches!(
+            row.get("gpu_name").and_then(Value::as_str),
+            Some("RTX PRO 5000" | "RTX PRO 6000" | "RTX PRO 6000 WS" | "RTX PRO 6000 S")
+        ) || !row
+            .get("cuda_max_good")
+            .and_then(Value::as_f64)
+            .is_some_and(|n| n >= 12.8))
     {
         return Err(Error::Unavailable);
     }
@@ -292,6 +376,38 @@ mod tests {
         }
     }
 
+    #[test]
+    fn gpu_offer_is_rechecked_locally_and_storage_reservation_stays_conservative() {
+        let requirements = Requirements {
+            max_compute_hourly: 3_000_000,
+            min_gpu_memory_mib: 48000,
+            min_download_mbps: 1000,
+            blackwell_sm120: true,
+        };
+        let row = json!({"id":42,"dph_total":"0.74","storage_cost":"0.2",
+            "inet_up_cost":"0.004","inet_down_cost":"0.003", "rentable":true,
+            "rented":false,"verification":"verified","gpu_ram":48935,"num_gpus":1,
+            "cpu_ram":64000,"inet_down":2000,"geolocation":"Virginia, US",
+            "gpu_name":"RTX PRO 5000","cuda_max_good":13.0});
+        let (_, compute, storage, transfer) = qualify(&row, 80, requirements).unwrap();
+        assert_eq!((compute, storage, transfer), (740000, 16000000, 4000));
+        assert!(qualify(&row, 80, Requirements::default()).is_err());
+        for (key, value) in [
+            ("gpu_ram", json!(47000)),
+            ("gpu_name", json!("RTX 6000Ada")),
+            ("cuda_max_good", json!(12.7)),
+            ("num_gpus", json!(2)),
+            ("cpu_ram", json!(32000)),
+            ("inet_down", json!(999)),
+            ("geolocation", json!("China, CN")),
+            ("dph_total", json!("3.000001")),
+            ("rented", json!(true)),
+        ] {
+            let mut invalid = row.clone();
+            invalid[key] = value;
+            assert!(qualify(&invalid, 80, requirements).is_err(), "{key}");
+        }
+    }
     #[test]
     fn selected_offer_catalog_read_remains_bounded() {
         assert_eq!(offer_read_limit(None), 20);
