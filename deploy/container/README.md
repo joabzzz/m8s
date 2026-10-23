@@ -1,5 +1,8 @@
 # Full-node prototype image
 
+See [RELEASE.md](RELEASE.md) for the reproducible release pipeline (layer keys,
+checksums, provenance, digest diffing, context audit).
+
 ## Flint runtime-only image
 
 `Dockerfile.flint` packages the CUDA runtime and m8s agent without model weights.
