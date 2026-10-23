@@ -1,5 +1,10 @@
 # m8s CLI
 
+The prototype request supports `--wait-model-ms N`, where `0 < N < --timeout-ms`.
+It polls loopback `/v1/models` for the exact selected model before sending the
+single inference request. Both phases share the total timeout. Discovery does
+not assert identity, owner routing, or Ready; the inference POST is never retried.
+
 Mock-control commands retain their existing `--socket PATH` grammar. Secret
 commands are local-only and do not contact the daemon or any provider:
 

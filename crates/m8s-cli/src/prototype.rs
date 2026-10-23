@@ -1,12 +1,13 @@
 //! Real HTTP request leg for explicitly local qualification, NOT mesh admission.
 use std::{io::Write, path::PathBuf};
-const HELP: &str = "m8s prototype request --local-qualification --endpoint http://127.0.0.1:PORT --model ID --prompt-file ABS --max-tokens 1..128 --timeout-ms 1..60000 [--json]\nOne non-streaming /v1/chat/completions request, no retries/download/launch. Explicit bounded UTF-8 prompt file<=8192 bytes; model ASCII<=128. Loopback HTTP only, no DNS/proxy/redirect/auth header. Does NOT implement or downgrade bootstrap/control TLS. A completion is not verified identity, Ready, owner routing or paid qualification. Timeout is outcome-unknown; computation may continue at server.\n";
+const HELP: &str = "m8s prototype request --local-qualification --endpoint http://127.0.0.1:PORT --model ID --prompt-file ABS --max-tokens 1..128 --timeout-ms 1..60000 [--wait-model-ms 1..TIMEOUT-1] [--json]\nOptional wait polls /v1/models for the exact model within the total request deadline. This is model discovery, not Ready.\nOne non-streaming /v1/chat/completions request, no retries/download/launch. Explicit bounded UTF-8 prompt file<=8192 bytes; model ASCII<=128. Loopback HTTP only, no DNS/proxy/redirect/auth header. Does NOT implement or downgrade bootstrap/control TLS. A completion is not verified identity, Ready, owner routing or paid qualification. Timeout is outcome-unknown; computation may continue at server.\n";
 struct Options {
     port: u16,
     model: String,
     prompt: PathBuf,
     max_tokens: u32,
     timeout_ms: u64,
+    wait_model_ms: u64,
     json: bool,
 }
 fn decimal(s: &str) -> Option<u64> {
@@ -24,18 +25,21 @@ impl Options {
         let (mut endpoint, mut model, mut prompt, mut max_tokens, mut timeout_ms) =
             (None, None, None, None, None);
         let (mut local, mut json) = (false, false);
+        let mut wait_model_ms = None;
         let mut rest = &args[1..];
         while let Some((arg, tail)) = rest.split_first() {
             rest = tail;
             match arg.as_str() {
                 "--local-qualification" if !local => local = true,
                 "--json" if !json => json = true,
-                "--endpoint" | "--model" | "--prompt-file" | "--max-tokens" | "--timeout-ms" => {
+                "--endpoint" | "--model" | "--prompt-file" | "--max-tokens" | "--timeout-ms"
+                | "--wait-model-ms" => {
                     let slot = match arg.as_str() {
                         "--endpoint" => &mut endpoint,
                         "--model" => &mut model,
                         "--prompt-file" => &mut prompt,
                         "--max-tokens" => &mut max_tokens,
+                        "--wait-model-ms" => &mut wait_model_ms,
                         _ => &mut timeout_ms,
                     };
                     if slot.is_some() {
@@ -71,6 +75,16 @@ impl Options {
         if !prompt.is_absolute() || raw.len() > 4096 || raw.contains('\0') {
             return Err(invalid);
         }
+        let timeout_ms = timeout_ms
+            .and_then(decimal)
+            .filter(|n| (1..=60000).contains(n))
+            .ok_or(invalid)?;
+        let wait_model_ms = match wait_model_ms {
+            None => 0,
+            Some(value) => decimal(value)
+                .filter(|n| *n > 0 && *n < timeout_ms)
+                .ok_or(invalid)?,
+        };
         Ok(Self {
             port,
             model: model.to_owned(),
@@ -79,10 +93,8 @@ impl Options {
                 .and_then(decimal)
                 .filter(|n| (1..=128).contains(n))
                 .ok_or(invalid)? as u32,
-            timeout_ms: timeout_ms
-                .and_then(decimal)
-                .filter(|n| (1..=60000).contains(n))
-                .ok_or(invalid)?,
+            timeout_ms,
+            wait_model_ms,
             json,
         })
     }
@@ -126,6 +138,8 @@ fn project(bytes: &[u8], model: &str) -> Result<serde_json::Value, &'static str>
 #[cfg(unix)]
 mod http;
 #[cfg(unix)]
+mod model_wait;
+#[cfg(unix)]
 fn execute(o: &Options) -> Result<Vec<u8>, &'static str> {
     let prompt =
         super::models::load_bytes(&o.prompt).map_err(|_| "prototype-prompt-unavailable")?;
@@ -136,6 +150,16 @@ fn execute(o: &Options) -> Result<Vec<u8>, &'static str> {
     let deadline = std::time::Instant::now()
         .checked_add(std::time::Duration::from_millis(o.timeout_ms))
         .ok_or("prototype-request-unavailable")?;
+    if o.wait_model_ms != 0 {
+        model_wait::wait(
+            o.port,
+            &o.model,
+            std::time::Instant::now()
+                .checked_add(std::time::Duration::from_millis(o.wait_model_ms))
+                .ok_or("prototype-model-unavailable")?
+                .min(deadline),
+        )?;
+    }
     let body=serde_json::to_vec(&serde_json::json!({"model":o.model,"messages":[{"role":"user","content":prompt}],"stream":false,"max_tokens":o.max_tokens})).map_err(|_|"prototype-request-unavailable")?;
     let reply =
         http::exchange(o.port, &body, deadline).map_err(|_| "prototype-request-outcome-unknown")?;

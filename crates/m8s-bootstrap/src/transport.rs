@@ -196,10 +196,20 @@ pub struct ReceivedBundle {
 /// ```
 pub struct VerifiedBootstrap {
     bundle: ReceivedBundle,
+    instance_id: String,
+    container_id: String,
+    image_sha256: [u8; 32],
 }
 impl VerifiedBootstrap {
     pub fn node(&self) -> EndpointId {
         self.bundle.claims.node
+    }
+    /// Original request binding, retained only after the pinned owner delivered
+    /// on that authenticated request stream. No provider observation is minted.
+    pub fn matches_resource(&self, instance: &str, container: &str, image: &[u8; 32]) -> bool {
+        self.instance_id == instance
+            && self.container_id == container
+            && self.image_sha256 == *image
     }
     /// Consuming the receipt discards its transport provenance. Plain bundle
     /// data alone must never be used to reconstruct this receipt.
@@ -283,7 +293,12 @@ pub async fn redeem_verified_over_iroh(
         .await?;
     }
     connection.close(0u32.into(), b"boot complete");
-    result.map(|bundle| VerifiedBootstrap { bundle })
+    result.map(|bundle| VerifiedBootstrap {
+        bundle,
+        instance_id: request.instance_id,
+        container_id: request.container_id,
+        image_sha256: request.image_sha256,
+    })
 }
 
 /// Live owner-controlled ACL/revocation policy. Update this same shared object;
@@ -626,6 +641,36 @@ fn delivery_matches(binding: Option<&DeliveryBinding>, token: Option<&std::sync:
 #[cfg(test)]
 mod delivery_tests {
     use super::*;
+    #[test]
+    fn receipt_retains_exact_resource_binding() {
+        // Private synthetic data tests comparison only; never used for launch.
+        let owner = EndpointId([1; 32]);
+        let receipt = VerifiedBootstrap {
+            bundle: ReceivedBundle {
+                claims: CertificateClaims {
+                    owner,
+                    node: EndpointId([2; 32]),
+                    issued_at: 1,
+                    expires_at: 2,
+                },
+                certificate: NodeCertificate(vec![]),
+                join_token: Zeroizing::new(vec![]),
+                acl: ControlAcl::owner_only(owner),
+                settings: BundleSettings {
+                    model: "fixture".into(),
+                    config: Zeroizing::new(vec![]),
+                    heartbeat_ttl_seconds: 1,
+                },
+            },
+            instance_id: "instance-a".into(),
+            container_id: "container-a".into(),
+            image_sha256: [3; 32],
+        };
+        assert!(receipt.matches_resource("instance-a", "container-a", &[3; 32]));
+        assert!(!receipt.matches_resource("instance-b", "container-a", &[3; 32]));
+        assert!(!receipt.matches_resource("instance-a", "container-b", &[3; 32]));
+        assert!(!receipt.matches_resource("instance-a", "container-a", &[4; 32]));
+    }
     #[test]
     fn same_peer_swapped_or_failed_receive_is_not_delivery_eligible() {
         // Pure capability-policy fixtures; no fabricated iroh Connection.

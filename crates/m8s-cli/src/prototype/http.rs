@@ -111,11 +111,17 @@ fn headers(bytes: &[u8]) -> io::Result<usize> {
         .ok_or_else(invalid)
 }
 pub(super) fn exchange(port: u16, body: &[u8], deadline: Instant) -> io::Result<Vec<u8>> {
+    request(port, "POST /v1/chat/completions", body, deadline)
+}
+pub(super) fn models(port: u16, deadline: Instant) -> io::Result<Vec<u8>> {
+    request(port, "GET /v1/models", &[], deadline)
+}
+fn request(port: u16, route: &str, body: &[u8], deadline: Instant) -> io::Result<Vec<u8>> {
     if body.len() > BODY {
         return Err(invalid());
     }
     let head = format!(
-        "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
+        "{route} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
         body.len()
     );
     remaining(deadline)?;

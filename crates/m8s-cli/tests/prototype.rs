@@ -76,6 +76,9 @@ impl Peer {
     }
 }
 fn request(s: &mut TcpStream) {
+    request_route(s, false);
+}
+fn request_route(s: &mut TcpStream, models: bool) {
     let end = Instant::now() + Duration::from_secs(2);
     let mut bytes = vec![];
     loop {
@@ -91,7 +94,11 @@ fn request(s: &mut TcpStream) {
         assert!(Instant::now() < end && bytes.len() < 65536);
         if let Some(pos) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
             let header = std::str::from_utf8(&bytes[..pos]).unwrap();
-            assert!(header.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"));
+            assert!(header.starts_with(if models {
+                "GET /v1/models HTTP/1.1\r\n"
+            } else {
+                "POST /v1/chat/completions HTTP/1.1\r\n"
+            }));
             assert!(!header.to_lowercase().contains("authorization"));
             let len = header
                 .lines()
@@ -100,6 +107,10 @@ fn request(s: &mut TcpStream) {
                 .parse::<usize>()
                 .unwrap();
             if bytes.len() == pos + 4 + len {
+                if models {
+                    assert_eq!(len, 0);
+                    return;
+                }
                 let value: Value = serde_json::from_slice(&bytes[pos + 4..]).unwrap();
                 assert_eq!(
                     value,
@@ -109,6 +120,49 @@ fn request(s: &mut TcpStream) {
             }
         }
     }
+}
+
+#[test]
+fn waits_for_exact_model_then_sends_only_one_inference() {
+    let p = Peer::new();
+    let mut args = p.args();
+    args.extend(["--wait-model-ms".into(), "800".into()]);
+    let child = Client::spawn(&args, false);
+    for ids in [
+        json!([]),
+        json!([{"id":"other"}]),
+        json!([{"id":"fixture-model"}]),
+    ] {
+        let mut stream = p.accept();
+        request_route(&mut stream, true);
+        send(
+            &mut stream,
+            &frame(&serde_json::to_vec(&json!({"object":"list","data":ids})).unwrap()),
+        );
+    }
+    let mut stream = p.accept();
+    request(&mut stream);
+    send(
+        &mut stream,
+        &frame(&serde_json::to_vec(&completion()).unwrap()),
+    );
+    drop(stream);
+    assert!(child.output().status.success());
+    p.no_more();
+}
+
+#[test]
+fn model_wait_timeout_never_sends_inference() {
+    let p = Peer::new();
+    let mut args = p.args();
+    args.extend(["--wait-model-ms".into(), "50".into()]);
+    let child = Client::spawn(&args, false);
+    let mut stream = p.accept();
+    request_route(&mut stream, true);
+    send(&mut stream, &frame(br#"{"object":"list","data":[]}"#));
+    drop(stream);
+    refusal(child.output(), "prototype-model-unavailable");
+    p.no_more();
 }
 fn send(s: &mut TcpStream, bytes: &[u8]) {
     let end = Instant::now() + Duration::from_secs(2);
