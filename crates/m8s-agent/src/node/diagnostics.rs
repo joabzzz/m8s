@@ -7,6 +7,7 @@ fn category(line: &[u8]) -> Option<&'static str> {
     let error = text.contains("error")
         || text.contains("fatal")
         || text.contains("panicked")
+        || text.contains("mismatch")
         || text.contains("failed")
         || text.contains("not found")
         || text.contains("no such file")
@@ -88,6 +89,10 @@ mod tests {
         );
         assert_eq!(
             category(b"no compatible native runtime found"),
+            Some("native-runtime-error")
+        );
+        assert_eq!(
+            category(b"product runtime manifest checksum mismatch: synthetic-private"),
             Some("native-runtime-error")
         );
         assert_eq!(

@@ -311,3 +311,22 @@ Native JSON fatal output can use stdout. Agent077b377 classifies both channels
 with bounded destructive in-memory handling and logs an explicit child-exit
 category before destruction. This corrects a diagnostic gap, not a proven
 GPU startup cause. No raw native output is published.
+
+## Reproduced package integrity blocker
+
+A no-credential, no-certificate, network-disabled native `serve` probe reproduces
+`product runtime manifest checksum mismatch` on the normalized images through
+8e4faa54. The earlier normalizer changed the nested runtime manifest without
+updating its enclosing product manifest and complete runtime-tree digests. The
+actual native startup gate rejected the package before model download; help,
+metadata and installed-runtime listing were insufficient qualification.
+
+The corrected normalizer validates the original product/host/tree and every
+native library, changes the120a-to120 metadata, then updates both product
+digests using the native composer's canonical file-tree algorithm. Host/library
+bytes, ABI0.1.71 and release0.76.1 remain unchanged. This preserves integrity
+enforcement. The image build now runs `tests/qualify_product_integrity.py` with
+no network, credentials, certificate or weights. A deliberately synthetic GPU
+profile selects the bundle in the CPU build container; reaching the expected
+driver-library load failure proves native product checks passed. This synthetic
+profile is never used on a rental and is not CUDA/inference proof.
