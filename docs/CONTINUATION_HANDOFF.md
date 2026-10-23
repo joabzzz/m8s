@@ -134,7 +134,7 @@ handoff. Failed intermediate test logs are historical; the successful final logs
 
 Larger 27B/70B models, Goose, multi-GPU layouts, owner-network-loss/node-self-destroy
 qualification, signed image enforcement, SBOM and privacy audits remain open.
-The default daemon is mock-only. Keychain qualification remains incomplete.
+The default daemon is mock-only. Keychain passed the synthetic OS run (2026-10-23) but remains non-default: no CLI wiring, lock-domain provisioning or signed-binary access-policy check (ADR 0012).
 Existing E PASS and native endpoint acceptance must be reused, not repeated.
 
 ## Local checks

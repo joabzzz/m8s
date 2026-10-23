@@ -1,6 +1,19 @@
 # ADR-0012 — SecretStore trait; macOS Keychain by default, 0600 file fallback
 
 
+## Gate 1 synthetic OS result — passed; default still not enabled (2026-10-23, issue #21)
+
+The frozen ignored harness (`tests/os_keyring_qualification.rs`, checkout 4085d77, rustc 1.92.0, macOS 26.6.1, Apple-native keyring 3.6.3) was run once, outside the earlier sandbox, with the exact documented invocation: 1 passed, 0 failed, 2.19s. It covered initial `NoEntry`, two thread and two exec'd process clients through one coordinated flock domain (16 records plus ownership preserved), a fresh restart read, injected expiry, deletion and empty listing. No approval prompt appeared. Only the synthetic account `m8s-synthetic-os-qualification-1254387a2f9baf04b6c0975d3ff695cc` was touched. Afterwards that one exact item was removed with `security delete-generic-password -s m8s-secret-store-v1 -a <that account>` (absence re-checked) and its `/private/tmp` domain directory was deleted. This supersedes the v9 failure as the OS roundtrip/concurrency evidence; the v9 cause remains unexplained (it ran in a different sandbox).
+
+**Decision: the Keychain backend is qualified as a library backend on this host but is NOT made the default.** Remaining blockers, none discharged by the synthetic run:
+
+1. No selection path: `m8s secrets` requires `--file` and builds only `FileStore`; no production call site builds `MacKeyringDriver`/`KeyringStore`.
+2. No canonical, provisioned lock domain (candidate `~/.config/m8s`) and no deployment-wide writer inventory; flock exclusivity is cooperative only.
+3. Access policy untested: the test binary is an unsigned cargo artifact. Prompts, "Always Allow" and per-binary access lists for the signed `m8s` binary, and behaviour after rebuild, are unverified.
+4. One host, one run. No repeat, locked-keychain, headless/SSH-session or Linux (no adapter) coverage.
+
+Enabling the default needs items 1–3 and a fail-closed rule (no silent fallback to the file backend).
+
 ## Gate 1 OS qualification — incomplete after synthetic attempt
 
 Gate 1 qualification attempt (2026-10-21): Development reports independently reviewed v3 harness source findings resolved, normal checks 426+16 pass/3 ignored plus Clippy/fmt. One explicit synthetic OS run in current coding sandbox FAILED: exit 101, 0 passed/1 failed, opaque Backend, 0.42s. Existing log read-only verified at /private/tmp/m8s-keychain-v3-os-qualification.log, SHA256 05482f412dd6b5c2ca73df90f6aaf6a4ffd5c187cc6eaa0722ff173a3ae6e772. Metadata /private/tmp/m8s-keychain-v3-runtime-metadata.log records checkout 2ab213f99e79a30303f0e99e05c4576f3b892e2e, rustc1.92.0, macOS26.6.1/build25G76. Synthetic account/domain m8s-synthetic-os-qualification-c65a20810681ec2508cd6f90c3dddddf retained. Development reports initial NoEntry marker passed, failure before stage-created; actual read/save cause unknown and possible OS effects uncertain. Do not infer permission denial or item absence. No cleanup, retries, permission changes, automated prompts, real credentials or default enablement. Attendance prerequisite remains removed; Admin authorization resolved. OS qualification technically incomplete pending a permitted execution context completing synthetic write/read/concurrency, not a new consent request. Gate 2 remains endpoint PASS; relay gate unchanged.
