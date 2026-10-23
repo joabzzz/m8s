@@ -125,6 +125,12 @@ impl Options {
             return Err(ERROR);
         }
         lock.try_lock_exclusive().map_err(|_| ERROR)?;
+        let stamp = self.root.join("controller.json");
+        // Reject an existing attempt before hashing executables or invoking
+        // plan validation. It can never be adopted by a new controller.
+        if !stamp.exists() && self.plan.directory.exists() {
+            return Err(ERROR);
+        }
         let binary = read_regular(&self.cli, 256 * 1024 * 1024, true)?;
         let daemon = std::env::current_exe().map_err(|_| ERROR)?;
         let daemon_bytes = read_regular(&daemon, 256 * 1024 * 1024, true)?;
@@ -136,15 +142,11 @@ impl Options {
             "cli":self.cli
         }))
         .map_err(|_| ERROR)?;
-        let stamp = self.root.join("controller.json");
         if stamp.exists() {
             if read_regular(&stamp, 8192, false)? != fingerprint {
                 return Err(ERROR);
             }
         } else {
-            if self.plan.directory.exists() {
-                return Err(ERROR);
-            }
             // Full CLI validation is effect-free. Store only its selected plan;
             // up has not happened, and no provider credential is opened here.
             let selected = self.root.join("launch-plan.json");
