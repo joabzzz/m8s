@@ -22,7 +22,7 @@ development controller; this live result does not promote it to a fleet manager.
 
 ## Qualification boundaries
 
-The latest selected Rust profile passed 732 tests, fmt and strict Clippy. Four
+The latest selected Rust profile passed 735 tests, fmt and strict Clippy. Four
 synthetic PTY and three ACL-mutation tests were excluded by the documented
 profile. Existing endpoint/E PASS evidence remains valid and was not repeated.
 No additional rentals are needed for documentation or deterministic source work.
@@ -40,3 +40,14 @@ The native companion retains its history and the exact owner identity fix.
 [Source pins](../deploy/container/native-source.json) distinguish the client,
 server image, and vendored identity contract. Existing local origins, branches,
 ignored bundles, and original worktrees are preserved.
+
+## Integration progress after the live proof
+
+The CLI now uses the shared daemon library's `prepare_launch` and
+`dispatch_prepared` boundaries for budget reservation, durable intent, original
+cleanup deadline, cleanup guard, and one-use dispatch. Synthetic regression
+coverage checks idempotent metadata recovery, unchanged deadlines, rejection of
+wrong-node requests before reservation, and retained liability after preparation
+failure or claim consumption. This is the first extraction toward priority 1;
+it does not yet connect real Vast reconciliation to the daemon's control socket.
+The demo workflow is available to agents in `.agents/skills/m8s-demo/SKILL.md`.

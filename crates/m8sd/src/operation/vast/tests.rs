@@ -190,3 +190,102 @@ fn cleanup_plan_uses_the_claims_original_serving_deadline() {
             .is_err()
     );
 }
+
+#[test]
+fn shared_preparation_preserves_reservation_and_original_deadline() {
+    let (store, _directory) = setup(6_000_000, 1);
+    let executor = executor(42);
+    let policy = store.budget_account().unwrap().unwrap().policy;
+    let original = store.budget_reservations().unwrap().remove(0);
+    let prepared = executor
+        .prepare_launch_with_clock(
+            &store,
+            &policy,
+            &original.period,
+            &original.request,
+            "operation",
+            || Ok(100),
+        )
+        .unwrap();
+    assert_eq!(prepared.reservation, original);
+    assert_eq!(prepared.cleanup_starts_at, 160);
+    let recovered = executor
+        .prepare_launch_with_clock(
+            &store,
+            &policy,
+            &original.period,
+            &original.request,
+            "operation",
+            || Ok(101),
+        )
+        .unwrap();
+    assert_eq!(recovered.reservation, original);
+    assert_eq!(recovered.cleanup_starts_at, 160);
+    assert_eq!(store.budget_reservations().unwrap().len(), 1);
+    assert_eq!(store.create_operations().unwrap().len(), 1);
+    store.claim_create("operation", 101).unwrap();
+    let consumed = store.budget_reservations().unwrap();
+    assert_eq!(consumed[0].state, BudgetState::Uncertain);
+    assert_eq!(consumed[0].reserved_all_in, original.reserved_all_in);
+    assert!(
+        executor
+            .prepare_launch_with_clock(
+                &store,
+                &policy,
+                &original.period,
+                &original.request,
+                "operation",
+                || Ok(102),
+            )
+            .is_err()
+    );
+    assert_eq!(store.budget_reservations().unwrap(), consumed);
+}
+
+#[test]
+fn shared_preparation_rejects_wrong_node_before_reserving() {
+    let (store, _directory) = setup(6_000_000, 1);
+    let executor = executor(42);
+    let policy = store.budget_account().unwrap().unwrap().policy;
+    let original = store.budget_reservations().unwrap().remove(0);
+    let mut request = original.request.clone();
+    request.request_id = "new-request".into();
+    request.node_uid = "foreign-node".into();
+    assert!(
+        executor
+            .prepare_launch_with_clock(
+                &store,
+                &policy,
+                &original.period,
+                &request,
+                "operation",
+                || Ok(100),
+            )
+            .is_err()
+    );
+    assert_eq!(store.budget_reservations().unwrap(), vec![original]);
+    assert!(store.create_operations().unwrap().is_empty());
+}
+
+#[test]
+fn shared_preparation_failure_retains_budget_without_claim() {
+    let (store, _directory) = setup(6_000_000, 1);
+    let executor = executor(42);
+    let policy = store.budget_account().unwrap().unwrap().policy;
+    let original = store.budget_reservations().unwrap().remove(0);
+    store.scale("smoke", 0).unwrap();
+    assert!(
+        executor
+            .prepare_launch_with_clock(
+                &store,
+                &policy,
+                &original.period,
+                &original.request,
+                "operation",
+                || Ok(100),
+            )
+            .is_err()
+    );
+    assert_eq!(store.budget_reservations().unwrap(), vec![original]);
+    assert!(store.create_operations().unwrap().is_empty());
+}

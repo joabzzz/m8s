@@ -272,43 +272,27 @@ fn run_with_client(
         VastExecutor::new(request, &p.owner, &p.node_uid, &p.tier).map_err(|_| ERROR)?;
     let store = Store::open(p.directory.join("state.db"), &p.owner).map_err(|_| ERROR)?;
     store.scale(&p.tier, 1).map_err(|_| ERROR)?;
-    let now = utc()?;
-    let reserved = store
-        .reserve_budget(
+    let prepared = executor
+        .prepare_launch(
+            &store,
             &p.policy,
             &p.policy.baseline.initial_period,
             &p.request,
-            now,
+            "single-create",
         )
-        .map_err(|_| "prototype-budget-refused")?;
-    let intent = executor
-        .intent(&p.request.run_id, &p.request.request_id, "single-create")
-        .map_err(|_| ERROR)?;
-    executor
-        .prepare_managed(&store, &intent)
-        .map_err(|_| ERROR)?;
-    let serving_at = i64::try_from(
-        executor
-            .cleanup_starts_at(&store, &intent)
-            .map_err(|_| ERROR)?,
-    )
-    .map_err(|_| ERROR)?;
+        .map_err(|_| "prototype-launch-preparation-refused")?;
+    let reserved = prepared.reservation;
+    let intent = prepared.intent;
+    let serving_at = i64::try_from(prepared.cleanup_starts_at).map_err(|_| ERROR)?;
+    let now = utc()?;
     let plan = serde_json::json!({"schema":"m8s.vast-watchdog/v1","owner":p.owner,"node_uid":p.node_uid,"tier":p.tier,"image":p.image,"created_at":now,"destroy_at":serving_at});
     let plan_path = p.directory.join("watchdog-plan.json");
     private_file(&plan_path, &serde_json::to_vec(&plan).map_err(|_| ERROR)?)?;
     let mut cleanup =
         ArmedCleanup::arm_cli(&plan_path, key).map_err(|_| "prototype-cleanup-arm-failed")?;
-    // Check the exact guard BEFORE consuming the durable one-use claim.
-    if !cleanup
-        .guards(&identity, u64::try_from(serving_at).map_err(|_| ERROR)?)
-        .map_err(|_| ERROR)?
-    {
-        return Err("prototype-cleanup-deadline-mismatch-before-claim");
-    }
     eprintln!("prototype stage: cleanup-armed");
-    let claim = executor.claim(&store, "single-create").map_err(|_| ERROR)?;
     match executor
-        .execute(&store, claim, &mut cleanup)
+        .dispatch_prepared(&store, &intent, &mut cleanup)
         .map_err(|_| ERROR)?
     {
         DispatchOutcome::NotInvoked => return Err("prototype-create-not-invoked"),

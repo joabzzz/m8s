@@ -1,6 +1,7 @@
 //! One-shot Vast dispatch backed by the Store's durable claim and an acknowledged
 //! independent cleanup process. No credential discovery, retries, or Ready grant.
 use super::*;
+use crate::budget::{AdminBudget, BudgetRequest, CalendarPeriod};
 use m8s_provider_vast::{
     readonly::{
         access::NodeAccess,
@@ -15,6 +16,14 @@ pub enum DispatchOutcome {
     Candidate(CreatedCandidate),
     Ambiguous,
     NotInvoked,
+}
+
+/// Persisted preparation metadata, not permission to invoke a provider effect.
+/// Reopening a Store may recover this metadata but never a consumed claim.
+pub struct PreparedVastLaunch {
+    pub reservation: BudgetReservation,
+    pub intent: CreateIntent,
+    pub cleanup_starts_at: u64,
 }
 
 /// Trusted prototype coordinator only. The account budget, original immutable
@@ -48,6 +57,63 @@ impl VastExecutor {
             tier: tier.into(),
             token: Arc::new(DriverOrigin),
         })
+    }
+
+    /// Shared CLI/daemon preparation boundary. The caller must establish desired
+    /// state and supply fresh account/price evidence first. Reservation commits
+    /// before launch intent; any later failure retains that conservative debt.
+    /// No provider call, cleanup process or create claim is made here.
+    pub fn prepare_launch(
+        &self,
+        store: &Store,
+        policy: &AdminBudget,
+        period: &CalendarPeriod,
+        request: &BudgetRequest,
+        operation_id: &str,
+    ) -> Result<PreparedVastLaunch> {
+        self.prepare_launch_with_clock(store, policy, period, request, operation_id, wall_utc)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_launch_with_clock(
+        &self,
+        store: &Store,
+        policy: &AdminBudget,
+        period: &CalendarPeriod,
+        request: &BudgetRequest,
+        operation_id: &str,
+        mut clock: impl FnMut() -> Result<i64>,
+    ) -> Result<PreparedVastLaunch> {
+        if request.owner != self.owner || request.node_uid != self.node_uid {
+            return Err(Error::Invalid);
+        }
+        let intent = self.intent(&request.run_id, &request.request_id, operation_id)?;
+        self.available(store, &intent)?;
+        let reservation = store.reserve_budget(policy, period, request, clock()?)?;
+        self.prepare_at(store, &intent, &mut clock)?;
+        let cleanup_starts_at = self.cleanup_starts_at_with_clock(store, &intent, clock)?;
+        Ok(PreparedVastLaunch {
+            reservation,
+            intent,
+            cleanup_starts_at,
+        })
+    }
+
+    /// The shared dispatch boundary checks an independently armed cleanup guard
+    /// before consuming the one-use claim. Execution rechecks the same guard
+    /// after claim and again after durable invocation, including writer delays.
+    pub fn dispatch_prepared(
+        &mut self,
+        store: &Store,
+        intent: &CreateIntent,
+        cleanup: &mut ArmedCleanup,
+    ) -> Result<DispatchOutcome> {
+        let deadline = self.cleanup_starts_at(store, intent)?;
+        if !cleanup.guards(&self.identity, deadline)? {
+            return Err(Error::Invalid);
+        }
+        let claim = self.claim(store, &intent.operation_id)?;
+        self.execute(store, claim, cleanup)
     }
 
     pub fn intent(

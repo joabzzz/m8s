@@ -967,3 +967,21 @@ provider mutation. The owner-side CLI LAUNCH command and independently surviving
 resource watchdog remain required; the caller retains cleanup custody on every
 return and cancellation. Existing completed E qualification is unchanged and is
 not rerun by the standard checks.
+
+## Shared live launch preparation and dispatch
+
+Under `prototype-vast`, `operation::vast::VastExecutor::prepare_launch` now
+composes the live CLI's accounting and launch preparation: validate executor
+identity, reserve budget, persist the managed launch intent, and read the
+original serving deadline from the same Store. It returns metadata rather than
+an effect permit. Failure after reservation keeps the accounting debt. Reopening
+or repeating preparation does not renew the deadline or remint consumed claims.
+
+`dispatch_prepared` checks the exact independently armed cleanup worker before
+claim consumption, then uses the existing one-shot executor. The executor still
+rechecks cleanup after claim and after durable invocation. The live CLI calls
+these shared methods; a future daemon coordinator can reuse the same ordering.
+No provider call occurs during preparation, and neither method grants Ready.
+Desired-state admission, fresh evidence, signer custody, bootstrap/inference,
+recovery and cleanup settlement still require their explicit coordinators. The
+normal daemon binary remains mock-only.

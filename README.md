@@ -98,7 +98,7 @@ scripts/check --no-pty --no-acl-mutation
 python3 -B -m unittest discover -s deploy/container/tests -v
 ```
 
-The latest Rust run passed **732 tests**, formatting, and strict Clippy. The
+The latest Rust run passed **735 tests**, formatting, and strict Clippy. The
 selected profile excludes four synthetic PTY tests and three ACL-mutation tests;
 it is not an unfiltered OS qualification. Existing operator endpoint evidence is
 retained and was not rerun. `scripts/check` without flags retains the normal
