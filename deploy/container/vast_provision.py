@@ -125,7 +125,7 @@ ForceCommand /usr/bin/python3 /usr/local/lib/m8s/vast_provision.py receive
     sync_directory(ROOT)
     sync_directory(SSHD)
     print('M8S_PROVISION_HOST_KEY_V1 ' + host, flush=True)
-    os.execve('/usr/sbin/sshd', ['sshd', '-D', '-e', '-f', str(SSHD / 'sshd_config')],
+    os.execve('/usr/sbin/sshd', ['/usr/sbin/sshd', '-D', '-e', '-f', str(SSHD / 'sshd_config')],
               {'PATH': '/usr/bin:/bin'})
 
 
