@@ -34,8 +34,8 @@ The isolated SSH qualification used synthetic keys and no provider network.
 This image still contains the original node-initiated bootstrap binary; the new
 owner-initiated bootstrap source must be qualified and packaged before use.
 That transport qualification has since passed as recorded below. A local
-agent-only refresh is now built as `m8s-prototype-vast:32d1c8b`; its source,
-digest, six-minute Rust build and unchanged base-layer evidence are recorded in
+agent-only refresh is now built as `m8s-prototype-vast:8388ce4`; its source,
+digest, 21-second warm-cache Rust build and unchanged base-layer evidence are recorded in
 `agent-refresh-evidence.json`. It has not been published or deployed.
 The Mac owner host-only build completed successfully; log:
 `/private/tmp/m8s-owner-host-build-3.log`. That is compilation evidence only.
