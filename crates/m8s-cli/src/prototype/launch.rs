@@ -327,15 +327,11 @@ fn run_with_client(
         executor
             .bind_observed(&store, &intent, &access)
             .map_err(|_| ERROR)?;
-        let host_key = loop {
-            if let Ok(key) = cleanup.provisioning_host_key(&access) {
-                break key;
-            }
-            if utc()? >= serving_at - 180 {
-                return Err("prototype-host-key-unavailable");
-            }
-            std::thread::sleep(Duration::from_secs(3));
-        };
+        // The adapter itself bounds asynchronous log generation. Do not retry
+        // an authorization refusal, malformed host key, or unknown log route.
+        let host_key = cleanup
+            .provisioning_host_key(&access)
+            .map_err(|_| "prototype-host-key-unavailable")?;
         eprintln!("prototype stage: provisioning-host-key-pinned");
         let fresh_access = cleanup.observe_owned().map_err(|_| ERROR)?.ok_or(ERROR)?;
         if fresh_access.instance_id() != access.instance_id() {

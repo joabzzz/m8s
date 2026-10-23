@@ -57,6 +57,10 @@ impl<S: FnMut() -> Result<SecretValue>> ProvisioningLog<S> {
         )?;
         // The fixed TLS/no-proxy/no-redirect/no-retry client has NO default auth.
         // Never attach the provider account header to the object-storage request.
+        // Vast returns the object URL before writing the object. S3 may return
+        // 403 for that not-yet-existing object. Wait before the FIRST download;
+        // never reinterpret or retry an authorization failure as pending.
+        std::thread::sleep(std::time::Duration::from_secs(9));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(9);
         let response = loop {
             let left = deadline

@@ -1,0 +1,44 @@
+{
+  "schema": "m8s.vast-log-generation-attempt/v1",
+  "instance_id": 57326565,
+  "provider_confirmed_absent": true,
+  "instance_inventory_empty": true,
+  "volume_inventory_empty": true,
+  "observed_at": 1792733514,
+  "bootstrap_completed": false,
+  "inference_completed": false,
+  "filtered_public_host_key_observed_after_9_second_generation_wait": true,
+  "failure": "Immediate download returned 403 before log object generation; no bootstrap secrets sent",
+  "reserved_micro_usd": 1716037,
+  "total_retained_micro_usd": 6702311,
+  "authorized_total_micro_usd": 16000000,
+  "remaining_micro_usd": 9297689,
+  "reported_charges": [
+    {
+      "source": "instance-57326565",
+      "amount_usd": 0.004
+    },
+    {
+      "source": "instance-57326047",
+      "amount_usd": 0.005
+    },
+    {
+      "source": "instance-57325005",
+      "amount_usd": 0.004
+    }
+  ],
+  "billing_finality": "not-established",
+  "owned_local_processes_stopped": true,
+  "private_run_material_removed": true,
+  "source_validation": {
+    "passed_tests": 729,
+    "fmt": "pass",
+    "clippy": "pass",
+    "log": "/private/tmp/m8s-vast-log-generation-check.log",
+    "exclusions": [
+      "PTY",
+      "ACL-mutation",
+      "unchanged operator endpoint qualifications"
+    ]
+  }
+}
