@@ -119,44 +119,7 @@ fn exchange_scoped<B: Backend, S: FnMut() -> Result<SecretValue>>(
             body: None,
         })
         .map_err(|_| Error::Unavailable)?;
-    // Bound acknowledgement bodies more tightly than inventory responses.
-    const LIMIT: usize = 8192;
-    if reply.status != 200
-        || reply
-            .content_type
-            .as_deref()
-            .map(|s| s.split(';').next().unwrap_or("").trim())
-            != Some("application/json")
-        || !matches!(reply.encoding.as_deref(), None | Some("identity"))
-        || reply.declared_length.is_some_and(|n| n > LIMIT as u64)
-    {
-        return Err(Error::Unavailable);
-    }
-    let mut raw = Vec::new();
-    reply
-        .body
-        .take((LIMIT + 1) as u64)
-        .read_to_end(&mut raw)
-        .map_err(|_| Error::Unavailable)?;
-    if raw.len() > LIMIT || reply.declared_length.is_some_and(|n| n != raw.len() as u64) {
-        return Err(Error::Unavailable);
-    }
-    serde_json::from_slice::<UniqueKeys>(&raw).map_err(|_| Error::Unavailable)?;
-    let value: Value = serde_json::from_slice(&raw).map_err(|_| Error::Unavailable)?;
-    let object = value.as_object().ok_or(Error::Unavailable)?;
-    if object
-        .get("success")
-        .is_some_and(|v| v != &Value::Bool(true))
-        || object.contains_key("error")
-        || object.contains_key("errors")
-        || reflects_secret(
-            &value,
-            std::str::from_utf8(bytes).map_err(|_| Error::Unavailable)?,
-        )
-    {
-        return Err(Error::Unavailable);
-    }
-    Ok(value)
+    checked_json(reply, bytes, 8192)
 }
 
 #[cfg(test)]

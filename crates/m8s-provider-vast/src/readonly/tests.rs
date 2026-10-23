@@ -69,7 +69,7 @@ fn fixed_origin_sensitive_header_and_sanitized_balance() {
     assert!(!reply.complete_instance_snapshot);
     assert_eq!(
         serde_json::from_slice::<Value>(&reply.body).unwrap(),
-        json!({"balance_micro_usd":6000000,"auto_topup":"unknown"})
+        json!({"balance_micro_usd":6000000,"credit_micro_usd":null,"auto_topup":"unknown"})
     );
     let sent = fake.request.as_ref().unwrap();
     assert_eq!(sent.url, "https://console.vast.ai/api/v0/users/current/");
@@ -77,6 +77,20 @@ fn fixed_origin_sensitive_header_and_sanitized_balance() {
     assert!(sent.authorization.is_sensitive());
     assert!(!format!("{:?}", sent.authorization).contains(SYNTHETIC));
     assert_eq!(fake.calls, 1);
+}
+#[test]
+fn account_credit_is_distinct_from_balance_and_rounded_down() {
+    let mut fake = Fake::json(br#"{"balance":0,"credit":6.1250009}"#);
+    let reply = exchange_with(&mut fake, &mut key, account()).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&reply.body).unwrap(),
+        json!({"balance_micro_usd":0,"credit_micro_usd":6125000,"auto_topup":"unknown"})
+    );
+    for credit in [json!(-1), json!("6"), json!({}), json!(true)] {
+        let mut fake =
+            Fake::json(&serde_json::to_vec(&json!({"balance":0,"credit":credit})).unwrap());
+        assert!(exchange_with(&mut fake, &mut key, account()).is_err());
+    }
 }
 #[test]
 fn mutations_bad_paths_queries_bodies_never_consume_secret_or_wire() {

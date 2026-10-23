@@ -9,6 +9,8 @@ use std::{collections::BTreeSet, io::Read, sync::Arc, time::Duration};
 
 #[cfg(feature = "scoped-destroy-https")]
 pub mod destroy;
+#[cfg(feature = "scoped-destroy-https")]
+pub mod recovery;
 
 const ORIGIN: &str = "https://console.vast.ai";
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -193,6 +195,21 @@ fn exchange_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
             body,
         })
         .map_err(|_| Error::Unavailable)?;
+    let value = checked_json(reply, bytes, MAX_BODY)?;
+    let facts = sanitize(kind, &value).map_err(|_| Error::Unavailable)?;
+    let body = serde_json::to_vec(&facts).map_err(|_| Error::Unavailable)?;
+    // Never infer full-account completeness from HTTP status, empty rows, counts,
+    // absent cursor, 404, or provider success. No pagination qualification yet.
+    Ok(Reply {
+        status: 200,
+        body,
+        complete_instance_snapshot: false,
+    })
+}
+fn checked_json(reply: WireReply, credential: &[u8], limit: usize) -> Result<Value> {
+    if limit == 0 || limit > MAX_BODY {
+        return Err(Error::Unavailable);
+    }
     if reply.status != 200
         || reply
             .content_type
@@ -200,24 +217,24 @@ fn exchange_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
             .map(|s| s.split(';').next().unwrap_or("").trim())
             != Some("application/json")
         || !matches!(reply.encoding.as_deref(), None | Some("identity"))
-        || reply.declared_length.is_some_and(|n| n > MAX_BODY as u64)
+        || reply.declared_length.is_some_and(|n| n > limit as u64)
     {
         return Err(Error::Unavailable);
     }
     let mut raw = Vec::new();
     reply
         .body
-        .take((MAX_BODY + 1) as u64)
+        .take((limit + 1) as u64)
         .read_to_end(&mut raw)
         .map_err(|_| Error::Unavailable)?;
-    if raw.len() > MAX_BODY || reply.declared_length.is_some_and(|n| n != raw.len() as u64) {
+    if raw.len() > limit || reply.declared_length.is_some_and(|n| n != raw.len() as u64) {
         return Err(Error::Unavailable);
     }
     serde_json::from_slice::<UniqueKeys>(&raw).map_err(|_| Error::Unavailable)?;
     let value: Value = serde_json::from_slice(&raw).map_err(|_| Error::Unavailable)?;
     if reflects_secret(
         &value,
-        std::str::from_utf8(bytes).map_err(|_| Error::Unavailable)?,
+        std::str::from_utf8(credential).map_err(|_| Error::Unavailable)?,
     ) {
         return Err(Error::Unavailable);
     }
@@ -230,15 +247,7 @@ fn exchange_with<B: Backend, S: FnMut() -> Result<SecretValue>>(
     {
         return Err(Error::Unavailable);
     }
-    let facts = sanitize(kind, &value).map_err(|_| Error::Unavailable)?;
-    let body = serde_json::to_vec(&facts).map_err(|_| Error::Unavailable)?;
-    // Never infer full-account completeness from HTTP status, empty rows, counts,
-    // absent cursor, 404, or provider success. No pagination qualification yet.
-    Ok(Reply {
-        status: 200,
-        body,
-        complete_instance_snapshot: false,
-    })
+    Ok(value)
 }
 fn instance(row: &Value) -> Result<Value> {
     let id = row
@@ -271,9 +280,20 @@ fn instance(row: &Value) -> Result<Value> {
 }
 fn sanitize(kind: ReadKind, value: &Value) -> Result<Value> {
     match kind {
-        ReadKind::Account => Ok(
-            json!({"balance_micro_usd":number(value,"balance",1_000_000,false)?,"auto_topup":"unknown"}),
-        ),
+        ReadKind::Account => {
+            // Credit is a separate provider field. A zero balance does not mean
+            // the account has no rental credit. Missing credit stays unknown;
+            // never substitute balance or round available funds upwards.
+            let credit = value
+                .get("credit")
+                .filter(|v| !v.is_null())
+                .map(|_| number(value, "credit", 1_000_000, false))
+                .transpose()?;
+            Ok(
+                json!({"balance_micro_usd":number(value,"balance",1_000_000,false)?,
+                "credit_micro_usd":credit,"auto_topup":"unknown"}),
+            )
+        }
         ReadKind::Describe(expected) => {
             let row = instance(value.get("instances").ok_or(Error::Invalid)?)?;
             if row["id"].as_u64() != Some(expected) {
