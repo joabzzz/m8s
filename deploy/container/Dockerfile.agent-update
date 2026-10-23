@@ -17,3 +17,6 @@ RUN --network=none \
     && install -D target/release/m8s-agent /out/m8s-agent
 FROM ghcr.io/joabzzz/m8s-prototype@sha256:be8d0675112d6a1051cb59aee61399abe4bdfaa1ac5a2b261dd1e37028c30dfb
 COPY --from=agent-build --chmod=0555 /out/m8s-agent /usr/local/bin/m8s-agent
+
+COPY normalize_cuda_arch.py /usr/local/lib/m8s/normalize_cuda_arch.py
+RUN --network=none python3 /usr/local/lib/m8s/normalize_cuda_arch.py

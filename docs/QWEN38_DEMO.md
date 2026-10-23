@@ -87,6 +87,16 @@ installed-runtime check with release 0.76.1 / ABI 0.1.71. See the
 for source/archive hashes, immutable image digest and owner-client checksum.
 GPU loading and a routed completion remain separate live gates.
 
+The pinned packager records the NVCC architecture target `120a`, while the
+pinned NVIDIA probe converts compute capability 12.0 to `120`. The resolver
+compares strings exactly and rejects that mismatch. The agent-only overlay
+normalizes this one bundle's hardware requirement to `120`, after verifying
+all declared native library hashes and exact release/ABI/toolkit. It changes
+no library bytes or ABI assertion. [NVIDIA's CUDA target documentation](https://developer.nvidia.com/blog/nvidia-blackwell-and-nvidia-cuda-12-9-introduce-family-specific-architecture-features)
+explains that the `a` NVCC suffix runs only on the exact compute capability;
+[NVIDIA lists RTX PRO Blackwell as 12.0](https://developer.nvidia.com/cuda/gpus).
+The normalization refuses any unexpected architecture, release, ABI or checksum.
+
 Keep the native ABI, ownership certificate checks and certified owner-client fix.
 Do not replace the embedded runtime with an unrelated llama-server.
 

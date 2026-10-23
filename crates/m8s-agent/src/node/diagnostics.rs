@@ -11,7 +11,9 @@ fn category(line: &[u8]) -> Option<&'static str> {
         Some("native-certificate-error")
     } else if error && text.contains("cuda") {
         Some("native-cuda-error")
-    } else if error && text.contains("runtime") {
+    } else if text.contains("runtime")
+        && (error || text.contains("no compatible") || text.contains("incompatible"))
+    {
         Some("native-runtime-error")
     } else if error && (text.contains("revision") || text.contains("model ref")) {
         Some("native-model-reference-error")
@@ -73,6 +75,10 @@ mod tests {
         let input = b"invite=synthetic-private\nerror downloading synthetic-private\nerror downloading other-private\nCUDA failed private-value\n";
         drain(&input[..], |v| output.push(v));
         assert_eq!(output, ["native-download-error", "native-cuda-error"]);
+        assert_eq!(
+            category(b"no compatible native runtime found"),
+            Some("native-runtime-error")
+        );
         let mut oversized = vec![b'x'; 9000];
         oversized.extend_from_slice(b" error private\nunknown\n");
         output.clear();
