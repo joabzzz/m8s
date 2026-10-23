@@ -32,42 +32,7 @@ use std::{
 use zeroize::Zeroizing;
 type Result<T> = std::result::Result<T, &'static str>;
 const ERROR: &str = "prototype-launch-refused";
-#[derive(Clone, Copy, Default, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum DemoModel {
-    #[default]
-    Qwen,
-    Flint,
-}
-impl DemoModel {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Qwen => "qwen2.5-0.5b-instruct-q4_k_m",
-            Self::Flint => m8s_provider::vast::provision::FLINT_MODEL_REF,
-        }
-    }
-    fn served(self) -> &'static str {
-        match self {
-            Self::Qwen => {
-                "local-gguf/sha256-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
-            }
-            Self::Flint => {
-                "local-gguf/sha256-97cc8009ff9b132d5cf3c488e6767962bb5a5dc158a90ed661bbbddf876b8bde"
-            }
-        }
-    }
-    fn requirements(self) -> m8s_provider::vast::readonly::preflight::Requirements {
-        match self {
-            Self::Qwen => Default::default(),
-            Self::Flint => m8s_provider::vast::readonly::preflight::Requirements {
-                max_compute_hourly: 3_000_000,
-                min_gpu_memory_mib: 48000,
-                min_download_mbps: 4000,
-                blackwell_sm120: true,
-            },
-        }
-    }
-}
+use super::demo_model::DemoModel;
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Plan {
@@ -93,7 +58,8 @@ fn load(path: &Path) -> Result<Plan> {
         return Err(ERROR);
     }
     let p: Plan = serde_json::from_slice(&bytes).map_err(|_| ERROR)?;
-    if p.schema != "m8s.vast-demo/v1"
+    if !p.model.accepts_disk(p.disk_gb)
+        || p.schema != "m8s.vast-demo/v1"
         || p.owner != p.policy.owner
         || p.owner != p.request.owner
         || p.node_uid != p.request.node_uid
@@ -498,7 +464,7 @@ async fn bootstrap(
             utc()?,
         )
         .map_err(|_| ERROR)?;
-    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":match p.model { DemoModel::Qwen => Some(format!("/models/{}.gguf",p.model.label())), DemoModel::Flint => None },"material_root":"/var/lib/m8s/material","model":p.model.label(),"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
+    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":p.model.gguf(),"material_root":"/var/lib/m8s/material","model":p.model.label(),"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
     let packet = ProvisionPacket::new(
         &config,
         SecretValue::new(nonce.to_vec()),
@@ -558,7 +524,7 @@ async fn bootstrap(
                 return super::benchmark::run(port, model.served(), work_deadline, &directory)
                     .map_err(|_| m8s_bootstrap::Error::Unavailable);
             }
-            let body = serde_json::to_vec(&serde_json::json!({"model":model.served(),"messages":[{"role":"user","content":"Reply with a short sentence explaining what a mesh network is."}],"stream":false,"max_tokens":48})).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
+            let body = serde_json::to_vec(&model.completion_request()).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let bytes = super::http::exchange(port,&body,(Instant::now()+Duration::from_secs(60)).min(work_deadline)).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             let value = super::project(&bytes,model.served()).map_err(|_| m8s_bootstrap::Error::Unavailable)?;
             eprintln!("prototype stage: owner-routed-inference-completed");
@@ -579,16 +545,23 @@ pub(super) fn preflight(args: &[String]) -> Result<()> {
         return Err("invalid-preflight-arguments");
     }
     let model = if args.len() == 8 {
-        if args[6] != "--model" || args[7] != "flint" {
+        if args[6] != "--model" {
             return Err("invalid-preflight-arguments");
         }
-        DemoModel::Flint
+        match args[7].as_str() {
+            "flint" => DemoModel::Flint,
+            "qwen3.8-27b" => DemoModel::Qwen38,
+            _ => return Err("invalid-preflight-arguments"),
+        }
     } else {
         DemoModel::Qwen
     };
     let key = credential(Path::new(&args[1]))?;
     let account = args[3].parse().map_err(|_| ERROR)?;
     let disk = args[5].parse().map_err(|_| ERROR)?;
+    if !model.accepts_disk(disk) {
+        return Err(ERROR);
+    }
     let mut client = m8s_provider::vast::readonly::preflight::PreflightHttps::new(|| {
         Ok(SecretValue::new(key.expose().to_vec()))
     })

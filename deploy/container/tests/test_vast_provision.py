@@ -71,6 +71,20 @@ class Provision(unittest.TestCase):
         with self.assertRaises(ValueError):
             P.packet(io.BytesIO(self.frame(config)))
 
+    def test_qwen38_uses_exact_native_pin_without_packaged_fixture(self):
+        config = self.config()
+        config.update(model=P.QWEN38_MODEL_REF, gguf=None)
+        self.assertEqual(P.packet(io.BytesIO(self.frame(config)))[0], config)
+        config['gguf'] = '/models/' + P.MODEL + '.gguf'
+        with self.assertRaises(ValueError):
+            P.packet(io.BytesIO(self.frame(config)))
+        for model in ['Qwen/Qwen3.8-27B',
+                      P.QWEN38_MODEL_REF.replace('@4ca720788d1e01f1bff70c033e0d0028fd02e502/', '@main/'),
+                      P.QWEN38_MODEL_REF.replace('Qwen3.8', 'Qwen3.5')]:
+            config.update(model=model, gguf=None)
+            with self.assertRaises(ValueError):
+                P.packet(io.BytesIO(self.frame(config)))
+
     def test_inputs_are_created_once_and_never_overwritten(self):
         with tempfile.TemporaryDirectory() as root:
             target = Path(root) / 'nonce'

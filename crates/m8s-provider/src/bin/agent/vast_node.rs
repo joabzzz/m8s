@@ -65,7 +65,11 @@ impl Config {
                         .bytes()
                         .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
             }
-            None => self.model == m8s_provider::vast::provision_protocol::FLINT_MODEL_REF,
+            None => [
+                m8s_provider::vast::provision_protocol::FLINT_MODEL_REF,
+                m8s_provider::vast::provision_protocol::QWEN38_MODEL_REF,
+            ]
+            .contains(&self.model.as_str()),
         }
     }
 

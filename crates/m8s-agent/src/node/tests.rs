@@ -397,5 +397,7 @@ fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags()
     assert!(args.contains(&"--node-ownership-required"));
     assert!(args.contains(&"--join-file"));
     assert!(args.contains(&"--trust-owner"));
+    assert!(args.windows(2).any(|a| a == ["--ctx-size", "4096"]));
+    assert!(args.windows(2).any(|a| a == ["--parallel", "1"]));
     assert!(!args.contains(&"--gguf"));
 }

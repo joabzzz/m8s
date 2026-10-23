@@ -1,4 +1,4 @@
-# Flint CUDA build for SM120 Blackwell. Public dependencies are prepared before
+# CUDA demo build for SM120 Blackwell. Public dependencies are prepared before
 # offline compilation. Credentials and model weights are excluded. MeshLLM
 # resolves and downloads the selected model when the admitted node starts.
 FROM nvidia/cuda@sha256:61f6c08f2b59036cb935e56d1e31a6b64e3ae2c7ddb86d33fa0b044c7917b719 AS cuda-tools
@@ -72,7 +72,8 @@ COPY --from=build /out/product/mesh-bundle/ /opt/mesh/
 COPY --from=build --chmod=0555 /src/m8s/target/release/m8s /usr/local/bin/m8s
 COPY --from=build --chmod=0555 /src/m8s/target/release/m8s-agent /usr/local/bin/m8s-agent
 COPY artifacts.py /usr/local/lib/m8s/artifacts.py
-COPY model-artifact.json /etc/m8s/model-artifact.json
+ARG MODEL_CONTRACT=model-artifact.json
+COPY ${MODEL_CONTRACT} /etc/m8s/model-artifact.json
 ENV MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR=/opt/mesh/native-runtimes \
     MESH_LLM_ANALYTICS=0 DO_NOT_TRACK=1
 USER 65532:65532

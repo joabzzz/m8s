@@ -965,3 +965,23 @@ journal, rather than silently truncating. Each stored JSON record is limited to
 success bytes are emitted. These limits do not bound SQLite engine work.
 Opening the existing Store can perform normal schema migrations; no provider,
 credential supplier or account endpoint is used by this audit.
+
+### Qwen3.8 27B candidate (not live acceptance)
+
+`"model": "qwen3.8-27b"` explicitly selects the immutable Unsloth UD-Q4_K_M
+GGUF pin and its expected SHA-256 API identity. It never maps the historical
+`qwen` fixture or the development tier label `qwen27` to a 27B model. This
+profile requires >=64 GB disk and selects one >=48,000 MiB SM120 GPU with
+>=64,000 MiB host RAM, >=1,000 Mbps advertised download and compute <=USD1.50/h.
+Native-download launches use a 4,096-token context and one sequence. The bounded
+Qwen3.8 completion disables thinking; vision and multi-node split are unqualified.
+
+```sh
+m8s prototype vast-preflight --credential-file /absolute/selected.env --account ACCOUNT_ID --disk-gb 64 --model qwen3.8-27b
+```
+
+The model downloads natively during billed runtime. Preflight and synthetic
+tests do not qualify a CUDA image, prove VRAM fit or create an admitted budget.
+See the [Qwen3.8 runbook](../../docs/QWEN38_DEMO.md) for provenance, the inert
+plan, current liabilities, qualification/teardown requirements and outstanding
+normal-daemon command integration. Issue #6 remains open until actual acceptance.

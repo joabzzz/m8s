@@ -40,7 +40,7 @@ const FIELDS: &[&str] = &[
     "console_port",
 ];
 
-pub use super::provision_protocol::FLINT_MODEL_REF;
+pub use super::provision_protocol::{FLINT_MODEL_REF, QWEN38_MODEL_REF};
 
 /// One-use secret frame. Only public configuration is encoded as JSON; the
 /// nonce and node key are appended in the receiver's fixed raw wire format.
@@ -72,7 +72,10 @@ impl ProvisionPacket {
                     Some("qwen2.5-0.5b-instruct-q4_k_m"),
                     Some("/models/qwen2.5-0.5b-instruct-q4_k_m.gguf")
                 )
-            ) || (config["model"] == FLINT_MODEL_REF && config["gguf"].is_null()))
+            ) || ([FLINT_MODEL_REF, QWEN38_MODEL_REF]
+                .iter()
+                .any(|model| config["model"] == *model)
+                && config["gguf"].is_null()))
             || config["material_root"] != "/var/lib/m8s/material"
             || nonce.expose().len() != 32
             || node_key.expose().len() != 32

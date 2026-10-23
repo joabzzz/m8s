@@ -21,6 +21,7 @@ SSHD = Path('/run/m8s-sshd')
 MAGIC = b'M8S-PROVISION-V1\n'
 MODEL = 'qwen2.5-0.5b-instruct-q4_k_m'
 FLINT_MODEL_REF = 'RecursiveSI/flint-nvfp4-gguf@6ec43e19b565fc8d560e2d04985d7724f20673bf/flint-nvfp4.gguf'
+QWEN38_MODEL_REF = 'unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf'
 CONFIG_FIELDS = {'schema', 'instance_id', 'container_id', 'image_sha256',
                  'owner_endpoint', 'owner_signing_key', 'mesh_owner_id',
                  'owner_address', 'bind_address', 'trust', 'program', 'gguf',
@@ -151,7 +152,7 @@ def packet(stream):
     require(config.get('program') == '/opt/mesh/mesh-llm')
     require((config.get('model') == MODEL
              and config.get('gguf') == '/models/' + MODEL + '.gguf')
-            or (config.get('model') == FLINT_MODEL_REF and config.get('gguf') is None))
+            or (config.get('model') in (FLINT_MODEL_REF, QWEN38_MODEL_REF) and config.get('gguf') is None))
     require(config.get('material_root') == str(ROOT / 'material'))
     nonce = exact(stream, 32)
     node_key = exact(stream, 64)

@@ -114,16 +114,25 @@ it is not an unfiltered OS qualification. Existing operator endpoint evidence is
 retained and was not rerun. `scripts/check` without flags retains the normal
 selection. See `scripts/check --help` and the crate READMEs for exact boundaries.
 
+## Qwen3.8 27B candidate
+
+The exact replacement model, immutable GGUF pin, candidate GPU sizing, and
+remaining live acceptance are recorded in the [Qwen3.8 runbook](docs/QWEN38_DEMO.md).
+This preparation has no successful Qwen3.8 completion receipt. The historical
+Qwen2.5 0.5B proof above remains the only recorded live inference proof.
+
 ## Development controller
 
 ```sh
 target/debug/m8sd /private/tmp/m8s-example owner-example
 # Another terminal:
-target/debug/m8s --socket /private/tmp/m8s-example/control.sock up qwen27 --json
+target/debug/m8s --socket /private/tmp/m8s-example/control.sock up mock-demo --json
 target/debug/m8s --socket /private/tmp/m8s-example/control.sock status --json
 target/debug/m8s --socket /private/tmp/m8s-example/control.sock down --json
 ```
 
+`mock-demo` is a development tier label, with no upstream model mapping. The
+previous `qwen27` example was also only a tier label.
 This path reports mock/development state. A mock Booting node is not a live Ready
 node. Stopped is not destroyed, destroy acknowledgment is not absence, and an
 uncertain provider response never authorizes deleting a resource row or releasing

@@ -129,3 +129,20 @@ fn flint_provisioning_requires_pinned_native_selection_without_a_local_file() {
         assert!(packet(&value).is_err());
     }
 }
+
+#[test]
+fn qwen38_requires_the_exact_download_pin_and_no_local_fixture() {
+    let mut value = config();
+    value["model"] = json!(QWEN38_MODEL_REF);
+    assert!(packet(&value).is_err());
+    value["gguf"] = Value::Null;
+    assert!(packet(&value).is_ok());
+    for model in [
+        "Qwen/Qwen3.8-27B",
+        "unsloth/Qwen3.8-27B-GGUF@main/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "unsloth/Qwen3.5-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.5-27B-UD-Q4_K_M.gguf",
+    ] {
+        value["model"] = json!(model);
+        assert!(packet(&value).is_err());
+    }
+}

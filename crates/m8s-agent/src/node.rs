@@ -401,6 +401,11 @@ impl NodeMaterial {
             .env("MESH_LLM_NODE_KEY_PATH", &self.launch.node_key)
             .env("MESH_LLM_ANALYTICS", "0")
             .env("DO_NOT_TRACK", "1");
+        // Native downloads use a small, explicit demo working set rather than
+        // auto-scaling to the advertised model context or allocating four lanes.
+        if self.launch.gguf.is_none() {
+            command.args(["--ctx-size", "4096", "--parallel", "1"]);
+        }
         Ok(command)
     }
 }
