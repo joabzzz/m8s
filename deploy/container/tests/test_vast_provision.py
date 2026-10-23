@@ -59,6 +59,18 @@ class Provision(unittest.TestCase):
         with self.assertRaises(ValueError):
             P.unique([('schema', 'one'), ('schema', 'two')])
 
+    def test_flint_uses_pinned_mesh_model_selection(self):
+        config = self.config()
+        config.update(model=P.FLINT_MODEL_REF, gguf=None)
+        self.assertEqual(P.packet(io.BytesIO(self.frame(config)))[0], config)
+        for bad in ['/models/flint-nvfp4.gguf', '', '/tmp/model.gguf']:
+            config['gguf'] = bad
+            with self.assertRaises(ValueError):
+                P.packet(io.BytesIO(self.frame(config)))
+        config.update(model='RecursiveSI/flint-nvfp4-gguf@main/flint-nvfp4.gguf', gguf=None)
+        with self.assertRaises(ValueError):
+            P.packet(io.BytesIO(self.frame(config)))
+
     def test_inputs_are_created_once_and_never_overwritten(self):
         with tempfile.TemporaryDirectory() as root:
             target = Path(root) / 'nonce'

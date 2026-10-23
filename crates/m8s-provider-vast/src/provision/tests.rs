@@ -114,18 +114,18 @@ fn ssh_command_is_fixed_pinned_noninteractive_and_has_no_secret_arguments() {
 }
 
 #[test]
-fn flint_provisioning_requires_the_exact_model_path_pair() {
+fn flint_provisioning_requires_pinned_native_selection_without_a_local_file() {
     let mut value = config();
-    value["model"] = json!("flint-nvfp4");
+    value["model"] = json!(FLINT_MODEL_REF);
     assert!(packet(&value).is_err());
-    value["gguf"] = json!("/models/flint-nvfp4.gguf");
+    value["gguf"] = Value::Null;
     assert!(packet(&value).is_ok());
-    for path in [
-        "/tmp/flint-nvfp4.gguf",
-        "/models/../flint-nvfp4.gguf",
-        "/models/other.gguf",
+    for model in [
+        "flint-nvfp4",
+        "RecursiveSI/flint-nvfp4-gguf@main/flint-nvfp4.gguf",
+        "other/repo",
     ] {
-        value["gguf"] = json!(path);
+        value["model"] = json!(model);
         assert!(packet(&value).is_err());
     }
 }

@@ -40,6 +40,10 @@ const FIELDS: &[&str] = &[
     "console_port",
 ];
 
+/// Immutable upstream model selection resolved by MeshLLM on the rented node.
+pub const FLINT_MODEL_REF: &str =
+    "RecursiveSI/flint-nvfp4-gguf@6ec43e19b565fc8d560e2d04985d7724f20673bf/flint-nvfp4.gguf";
+
 /// One-use secret frame. Only public configuration is encoded as JSON; the
 /// nonce and node key are appended in the receiver's fixed raw wire format.
 pub struct ProvisionPacket {
@@ -64,13 +68,13 @@ impl ProvisionPacket {
             || config["schema"] != "m8s.vast-node/v1"
             || config["container_id"] != instance.to_string()
             || config["program"] != "/opt/mesh/mesh-llm"
-            || !matches!(
+            || !(matches!(
                 (config["model"].as_str(), config["gguf"].as_str()),
                 (
                     Some("qwen2.5-0.5b-instruct-q4_k_m"),
                     Some("/models/qwen2.5-0.5b-instruct-q4_k_m.gguf")
-                ) | (Some("flint-nvfp4"), Some("/models/flint-nvfp4.gguf"))
-            )
+                )
+            ) || (config["model"] == FLINT_MODEL_REF && config["gguf"].is_null()))
             || config["material_root"] != "/var/lib/m8s/material"
             || nonce.expose().len() != 32
             || node_key.expose().len() != 32

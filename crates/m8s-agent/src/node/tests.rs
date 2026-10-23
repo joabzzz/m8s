@@ -38,7 +38,7 @@ impl Fixture {
     fn launch(&self) -> MeshLaunch {
         MeshLaunch {
             program: self.0.join("mesh"),
-            gguf: self.0.join("model.gguf"),
+            gguf: Some(self.0.join("model.gguf")),
             node_key: self.0.join("key"),
             owner: EndpointId([1; 32]),
             node: EndpointId([2; 32]),
@@ -234,8 +234,8 @@ fn existing_alias_hardlink_and_replaced_anchor_refuse_without_overwrite_or_repai
         if hardlink {
             fs::hard_link(&l.node_key, f.0.join("alias")).unwrap();
         } else {
-            symlink(&l.gguf, f.0.join("alias")).unwrap();
-            l.gguf = f.0.join("alias");
+            symlink(l.gguf.as_ref().unwrap(), f.0.join("alias")).unwrap();
+            l.gguf = Some(f.0.join("alias"));
         }
         assert!(
             NodeMaterial::stage_with(&f.root(), bundle(b""), l, &Checker::accept(), 20).is_err()
@@ -372,4 +372,30 @@ fn native_capture_and_process_exit_share_one_finite_deadline() {
         ));
         assert!(start.elapsed() < std::time::Duration::from_secs(1));
     }
+}
+
+#[test]
+fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags() {
+    let f = Fixture::new();
+    let mut launch = f.launch();
+    launch.gguf = None;
+    launch.model = "org/repo@0123456789012345678901234567890123456789/model.gguf".into();
+    let mut received = bundle(b"");
+    received.settings.model = launch.model.clone();
+    let material =
+        NodeMaterial::stage_with(&f.root(), received, launch, &Checker::accept(), 20).unwrap();
+    let command = material.command().unwrap();
+    let args: Vec<_> = command.get_args().map(|s| s.to_str().unwrap()).collect();
+    assert_eq!(
+        &args[..3],
+        &[
+            "serve",
+            "--model",
+            "org/repo@0123456789012345678901234567890123456789/model.gguf"
+        ]
+    );
+    assert!(args.contains(&"--node-ownership-required"));
+    assert!(args.contains(&"--join-file"));
+    assert!(args.contains(&"--trust-owner"));
+    assert!(!args.contains(&"--gguf"));
 }

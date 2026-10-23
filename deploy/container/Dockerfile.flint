@@ -1,6 +1,6 @@
 # Flint CUDA build for SM120 Blackwell. Public dependencies are prepared before
-# offline compilation. Credentials are excluded. Verified weights enter only
-# the final stage through the explicitly selected flint-model build context.
+# offline compilation. Credentials and model weights are excluded. MeshLLM
+# resolves and downloads the selected model when the admitted node starts.
 FROM nvidia/cuda@sha256:61f6c08f2b59036cb935e56d1e31a6b64e3ae2c7ddb86d33fa0b044c7917b719 AS cuda-tools
 FROM node@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS node-tools
 FROM rust@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS build
@@ -34,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends patchelf \
 ENV CARGO_NET_OFFLINE=true
 WORKDIR /src/mesh
 ARG TARGETARCH
+COPY --from=cuda-tools /usr/share/doc/cuda-cudart-12-8/copyright /licenses/cuda-copyright
+ENV MESH_LLM_CUDA_LICENSE_FILE=/licenses/cuda-copyright
 RUN --network=none \
     --mount=type=cache,id=m8s-mesh-flint-cuda-target-${TARGETARCH},target=/src/mesh/target,sharing=locked \
     --mount=type=cache,id=m8s-mesh-flint-cuda-native-${TARGETARCH},target=/src/mesh/.deps/llama-build,sharing=locked \
@@ -76,10 +78,7 @@ ENV MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR=/opt/mesh/native-runtimes \
 USER 65532:65532
 RUN --network=none python3 /usr/local/lib/m8s/artifacts.py check-contract /etc/m8s/model-artifact.json \
     && python3 /usr/local/lib/m8s/artifacts.py check-native /opt/mesh/mesh-llm
-# Explicit private bootstrap inputs are required; no-argument launch refuses.
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/m8s-agent"]
-
-# Vast wrapper: package the verified model before renting; no remote compilation.
+# Vast wrapper: runtime only; model selection belongs to MeshLLM at node startup.
 USER 0:0
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
     && rm -f /etc/ssh/ssh_host_* \
@@ -88,9 +87,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-server 
     && useradd --uid 65532 --gid 65532 --no-create-home --home-dir /var/lib/m8s --shell /bin/sh --password '*' m8s \
     && mkdir -p /run/sshd /models /usr/share/doc/flint
 COPY --chmod=0555 vast_provision.py /usr/local/lib/m8s/vast_provision.py
-COPY --from=flint-model --chmod=0444 /flint-nvfp4.gguf /models/flint-nvfp4.gguf
-COPY --from=flint-model --chmod=0444 /LICENSE /usr/share/doc/flint/LICENSE
-RUN --network=none python3 /usr/local/lib/m8s/artifacts.py check-model \
-    /models/flint-nvfp4.gguf /etc/m8s/model-artifact.json
 EXPOSE 2222/tcp
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/python3", "/usr/local/lib/m8s/vast_provision.py", "serve"]

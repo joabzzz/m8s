@@ -44,7 +44,7 @@ struct Config {
     bind_address: SocketAddr,
     trust: mesh_llm_identity::TrustStore,
     program: PathBuf,
-    gguf: PathBuf,
+    gguf: Option<PathBuf>,
     material_root: PathBuf,
     model: String,
     heartbeat_ttl_seconds: u64,
@@ -53,6 +53,22 @@ struct Config {
     console_port: u16,
 }
 impl Config {
+    fn valid_model_source(&self) -> bool {
+        match &self.gguf {
+            Some(path) => {
+                path.is_absolute()
+                    && path.extension().and_then(|v| v.to_str()) == Some("gguf")
+                    && path.file_stem().and_then(|v| v.to_str()) == Some(self.model.as_str())
+                    && !self.model.contains("-of-")
+                    && self
+                        .model
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            }
+            None => self.model == m8s_provider_vast::provision::FLINT_MODEL_REF,
+        }
+    }
+
     fn validate(&self) -> Result<()> {
         if self.schema != "m8s.vast-node/v1"
             || self.container_id != self.instance_id.to_string()
@@ -74,17 +90,10 @@ impl Config {
             || self.port == 0
             || self.console_port == 0
             || self.port == self.console_port
-            || self.gguf.extension().and_then(|v| v.to_str()) != Some("gguf")
-            || self.gguf.file_stem().and_then(|v| v.to_str()) != Some(self.model.as_str())
-            || self.model.contains("-of-")
+            || !self.valid_model_source()
             || self.model.is_empty()
             || self.model.len() > 128
-            || !self
-                .model
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
             || !self.program.is_absolute()
-            || !self.gguf.is_absolute()
             || !self.material_root.is_absolute()
         {
             return Err(REFUSED);
@@ -426,7 +435,7 @@ mod tests {
             bind_address: "0.0.0.0:7000".parse().unwrap(),
             trust: Default::default(),
             program: "/opt/mesh/mesh-llm".into(),
-            gguf: "/models/qwen.gguf".into(),
+            gguf: Some("/models/qwen.gguf".into()),
             material_root: "/run/m8s/material".into(),
             model: "qwen".into(),
             heartbeat_ttl_seconds: 30,

@@ -43,7 +43,7 @@ impl DemoModel {
     fn label(self) -> &'static str {
         match self {
             Self::Qwen => "qwen2.5-0.5b-instruct-q4_k_m",
-            Self::Flint => "flint-nvfp4",
+            Self::Flint => m8s_provider_vast::provision::FLINT_MODEL_REF,
         }
     }
     fn served(self) -> &'static str {
@@ -62,7 +62,7 @@ impl DemoModel {
             Self::Flint => m8s_provider_vast::readonly::preflight::Requirements {
                 max_compute_hourly: 3_000_000,
                 min_gpu_memory_mib: 48000,
-                min_download_mbps: 1000,
+                min_download_mbps: 4000,
                 blackwell_sm120: true,
             },
         }
@@ -378,6 +378,9 @@ fn run_with_client(
         executor
             .bind_observed(&store, &intent, &access)
             .map_err(|_| ERROR)?;
+        if matches!(p.model, DemoModel::Flint) {
+            wait_provisioning_listener(access.ssh_address(), serving_at)?;
+        }
         // The adapter itself bounds asynchronous log generation. Do not retry
         // an authorization refusal, malformed host key, or unknown log route.
         let host_key = cleanup
@@ -425,6 +428,22 @@ fn run_with_client(
     Ok(
         serde_json::json!({"schema":"m8s.vast-demo-evidence/v1","instance_id":absent.instance_id().get(),"image":p.image,"model":p.model.served(),"artifact_name":p.model.label(),"certificate_verified":true,"owner_routed_inference":true,"provider_confirmed_absent":true,"reserved_micro_usd":reserved.reserved_all_in,"final_billing":"unknown-liability-retained","resource_row_removed":true,"completion":completion}),
     )
+}
+// Container "running" can precede SSH startup. A TCP listener is only
+// startup progress: provider-observed host-key pinning and TLS admission follow.
+fn wait_provisioning_listener(address: std::net::SocketAddr, serving_at: i64) -> Result<()> {
+    let remaining = serving_at
+        .checked_sub(utc()?)
+        .filter(|n| *n > 0)
+        .ok_or(ERROR)?;
+    let deadline = Instant::now() + Duration::from_secs((remaining as u64).min(300));
+    while Instant::now() < deadline && utc()? < serving_at {
+        if std::net::TcpStream::connect_timeout(&address, Duration::from_secs(1)).is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    Err("prototype-provisioning-listener-unavailable")
 }
 #[allow(clippy::too_many_arguments)]
 async fn bootstrap(
@@ -479,7 +498,7 @@ async fn bootstrap(
             utc()?,
         )
         .map_err(|_| ERROR)?;
-    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":format!("/models/{}.gguf",p.model.label()),"material_root":"/var/lib/m8s/material","model":p.model.label(),"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
+    let config = serde_json::json!({"schema":"m8s.vast-node/v1","instance_id":access.instance_id().get(),"container_id":access.instance_id().to_string(),"image_sha256":digest,"owner_endpoint":hex::encode(owner.0),"owner_signing_key":hex::encode(signer_key.verifying_key().as_bytes()),"mesh_owner_id":signer_key.owner_id(),"owner_address":"127.0.0.1:1","bind_address":"0.0.0.0:40100","trust":mesh_llm_identity::TrustStore::default(),"program":"/opt/mesh/mesh-llm","gguf":match p.model { DemoModel::Qwen => Some(format!("/models/{}.gguf",p.model.label())), DemoModel::Flint => None },"material_root":"/var/lib/m8s/material","model":p.model.label(),"heartbeat_ttl_seconds":30,"max_lifetime_seconds":1800,"port":9337,"console_port":3131});
     let packet = ProvisionPacket::new(
         &config,
         SecretValue::new(nonce.to_vec()),

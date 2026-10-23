@@ -31,9 +31,13 @@ do not rent merely to explain or verify the existing result.
 
 ## Non-obvious operating constraints
 
-The runtime image already has the native node, model and CPU dependencies baked
-in. Do not rebuild native Rust or fetch weights on a rental. The Mac owner
-client must include the certified-key fix in `deploy/container/native-source.json`.
+The historical Qwen test image includes its small model fixture. Production
+and Flint runtime images contain the native node and runtime dependencies, not
+weights. Select the pinned model through MeshLLM at node startup and let its
+native download/cache flow obtain weights on the rental. Include download time
+and transfer costs in the bounded rental plan. Do not compile native Rust on a
+rental. The Mac owner client must include the certified-key fix in
+`deploy/container/native-source.json`.
 The tested binaries are on the private `prototype-proof-2026-10-23` release.
 
 The model filename is not its API identity. Use the exact `local-gguf/sha256-…`

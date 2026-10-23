@@ -877,14 +877,21 @@ digest. Omitting `model` preserves the Qwen demo. Read-only GPU qualification is
 m8s prototype vast-preflight --credential-file /absolute/selected.env --account ACCOUNT_ID --disk-gb 80 --model flint
 ```
 
-The Flint profile requires one US Blackwell RTX PRO 5000/6000 GPU with at least
+The Flint profile requires one Blackwell RTX PRO 5000/6000 GPU in the US,
+Netherlands or Czechia with at least
 48,000 MiB VRAM, 64,000 MiB host RAM, CUDA driver support for 12.8 or newer, and
-1,000 Mbps advertised download speed. Capacity and price are rechecked locally.
+4,000 Mbps advertised download speed. Capacity and price are rechecked locally.
 Disk allocation is bounded at 128 GB and compute at $3/hour. Ambiguous storage
 rates retain the conservative hourly interpretation and transfer reserves cover
 the allocated disk size. The additional allowance above retained historical
 claims is limited to $16 and must fit the freshly observed account credit.
 The combined work and cleanup window remains at most 30 minutes.
+
+The image contains the CUDA runtime, not model weights. After admission,
+MeshLLM receives `serve --model` with the pinned Hugging Face file reference
+and uses its native model download/cache flow. The local `--gguf` path remains
+available for the Qwen fixture. Download and model loading precede inference
+timing and share the rental deadline.
 
 The verified NVFP4 GGUF is 22,863,084,160 bytes. Its public contract is
 [`flint-model-artifact.json`](../../deploy/container/flint-model-artifact.json).

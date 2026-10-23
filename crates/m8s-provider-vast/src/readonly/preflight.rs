@@ -334,8 +334,8 @@ fn qualify(
             .and_then(|s| s.rsplit(',').next())
             .map(str::trim)
             .ok_or(Error::Unavailable)?;
-        // This first GPU experiment is explicitly scoped to a US host.
-        if country != "US" {
+        // Bound the live experiment to explicitly supported host locations.
+        if !matches!(country, "US" | "NL" | "CZ") {
             return Err(Error::Unavailable);
         }
     }
@@ -407,24 +407,29 @@ mod tests {
         let requirements = Requirements {
             max_compute_hourly: 3_000_000,
             min_gpu_memory_mib: 48000,
-            min_download_mbps: 1000,
+            min_download_mbps: 4000,
             blackwell_sm120: true,
         };
         let row = json!({"id":42,"dph_total":"0.74","storage_cost":"0.2",
             "inet_up_cost":"0.004","inet_down_cost":"0.003", "rentable":true,
             "rented":false,"verification":"verified","gpu_ram":48935,"num_gpus":1,
-            "cpu_ram":64000,"inet_down":2000,"geolocation":"Virginia, US",
+            "cpu_ram":64000,"inet_down":12000,"geolocation":"Virginia, US",
             "gpu_name":"RTX PRO 5000","cuda_max_good":13.0});
         let (_, compute, storage, transfer) = qualify(&row, 80, requirements).unwrap();
         assert_eq!((compute, storage, transfer), (740000, 16000000, 4000));
         assert!(qualify(&row, 80, Requirements::default()).is_err());
+        for location in ["Netherlands, NL", "Czechia, CZ"] {
+            let mut fast_host = row.clone();
+            fast_host["geolocation"] = json!(location);
+            assert!(qualify(&fast_host, 80, requirements).is_ok());
+        }
         for (key, value) in [
             ("gpu_ram", json!(47000)),
             ("gpu_name", json!("RTX 6000Ada")),
             ("cuda_max_good", json!(12.7)),
             ("num_gpus", json!(2)),
             ("cpu_ram", json!(32000)),
-            ("inet_down", json!(999)),
+            ("inet_down", json!(3999)),
             ("geolocation", json!("China, CN")),
             ("dph_total", json!("3.000001")),
             ("rented", json!(true)),

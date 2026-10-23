@@ -20,6 +20,7 @@ ROOT = Path('/var/lib/m8s')
 SSHD = Path('/run/m8s-sshd')
 MAGIC = b'M8S-PROVISION-V1\n'
 MODEL = 'qwen2.5-0.5b-instruct-q4_k_m'
+FLINT_MODEL_REF = 'RecursiveSI/flint-nvfp4-gguf@6ec43e19b565fc8d560e2d04985d7724f20673bf/flint-nvfp4.gguf'
 CONFIG_FIELDS = {'schema', 'instance_id', 'container_id', 'image_sha256',
                  'owner_endpoint', 'owner_signing_key', 'mesh_owner_id',
                  'owner_address', 'bind_address', 'trust', 'program', 'gguf',
@@ -148,8 +149,9 @@ def packet(stream):
             and config.get('schema') == 'm8s.vast-node/v1')
     # The full schema is additionally checked by the Rust node before bootstrap.
     require(config.get('program') == '/opt/mesh/mesh-llm')
-    require(config.get('model') in (MODEL, 'flint-nvfp4'))
-    require(config.get('gguf') == '/models/' + config['model'] + '.gguf')
+    require((config.get('model') == MODEL
+             and config.get('gguf') == '/models/' + MODEL + '.gguf')
+            or (config.get('model') == FLINT_MODEL_REF and config.get('gguf') is None))
     require(config.get('material_root') == str(ROOT / 'material'))
     nonce = exact(stream, 32)
     node_key = exact(stream, 64)
