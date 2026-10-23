@@ -1,0 +1,49 @@
+[package]
+name = "m8s-provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+autobins = false
+
+[features]
+default = []
+local = ["dep:m8s-agent", "dep:libc", "dep:fs2", "dep:sha2"]
+vast-readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
+vast-scoped-destroy-https = ["vast-readonly-https"]
+vast-watchdog = ["vast-scoped-destroy-https", "dep:libc"]
+vast-launch-https = ["vast-scoped-destroy-https", "dep:libc", "dep:tokio"]
+agent-runtime = ["dep:m8s-agent", "dep:signal-hook", "dep:libc"]
+vast-node = ["agent-runtime", "dep:nix", "dep:iroh", "dep:tokio", "m8s-agent/secure-runtime", "vast-scoped-destroy-https", "dep:m8s-bootstrap", "dep:mesh-llm-identity", "dep:zeroize"]
+
+[dependencies]
+m8s-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+m8s-agent = { path = "../m8s-agent", optional = true, default-features = false }
+fs2 = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+m8s-secrets = { path = "../m8s-secrets", optional = true }
+m8s-bootstrap = { path = "../m8s-bootstrap", default-features = false, optional = true }
+mesh-llm-identity = { path = "../../vendor/mesh-llm-identity", default-features = false, optional = true }
+zeroize = { workspace = true, optional = true }
+reqwest = { version = "=0.13.5", default-features = false, features = ["blocking", "rustls"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"], optional = true }
+iroh = { version = "=1.3.0", default-features = false, features = ["tls-aws-lc-rs"], optional = true }
+webpki-roots = { version = "1", optional = true }
+tokio = { version = "1", features = ["process", "io-util", "time", "rt", "macros"], optional = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", default-features = false, features = ["user"], optional = true }
+libc = { version = "0.2", optional = true }
+signal-hook = { version = "0.3", default-features = false, optional = true }
+
+[[bin]]
+name = "m8s-vast-watchdog"
+path = "src/bin/watchdog.rs"
+required-features = ["vast-watchdog"]
+
+[[bin]]
+name = "m8s-agent"
+path = "src/bin/agent.rs"
+required-features = ["agent-runtime"]

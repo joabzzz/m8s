@@ -2,7 +2,7 @@
 //! only a creator-account observation can enter the effectful finalizer.
 use super::*;
 use crate::budget::{FinalBilling, ResourceOutcome, SettlementEvidence, VolumeOutcome};
-use m8s_provider_vast::watchdog::OwnedResourceAbsence;
+use m8s_provider::vast::watchdog::OwnedResourceAbsence;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

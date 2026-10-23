@@ -1,6 +1,6 @@
 //! Immutable restart inputs for observation and cleanup, never for CREATE.
 use super::*;
-use m8s_provider_vast::watchdog::OwnedResourceAbsence;
+use m8s_provider::vast::watchdog::OwnedResourceAbsence;
 
 /// Reconstructed exact identity and original deadlines. No launch/claim method,
 /// serialized effect permit, credential, signer, or live readiness assertion.
@@ -46,9 +46,9 @@ impl VastRecovery {
     pub fn bound_cleanup<S>(
         &self,
         supplier: S,
-    ) -> Result<m8s_provider_vast::readonly::restart::RestartCleanup<S>>
+    ) -> Result<m8s_provider::vast::readonly::restart::RestartCleanup<S>>
     where
-        S: FnMut() -> m8s_core::provider::Result<m8s_provider_vast::readonly::restart::SecretValue>,
+        S: FnMut() -> m8s_provider::Result<m8s_provider::vast::readonly::restart::SecretValue>,
     {
         if self.operation.invocation_started_at.is_none() {
             return Err(Error::Invalid);
@@ -61,7 +61,7 @@ impl VastRecovery {
         if instance.to_string() != binding.instance_id {
             return Err(Error::Invalid);
         }
-        Ok(m8s_provider_vast::readonly::restart::RestartCleanup::new(
+        Ok(m8s_provider::vast::readonly::restart::RestartCleanup::new(
             self.identity().clone(),
             self.creator_account_id(),
             instance,

@@ -1,5 +1,5 @@
 //! Only the hardwired Mock lifecycle; not a generic/provider shutdown authority.
-use m8s_core::provider::Provider;
+use m8s_provider::Provider;
 use m8sd::mock_provider::Mock;
 use m8sd::{Error, Result, Store};
 

@@ -2,7 +2,7 @@
 //! independent cleanup process. No credential discovery, retries, or Ready grant.
 use super::*;
 use crate::budget::{AdminBudget, BudgetRequest, CalendarPeriod};
-use m8s_provider_vast::{
+use m8s_provider::vast::{
     readonly::{
         access::NodeAccess,
         launch::{CreatedCandidate, LaunchRequest},

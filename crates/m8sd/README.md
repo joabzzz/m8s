@@ -461,7 +461,7 @@ Admin/OS/admission/billing gates. The sealed backend cannot spend money.
 
 The `local-development` Cargo feature is **off by default**. On Unix it exposes
 `operation::local_development::{LocalDevelopmentPlan, LocalDevelopmentExecutor}`.
-The only backend is the actual timed `m8s-provider-local::Local`, constructed
+The only backend is the actual timed `m8s_provider::local::Local`, constructed
 inside this wrapper. There is no arbitrary Provider, closure, executable runner
 trait, URL, environment-secret or credential input. `DevelopmentCommand` is
 trusted nonsecret local configuration: the fixed env-clear/null-stdio/new-group

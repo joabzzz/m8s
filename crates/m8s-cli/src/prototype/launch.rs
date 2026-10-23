@@ -4,7 +4,7 @@ use m8s_bootstrap::{
     BundleSettings, EndpointId, LaunchBinding,
     mp001::{Mp001CertificateVerifier, Mp001TrustPin, signing::Mp001NodeSigner},
 };
-use m8s_provider_vast::{
+use m8s_provider::vast::{
     provision::{ProvisionPacket, ProvisioningSession},
     readonly::{access::NodeAccess, launch::LaunchRequest, recovery::RecoveryIntent},
     watchdog::ArmedCleanup,
@@ -43,7 +43,7 @@ impl DemoModel {
     fn label(self) -> &'static str {
         match self {
             Self::Qwen => "qwen2.5-0.5b-instruct-q4_k_m",
-            Self::Flint => m8s_provider_vast::provision::FLINT_MODEL_REF,
+            Self::Flint => m8s_provider::vast::provision::FLINT_MODEL_REF,
         }
     }
     fn served(self) -> &'static str {
@@ -56,10 +56,10 @@ impl DemoModel {
             }
         }
     }
-    fn requirements(self) -> m8s_provider_vast::readonly::preflight::Requirements {
+    fn requirements(self) -> m8s_provider::vast::readonly::preflight::Requirements {
         match self {
             Self::Qwen => Default::default(),
-            Self::Flint => m8s_provider_vast::readonly::preflight::Requirements {
+            Self::Flint => m8s_provider::vast::readonly::preflight::Requirements {
                 max_compute_hourly: 3_000_000,
                 min_gpu_memory_mib: 48000,
                 min_download_mbps: 4000,
@@ -271,7 +271,7 @@ fn run_with_client(
     eprintln!("prototype stage: certified-owner-client-ready");
     let ssh_public = ssh_key(&p.directory)?;
     let key = credential(&p.credential_file)?;
-    let mut preflight = m8s_provider_vast::readonly::preflight::PreflightHttps::new(|| {
+    let mut preflight = m8s_provider::vast::readonly::preflight::PreflightHttps::new(|| {
         Ok(SecretValue::new(key.expose().to_vec()))
     })
     .map_err(|_| ERROR)?;
@@ -455,7 +455,7 @@ async fn bootstrap(
     client: &OwnerClient,
     invite: Zeroizing<Vec<u8>>,
     access: &NodeAccess,
-    host_key: &m8s_provider_vast::readonly::provisioning_log::HostPublicKey,
+    host_key: &m8s_provider::vast::readonly::provisioning_log::HostPublicKey,
     expires: i64,
 ) -> Result<serde_json::Value> {
     let owner = EndpointId(*owner_key.public().as_bytes());
@@ -589,7 +589,7 @@ pub(super) fn preflight(args: &[String]) -> Result<()> {
     let key = credential(Path::new(&args[1]))?;
     let account = args[3].parse().map_err(|_| ERROR)?;
     let disk = args[5].parse().map_err(|_| ERROR)?;
-    let mut client = m8s_provider_vast::readonly::preflight::PreflightHttps::new(|| {
+    let mut client = m8s_provider::vast::readonly::preflight::PreflightHttps::new(|| {
         Ok(SecretValue::new(key.expose().to_vec()))
     })
     .map_err(|_| "vast-client-initialization")?;

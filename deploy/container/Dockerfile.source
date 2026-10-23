@@ -43,7 +43,7 @@ RUN --network=none mkdir -p /src \
     && python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
 ENV CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1
-RUN --network=none cargo build --release --locked --offline -j1 -p m8s-cli -p m8s-agent --features m8s-agent/vast-node,m8s-cli/prototype-container
+RUN --network=none cargo build --release --locked --offline -j1 -p m8s-cli -p m8s-provider --features m8s-provider/vast-node,m8s-cli/prototype-container
 
 FROM ${RUNTIME_BASE}
 COPY --from=mesh-build /out/product/mesh-bundle/ /opt/mesh/

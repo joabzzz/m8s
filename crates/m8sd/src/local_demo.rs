@@ -15,7 +15,7 @@ use crate::{
     },
 };
 use fs2::FileExt;
-use m8s_provider_local::{DevelopmentCommand, LocalTerminationState};
+use m8s_provider::local::{DevelopmentCommand, LocalTerminationState};
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
 use std::{

@@ -42,8 +42,8 @@ ARG M8S_SOURCE_SHA256
 RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
 RUN CARGO_NET_OFFLINE=false cargo fetch --locked
-RUN --network=none cargo build --release --locked --offline -j2 -p m8s-cli -p m8s-agent \
-    --features m8s-agent/vast-node,m8s-cli/prototype-container
+RUN --network=none cargo build --release --locked --offline -j2 -p m8s-cli -p m8s-provider \
+    --features m8s-provider/vast-node,m8s-cli/prototype-container
 
 FROM node@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
 RUN apt-get update && apt-get install -y --no-install-recommends \
