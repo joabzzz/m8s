@@ -15,6 +15,7 @@ default = []
 readonly-https = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:m8s-secrets"]
 scoped-destroy-https = ["readonly-https"]
 watchdog = ["scoped-destroy-https", "dep:libc"]
+launch-https = ["scoped-destroy-https"]
 
 [[bin]]
 name = "m8s-vast-watchdog"

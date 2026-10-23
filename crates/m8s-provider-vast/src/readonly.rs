@@ -9,6 +9,8 @@ use std::{collections::BTreeSet, io::Read, sync::Arc, time::Duration};
 
 #[cfg(feature = "scoped-destroy-https")]
 pub mod destroy;
+#[cfg(feature = "launch-https")]
+pub mod launch;
 #[cfg(feature = "scoped-destroy-https")]
 pub mod recovery;
 
