@@ -39,6 +39,14 @@ finds the `qwen35` family and explicit Qwen3.8 recognition. Its llama.cpp pin is
 `620d2225cc436ab0b001e3200e590e3b286ef9ab`. This suggests no new architecture
 implementation is needed at that revision; it does **not** establish that the
 historically published CPU image or a newly built CUDA image can load this file.
+An additional isolated `runtime list --available --json` check against the
+existing certified owner build refused the published v0.78.0 Metal package:
+the build expects release 0.76.1 / Skippy ABI 0.1.71; the catalog offers 0.78.0 /
+ABI 0.1.66. No runtime was installed and no local model load was claimed. This
+checks a potential local qualification route; the proven model-free owner client
+does not load that package. Build a matching native runtime/host pair for model
+qualification rather than changing the manifest's ABI assertions.
+
 Keep the native ABI, ownership certificate checks and certified owner-client fix.
 Do not replace the embedded runtime with an unrelated llama-server.
 

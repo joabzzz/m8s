@@ -92,5 +92,37 @@
     "inbound_micro_usd_per_gb_rounded_up": 2605,
     "outbound_micro_usd_per_gb_rounded_up": 3907,
     "not_a_reservation": true
+  },
+  "local_runtime_compatibility_check": {
+    "scope": "isolated runtime catalog check, not a model load or certified mesh qualification",
+    "program_revision": "7a101840af79c7509789b9e3152ca6c4605186e8",
+    "manifest_url": "https://github.com/Mesh-LLM/mesh-llm/releases/download/v0.78.0/native-runtimes.json",
+    "candidate": {
+      "arch": "aarch64",
+      "backend": "metal",
+      "id": "meshllm-native-runtime-darwin-aarch64-metal",
+      "mesh_version": "0.78.0",
+      "os": "macos",
+      "rejection_reasons": [
+        {
+          "release_version_mismatch": {
+            "actual": "0.78.0",
+            "expected": "0.76.1"
+          }
+        },
+        {
+          "skippy_abi_mismatch": {
+            "actual": "0.1.66",
+            "expected": "0.1.71"
+          }
+        }
+      ],
+      "skippy_abi": "0.1.66",
+      "supported": false,
+      "url": "https://github.com/Mesh-LLM/mesh-llm/releases/download/v0.78.0/meshllm-native-runtime-darwin-aarch64-metal.tar.gz"
+    },
+    "runtime_installed": false,
+    "weights_downloaded": false,
+    "model_free_owner_client_affected": false
   }
 }
