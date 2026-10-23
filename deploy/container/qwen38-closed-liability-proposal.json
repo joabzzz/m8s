@@ -1,0 +1,45 @@
+{
+  "schema": "m8s.closed-run-liability-proposal/v1",
+  "status": "PROPOSAL_ONLY_NOT_APPLIED",
+  "observed_at_utc": "2026-10-23T21:36:46.975337+00:00",
+  "account_id": 32349,
+  "credit_micro_usd_floor": 16204104,
+  "complete_instance_count": 0,
+  "volume_count": 0,
+  "historical_holds_untouched_micro_usd": 13355168,
+  "attempts": [
+    {
+      "instance_id": 57423542,
+      "reserved_at": 1792788642,
+      "provider_confirmed_absent_at": 1792789011,
+      "elapsed_seconds_upper_bound": 369,
+      "original_reservation_micro_usd": 2328521,
+      "compute_micro_usd_per_hour": 1017778,
+      "storage_micro_usd_per_hour": 19048,
+      "transfer_micro_usd_per_gb": 3907,
+      "transfer_gb_upper_bound": 64,
+      "additional_contingency_micro_usd": 100000,
+      "proposed_closed_run_liability_micro_usd": 456324,
+      "original_journal_and_claim_retained": true
+    },
+    {
+      "instance_id": 57426719,
+      "reserved_at": 1792790771,
+      "provider_confirmed_absent_at": 1792790811,
+      "elapsed_seconds_upper_bound": 40,
+      "original_reservation_micro_usd": 529255,
+      "compute_micro_usd_per_hour": 1017778,
+      "storage_micro_usd_per_hour": 19048,
+      "transfer_micro_usd_per_gb": 3907,
+      "transfer_gb_upper_bound": 64,
+      "additional_contingency_micro_usd": 100000,
+      "proposed_closed_run_liability_micro_usd": 361569,
+      "original_journal_and_claim_retained": true
+    }
+  ],
+  "proposed_total_liability_micro_usd": 14173061,
+  "proposed_unallocated_credit_micro_usd": 2031043,
+  "billing_finality": "unknown; provisional reported charges are not final bills",
+  "transfer_bound_basis": "One pinned 16464440224-byte non-sharded GGUF, two full download paths, <13GB unpacked image and >18GB metadata/framing headroom; retries/draft disabled in both images.",
+  "requested_accounting_action": "Only after explicit approval: retain original journals and claims, attach an immutable conservative exposure reconciliation for these two confirmed-absent runs; older holds remain untouched. No fabricated final billing."
+}

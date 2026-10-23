@@ -1,0 +1,85 @@
+{
+  "schema": "m8s.qwen38-failed-live-attempts/v1",
+  "observed_at_utc": "2026-10-23T21:41:17.119425+00:00",
+  "model": "Qwen/Qwen3.8-27B",
+  "acceptance_met": false,
+  "live_completion_claimed": false,
+  "attempts": [
+    {
+      "instance_id": 57423542,
+      "image": "ghcr.io/joabzzz/m8s-prototype@sha256:be8d0675112d6a1051cb59aee61399abe4bdfaa1ac5a2b261dd1e37028c30dfb",
+      "reserved_micro_usd": 2328521,
+      "billing_state": "BillingUnknown",
+      "certificate_delivery_and_control_established": true,
+      "model_discovered": false,
+      "owner_routed_completion": false,
+      "provider_confirmed_absent": true,
+      "absence_observed_at": 1792789011,
+      "resource_row_removed": true,
+      "commands_exercised": [
+        "m8sd --vast-demo",
+        "m8s up",
+        "m8s scale 1",
+        "m8s status",
+        "m8s logs",
+        "m8s down"
+      ],
+      "stages": [
+        "prototype stage: certified-owner-client-ready",
+        "prototype stage: provisioning-key-created",
+        "prototype stage: selected-credential-read",
+        "prototype stage: provider-client-initialized",
+        "prototype stage: fresh-account-and-offer-qualified",
+        "prototype stage: cleanup-armed",
+        "prototype stage: exact-instance-network-observed",
+        "prototype stage: provisioning-host-key-pinned",
+        "prototype stage: ssh-provision-sent",
+        "prototype stage: provisioned-control-listener-ready",
+        "prototype stage: certificate-delivered-control-established",
+        "prototype stage: cleanup-requested",
+        "prototype stage: exact-instance-absence-confirmed"
+      ],
+      "final_billing": "unknown; full original hold retained"
+    },
+    {
+      "instance_id": 57426719,
+      "image": "ghcr.io/joabzzz/m8s-prototype@sha256:f95d2f2cb513a69e7e1472a26ebea42068f7d4c151d1c52e9360e5ea0f071b83",
+      "reserved_micro_usd": 529255,
+      "billing_state": "BillingUnknown",
+      "certificate_delivery_and_control_established": true,
+      "model_discovered": false,
+      "owner_routed_completion": false,
+      "provider_confirmed_absent": true,
+      "absence_observed_at": 1792790811,
+      "resource_row_removed": true,
+      "commands_exercised": [
+        "m8sd --vast-demo",
+        "m8s up",
+        "m8s scale 1",
+        "m8s status",
+        "m8s logs",
+        "m8s down"
+      ],
+      "stages": [
+        "prototype stage: certified-owner-client-ready",
+        "prototype stage: provisioning-key-created",
+        "prototype stage: selected-credential-read",
+        "prototype stage: provider-client-initialized",
+        "prototype stage: fresh-account-and-offer-qualified",
+        "prototype stage: cleanup-armed",
+        "prototype stage: exact-instance-network-observed",
+        "prototype stage: provisioning-host-key-pinned",
+        "prototype stage: ssh-provision-sent",
+        "prototype stage: provisioned-control-listener-ready",
+        "prototype stage: certificate-delivered-control-established",
+        "prototype stage: cleanup-requested",
+        "prototype stage: exact-instance-absence-confirmed"
+      ],
+      "final_billing": "unknown; full original hold retained"
+    }
+  ],
+  "historical_holds_micro_usd": 13355168,
+  "new_paid_holds_micro_usd": 2857776,
+  "total_holds_micro_usd": 16212944,
+  "remaining_action": "Diagnose startup and obtain explicit conservative liability reconciliation before another rental; no hold reset or final-billing invention."
+}

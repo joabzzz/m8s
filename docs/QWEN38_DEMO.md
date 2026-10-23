@@ -7,7 +7,29 @@ real bounded prototype coordinator: one admitted attempt, one replica, no
 replacement or automatic CREATE replay. Source tests and image builds are
 qualification steps, not successful Qwen3.8 serving evidence.
 
-## Latest attempt: blocked before CREATE
+## Current live outcome: startup failed, both resources destroyed
+
+The [live-attempt receipt](../deploy/container/qwen38-live-attempts.json) records
+instances **57423542** and **57426719**. Both reached verified certificate
+delivery/control, then failed before exact model discovery or inference.
+Both have independently confirmed provider absence and retained removal records;
+no paid resource remains. Issue #6 acceptance is **not met**.
+
+Original paid-attempt holds total 2,857,776 micro-USD, in addition to all older
+13,355,168 micro-USD holds. Provisional daily charge reports are not final bills
+and have not released those reservations. The
+[closed-run liability proposal](../deploy/container/qwen38-closed-liability-proposal.json)
+is review-only, not an applied accounting change. Original journals and consumed
+claims remain intact. The earlier uninvoked reservation was separately cancelled
+with explicit user authorization and a terminal audit record.
+
+The agent now supplies fixed public NVIDIA probe/loader paths after clearing its
+environment. Driver mounts appear after build-time `ldconfig`; neither personal
+PATH nor arbitrary environment/credentials are inherited. Native stderr is
+classified only into fixed categories in memory; raw output is not logged.
+These changes are preparation for diagnosis, not live serving proof.
+
+## Earlier admission failure: blocked before CREATE
 
 The [sanitized attempt receipt](../deploy/container/qwen38-blocked-attempt.json)
 records the 2026-10-23 20:31 UTC outcome. Real daemon `up`, idempotent `scale 1`,

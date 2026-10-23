@@ -399,6 +399,17 @@ impl NodeMaterial {
             .args(spec.args)
             .env_clear()
             .env("HOME", &self.root)
+            // Fixed public image paths, never inherited environment. NVIDIA
+            // driver mounts appear after build-time ldconfig; cleared PATH and
+            // loader paths must not hide runtime GPU probes/driver libraries.
+            .env(
+                "PATH",
+                "/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            )
+            .env(
+                "LD_LIBRARY_PATH",
+                "/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/cuda/lib64",
+            )
             .env("MESH_LLM_NODE_KEY_PATH", &self.launch.node_key)
             .env("MESH_LLM_ANALYTICS", "0")
             .env("DO_NOT_TRACK", "1");

@@ -4,7 +4,12 @@ use std::io::Read;
 
 fn category(line: &[u8]) -> Option<&'static str> {
     let text = std::str::from_utf8(line).ok()?.to_ascii_lowercase();
-    let error = text.contains("error") || text.contains("failed") || text.contains("not found");
+    let error = text.contains("error")
+        || text.contains("failed")
+        || text.contains("not found")
+        || text.contains("no such file")
+        || text.contains("cannot")
+        || text.contains("unable");
     if text.contains("unexpected argument") || text.contains("unrecognized option") {
         Some("native-argument-error")
     } else if error && (text.contains("certificate") || text.contains("ownership")) {
@@ -75,6 +80,10 @@ mod tests {
         let input = b"invite=synthetic-private\nerror downloading synthetic-private\nerror downloading other-private\nCUDA failed private-value\n";
         drain(&input[..], |v| output.push(v));
         assert_eq!(output, ["native-download-error", "native-cuda-error"]);
+        assert_eq!(
+            category(b"libcuda.so.1: cannot open shared object file"),
+            Some("native-cuda-error")
+        );
         assert_eq!(
             category(b"no compatible native runtime found"),
             Some("native-runtime-error")

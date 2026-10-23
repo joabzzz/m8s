@@ -168,7 +168,7 @@ fn exact_private_files_and_enforcing_native_command_never_expose_secret_bytes() 
         assert!(!args.iter().any(|a| a == forbidden));
     }
     let env: Vec<_> = command.get_envs().collect();
-    assert_eq!(env.len(), 4);
+    assert_eq!(env.len(), 6);
     assert!(
         env.iter()
             .any(|(k, v)| *k == "HOME" && *v == Some(f.root().as_os_str()))
@@ -401,6 +401,18 @@ fn native_model_selection_needs_no_local_weights_and_preserves_admission_flags()
     assert!(args.windows(2).any(|a| a == ["--parallel", "1"]));
     assert!(args.contains(&"--no-draft"));
     let env: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+    assert_eq!(
+        env[std::ffi::OsStr::new("PATH")],
+        Some(std::ffi::OsStr::new(
+            "/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ))
+    );
+    assert_eq!(
+        env[std::ffi::OsStr::new("LD_LIBRARY_PATH")],
+        Some(std::ffi::OsStr::new(
+            "/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/cuda/lib64"
+        ))
+    );
     assert_eq!(
         env[std::ffi::OsStr::new("MESH_HF_RETRY_MAX_ATTEMPTS")],
         Some(std::ffi::OsStr::new("0"))
