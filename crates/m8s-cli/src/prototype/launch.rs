@@ -41,7 +41,7 @@ struct Plan {
     mesh: PathBuf,
     credential_file: PathBuf,
     image: String,
-    offer_id: NonZeroU64,
+    offer_id: Option<NonZeroU64>,
     expected_account_id: u64,
     disk_gb: u32,
     owner: String,
@@ -217,12 +217,18 @@ fn run_with_client(
     let invite = runtime.block_on(client.invite())?;
     let ssh_public = ssh_key(&p.directory)?;
     let key = credential(&p.credential_file)?;
-    let fresh = m8s_provider_vast::readonly::preflight::PreflightHttps::new(|| {
+    let mut preflight = m8s_provider_vast::readonly::preflight::PreflightHttps::new(|| {
         Ok(SecretValue::new(key.expose().to_vec()))
     })
-    .map_err(|_| ERROR)?
-    .observe(p.expected_account_id, Some(p.offer_id), p.disk_gb)
-    .map_err(|_| "prototype-account-price-preflight-failed")?;
+    .map_err(|_| ERROR)?;
+    let fresh = preflight
+        .observe(p.expected_account_id, p.offer_id, p.disk_gb)
+        .map_err(|_| {
+            eprintln!("preflight stage: {}", preflight.last_stage());
+            preflight
+                .transport_failure()
+                .unwrap_or(preflight.last_stage())
+        })?;
     // Only a fresh full empty inventory can refresh baseline currentness. Never
     // reset cumulative spent/reserved fields or silently extend approval dates.
     if p.policy.baseline.external_liability != ExternalLiability::NoneConfirmed {
@@ -253,7 +259,7 @@ fn run_with_client(
     let identity =
         RecoveryIntent::new(&p.owner, &p.node_uid, &p.tier, &p.image).map_err(|_| ERROR)?;
     let request =
-        LaunchRequest::new(p.offer_id, identity, ssh_public, p.disk_gb).map_err(|_| ERROR)?;
+        LaunchRequest::new(fresh.offer_id, identity, ssh_public, p.disk_gb).map_err(|_| ERROR)?;
     let mut executor =
         VastExecutor::new(request, &p.owner, &p.node_uid, &p.tier).map_err(|_| ERROR)?;
     let store = Store::open(p.directory.join("state.db"), &p.owner).map_err(|_| ERROR)?;

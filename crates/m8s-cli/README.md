@@ -849,7 +849,8 @@ credit, unqualified prices and redirects. Credentials are read only from the
 explicit file, never from environment discovery, argv values or provider metadata.
 
 The versioned launch plan supplies a new private run directory, native client
-path, immutable image digest, account ID, offer, root-disk size, exact owner/node/
+path, immutable image digest, account ID, offer (`null` selects the cheapest freshly
+qualified offer before intent), root-disk size, exact owner/node/
 tier labels, and the existing `AdminBudget`/`BudgetRequest` records. Launch refreshes
 inventory and prices before reservation; it never resets prior spending or extends
 approval dates. It retains one durable create intent and an independently detached
