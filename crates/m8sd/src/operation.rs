@@ -104,6 +104,8 @@ pub(crate) fn initialize(conn: &Connection) -> Result<()> {
     conn.execute_batch("CREATE TABLE IF NOT EXISTS create_operation(owner TEXT NOT NULL,operation_id TEXT NOT NULL,request_id TEXT NOT NULL,node_uid TEXT NOT NULL,record TEXT NOT NULL,
         PRIMARY KEY(owner,operation_id),UNIQUE(owner,request_id),UNIQUE(owner,node_uid));
         CREATE TABLE IF NOT EXISTS vast_removal(owner TEXT NOT NULL,operation_id TEXT NOT NULL,record TEXT NOT NULL,
+        PRIMARY KEY(owner,operation_id));
+        CREATE TABLE IF NOT EXISTS vast_launch(owner TEXT NOT NULL,operation_id TEXT NOT NULL,tier TEXT NOT NULL,canonical BLOB NOT NULL,
         PRIMARY KEY(owner,operation_id));")?;
     Ok(())
 }

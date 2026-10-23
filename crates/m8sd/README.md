@@ -1008,3 +1008,18 @@ managed budget/create history before touching a provider. A mock observation
 must never delete real managed node rows or launch replacement mocks into a
 managed account. Full live daemon recovery requires the original coordinator
 and authenticated provider evidence; it remains an explicit integration task.
+
+### Immutable restart metadata
+
+New Vast preparations atomically persist the exact canonical public launch
+specification alongside the managed intent. `Store::recover_vast` validates the
+original fingerprint, owner, node, tier and budget binding in one read snapshot.
+It returns original cleanup times anchored to reservation, even if overdue.
+It returns no create request or claim, cannot renew a deadline, and refuses
+missing legacy metadata or tampering without resetting or backfilling history.
+The stored SSH key is public; no credential, bootstrap nonce or owner key is saved.
+
+This is a recovery input boundary, not a running recovery worker. An authenticated
+creator-account transport and independently surviving cleanup still need to be
+composed for process restart. The capsule alone cannot destroy a resource or
+prove absence; removal still requires the opaque fresh observation receipt.

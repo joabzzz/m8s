@@ -39,6 +39,8 @@ pub struct VastExecutor {
     token: Arc<DriverOrigin>,
 }
 
+mod recovery;
+pub use recovery::VastRecovery;
 mod removal;
 pub use removal::VastRemoval;
 #[cfg(test)]
@@ -190,6 +192,7 @@ impl VastExecutor {
             if existing.intent != *intent || now < existing.last_at {
                 return Err(Error::Invalid);
             }
+            recovery::validate_persisted(&tx, self, intent)?;
             return Ok(existing); // metadata only, never a new invocation
         }
         let history: i64 = tx.query_row(
@@ -230,6 +233,7 @@ impl VastExecutor {
         if !inserted {
             return Err(Error::Corrupt);
         }
+        recovery::persist(&tx, self, intent)?;
         tx.commit()?;
         Ok(operation)
     }

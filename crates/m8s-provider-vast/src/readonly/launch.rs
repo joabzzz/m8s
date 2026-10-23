@@ -42,6 +42,50 @@ impl LaunchRequest {
             disk_gb,
         })
     }
+    /// Decode only our exact canonical public intent encoding. This reconstructs
+    /// parameters, never a durable create claim, budget or cleanup authority.
+    pub fn from_canonical_intent(bytes: &[u8]) -> Result<Self> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Record {
+            schema: String,
+            offer: NonZeroU64,
+            image: String,
+            label: String,
+            disk_gb: u32,
+            ssh_public_key: String,
+            tcp_port: u16,
+            udp_port: u16,
+            runtype: String,
+        }
+        if bytes.len() > 4096 {
+            return Err(Error::Invalid);
+        }
+        let record: Record = serde_json::from_slice(bytes).map_err(|_| Error::Invalid)?;
+        if record.schema != "m8s.vast-launch-intent/v1"
+            || record.tcp_port != 2222
+            || record.udp_port != 40100
+            || record.runtype != "args"
+        {
+            return Err(Error::Invalid);
+        }
+        let fields: Vec<_> = record.label.split(':').collect();
+        if fields.len() != 5 || fields[0] != "m8s" || fields[1] != "v1" {
+            return Err(Error::Invalid);
+        }
+        let identity = RecoveryIntent::new(fields[2], fields[3], fields[4], &record.image)?;
+        let request = Self::new(
+            record.offer,
+            identity,
+            record.ssh_public_key,
+            record.disk_gb,
+        )?;
+        if request.canonical_intent()? != bytes {
+            return Err(Error::Invalid);
+        }
+        Ok(request)
+    }
+
     pub fn identity(&self) -> &RecoveryIntent {
         &self.identity
     }
@@ -158,6 +202,38 @@ mod tests {
         )
         .unwrap()
     }
+    #[test]
+    fn canonical_recovery_is_strict_bounded_and_has_no_provider_effect() {
+        let original = request().canonical_intent().unwrap();
+        assert_eq!(
+            LaunchRequest::from_canonical_intent(&original)
+                .unwrap()
+                .canonical_intent()
+                .unwrap(),
+            original
+        );
+        for mutation in 0..8 {
+            let mut value: Value = serde_json::from_slice(&original).unwrap();
+            match mutation {
+                0 => value["schema"] = json!("unknown"),
+                1 => value["udp_port"] = json!(40101),
+                2 => value["label"] = json!("m8s:v1:owner:node:tier:extra"),
+                3 => value["image"] = json!("example.invalid/mesh:latest"),
+                4 => value["ssh_public_key"] = json!("secret-not-a-public-key"),
+                5 => value["disk_gb"] = json!(100),
+                6 => value["unexpected"] = json!(true),
+                _ => value["offer"] = json!(0),
+            }
+            assert!(
+                LaunchRequest::from_canonical_intent(&serde_json::to_vec(&value).unwrap()).is_err()
+            );
+        }
+        assert!(LaunchRequest::from_canonical_intent(&vec![b'x'; 4097]).is_err());
+        let mut noncanonical = original.clone();
+        noncanonical.push(b' ');
+        assert!(LaunchRequest::from_canonical_intent(&noncanonical).is_err());
+    }
+
     #[test]
     fn fixed_one_shot_route_public_only_body_and_candidate() {
         let mut fake = Fake::json(br#"{"success":true,"new_contract":99}"#);
