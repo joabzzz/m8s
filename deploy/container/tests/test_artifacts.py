@@ -69,10 +69,21 @@ class Artifacts(unittest.TestCase):
         self.assertIn('check-native /opt/mesh/mesh-llm', recipe)
         self.assertIn('check-contract /etc/m8s/model-artifact.json', recipe)
         self.assertIn('ENTRYPOINT ["/usr/local/bin/m8s-agent"]', recipe)
+        self.assertIn('RUN --network=none mkdir -p /src', recipe)
         self.assertNotIn('local-model-only', recipe)
         for line in recipe.splitlines():
             if line.startswith('RUN '):
                 self.assertTrue(line.startswith('RUN --network=none '))
+
+    def test_smoke_preparation_keeps_product_build_offline(self):
+        recipe = (Path(__file__).parents[1] / 'Dockerfile.smoke').read_text()
+        self.assertIn('RUN --network=none mkdir -p /src', recipe)
+        self.assertIn('RUN --network=none just bundle /out/mesh-bundle.tar.gz', recipe)
+        self.assertIn('RUN --network=none cargo build --release --locked --offline -j2', recipe)
+        self.assertIn('CARGO_BUILD_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2', recipe)
+        for line in recipe.splitlines():
+            if line.startswith('FROM '):
+                A.main(['check-base', line.split()[1]])
 
     def test_selected_public_artifact_contract(self):
         root = Path(__file__).parents[1]

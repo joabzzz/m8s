@@ -18,7 +18,8 @@ COPY artifacts.py /checks/artifacts.py
 COPY mesh-source.tar m8s-source.tar /inputs/
 ARG MESH_SOURCE_SHA256
 ARG M8S_SOURCE_SHA256
-RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh \
+RUN --network=none mkdir -p /src \
+    && python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh \
     && python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/mesh
 # Preparation follows the native owner's pinned patch queue; no substitute ABI.

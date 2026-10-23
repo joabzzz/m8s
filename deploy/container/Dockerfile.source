@@ -12,7 +12,8 @@ COPY artifacts.py /checks/artifacts.py
 COPY mesh-source.tar /inputs/mesh-source.tar
 RUN --network=none python3 /checks/artifacts.py check-base "${BUILDER_BASE}" \
     && python3 /checks/artifacts.py check-base "${RUNTIME_BASE}"
-RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh
+RUN --network=none mkdir -p /src \
+    && python3 /checks/artifacts.py unpack-source /inputs/mesh-source.tar "${MESH_SOURCE_SHA256}" /src/mesh
 WORKDIR /src/mesh
 ENV CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1
 # Native owner builds the embedded runtime, host, console, licenses and ABI
@@ -38,7 +39,8 @@ FROM ${BUILDER_BASE} AS m8s-build
 ARG M8S_SOURCE_SHA256
 COPY artifacts.py /checks/artifacts.py
 COPY m8s-source.tar /inputs/m8s-source.tar
-RUN --network=none python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
+RUN --network=none mkdir -p /src \
+    && python3 /checks/artifacts.py unpack-source /inputs/m8s-source.tar "${M8S_SOURCE_SHA256}" /src/m8s
 WORKDIR /src/m8s
 ENV CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1
 RUN --network=none cargo build --release --locked --offline -j1 -p m8s-cli -p m8s-agent --features m8s-agent/sealed-node,m8s-cli/prototype-container
