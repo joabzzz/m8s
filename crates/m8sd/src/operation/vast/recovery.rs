@@ -5,7 +5,7 @@ use m8s_provider::vast::watchdog::OwnedResourceAbsence;
 /// Reconstructed exact identity and original deadlines. No launch/claim method,
 /// serialized effect permit, credential, signer, or live readiness assertion.
 pub struct VastRecovery {
-    executor: VastExecutor,
+    pub(super) executor: VastExecutor,
     operation: CreateOperation,
 }
 impl VastRecovery {

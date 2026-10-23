@@ -85,7 +85,7 @@ impl VastExecutor {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn finalize_removal_at(
+    pub(super) fn finalize_removal_at(
         &self,
         store: &Store,
         intent: &CreateIntent,

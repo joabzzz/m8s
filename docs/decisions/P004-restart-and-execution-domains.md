@@ -39,6 +39,20 @@ mix them. No reset or implicit conversion between domains is permitted. This
 does not replace the existing single-reconciler process lock or authorize
 concurrent provider effects within a domain.
 
+## Restart reconciler (issue #12, slice 1)
+
+`Store::reconcile_vast` walks persisted managed operations through an injected
+`RestartPort` (lookup, destroy, confirm-absent; no create). Prepared and
+consumed-not-invoked rows take no effect. An invoked create with no recorded
+result is looked up by exact owner label and image; `None` or an error leaves it
+unresolved, never absent. A match commits the binding and node row together.
+Cleanup commits Destroying and grant cancellation before the provider destroy,
+confirms exact-ID absence with a fresh creator-account receipt, then uses the
+existing atomic finalizer. Triggers are the original serving deadline, an
+operator down, or `Immediate` for leftovers from a dead process. Deadlines come
+from the persisted reservation and are never rebased. Deterministic faults cover
+every persisted write at the unresolved and bound stages.
+
 ## Remaining integration
 
 - The original creator account ID is now persisted and fingerprinted. A restarted
