@@ -1,0 +1,15 @@
+# Packaging only: reuse the already compiled, public AMD64 native runtime.
+FROM ghcr.io/joabzzz/m8s-prototype@sha256:776b2fdc8ae1f04b2aa127eab2abd0ed73bd30e95c2fce7edb822e3d3ced17ca
+USER 0:0
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+    && rm -f /etc/ssh/ssh_host_* \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 65532 m8s \
+    && useradd --uid 65532 --gid 65532 --no-create-home --home-dir /var/lib/m8s --shell /bin/sh --password '*' m8s \
+    && mkdir -p /run/sshd /models
+COPY --chmod=0555 vast_provision.py /usr/local/lib/m8s/vast_provision.py
+COPY --chmod=0444 model.gguf /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+RUN --network=none python3 /usr/local/lib/m8s/artifacts.py check-model \
+    /models/qwen2.5-0.5b-instruct-q4_k_m.gguf /etc/m8s/model-artifact.json
+EXPOSE 2222/tcp
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/python3", "/usr/local/lib/m8s/vast_provision.py", "serve"]
