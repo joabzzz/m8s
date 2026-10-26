@@ -51,8 +51,19 @@ pub(super) struct OwnerClient {
     root_identity: (u64, u64),
     pub port: u16,
     console: u16,
+    expires_at: i64,
 }
 impl OwnerClient {
+    /// Public identity and loopback ports only. The private attempt directory
+    /// is the attachment boundary; this never exports keys or invite tokens.
+    pub fn desktop_attachment(&self) -> serde_json::Value {
+        serde_json::json!({
+            "schema": "m8s.desktop-owner/v1",
+            "api_port": self.port, "console_port": self.console,
+            "node_id": self.node_id, "owner_id": self.owner_id,
+            "cert_id": self.cert_id, "expires_at": self.expires_at,
+        })
+    }
     pub fn start(
         program: &Path,
         root: &Path,
@@ -152,6 +163,7 @@ impl OwnerClient {
             root_identity,
             port,
             console,
+            expires_at,
         })
     }
     pub async fn invite(&mut self) -> Result<Zeroizing<Vec<u8>>> {
