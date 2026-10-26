@@ -1,15 +1,26 @@
 # m8s
 
-Owner-controlled model workers using the actual **mesh-llm** node. The Rust
-workspace contains lifecycle policy, durable accounting, provider adapters,
-secure bootstrap/control, node supervision, a CLI, and a terminal dashboard.
+m8s lets you **rent cloud GPU compute and add it to a mesh-llm mesh**. You
+don't have to own the hardware outright: rent remote capacity, contribute it
+to the mesh, and release it when you're done.
 
-## Desktop GPU demo
+Your local machine controls the rental. The remote worker runs an actual
+**mesh-llm** node, joins the mesh with an owner-signed certificate, and serves
+models using the rented GPU. This makes rented compute a way to grow a mesh's
+capacity on demand.
 
-Add compute, watch a certified Qwen 27B worker join the mesh, hold a short
-conversation, and remove the GPU with provider-confirmed teardown.
+The Rust workspace provides lifecycle policy, durable accounting, provider
+adapters, secure bootstrap/control, node supervision, a CLI, and a terminal
+dashboard.
 
-[![Qwen 27B desktop demo: provision, join, chat, and remove compute](docs/assets/qwen27-desktop-demo.gif)](docs/assets/qwen27-desktop-demo.mp4?raw=true)
+## Rent a cloud GPU and add it to the mesh
+
+In this demo, the desktop app controls a GPU rented from Vast. Add compute,
+watch the remote certified Qwen 27B worker join the mesh, hold a short
+conversation, and release the rental with provider-confirmed teardown. The
+model runs on the cloud GPU; the desktop is the control and chat interface.
+
+[![Cloud GPU demo: rent remote compute, join the mesh, chat, and release the rental](docs/assets/qwen27-desktop-demo.gif)](docs/assets/qwen27-desktop-demo.mp4?raw=true)
 
 30-second supercut; startup waits shortened. [Watch the 67-second demo](docs/assets/qwen27-desktop-demo.mp4?raw=true)
 or read the [setup and live evidence](docs/DESKTOP_DEMO.md). This capture uses
