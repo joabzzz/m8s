@@ -9,9 +9,9 @@ secure bootstrap/control, node supervision, a CLI, and a terminal dashboard.
 Add compute, watch a certified Qwen 27B worker join the mesh, hold a short
 conversation, and remove the GPU with provider-confirmed teardown.
 
-[![Qwen 27B desktop demo: provision, join, chat, and remove compute](docs/assets/qwen27-desktop-demo.gif)](https://github.com/joabzzz/mesh-console/blob/demo/m8s-qwen27/docs/evidence/m8s-qwen27/demo.mp4)
+[![Qwen 27B desktop demo: provision, join, chat, and remove compute](docs/assets/qwen27-desktop-demo.gif)](docs/assets/qwen27-desktop-demo.mp4?raw=true)
 
-30-second supercut; startup waits shortened. [Watch the 67-second demo](https://github.com/joabzzz/mesh-console/raw/refs/heads/demo/m8s-qwen27/docs/evidence/m8s-qwen27/demo.mp4)
+30-second supercut; startup waits shortened. [Watch the 67-second demo](docs/assets/qwen27-desktop-demo.mp4?raw=true)
 or read the [setup and live evidence](docs/DESKTOP_DEMO.md). This capture uses
 the desktop frontend against its running Tauri backend in a dedicated demo mesh.
 
