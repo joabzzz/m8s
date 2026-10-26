@@ -396,6 +396,58 @@ fn prepare_create_tx(
     )?;
     Ok((r, true))
 }
+// Shared by the public recorder and restart binding so a lookup result and its
+// node-row update can commit together. Early returns leave the caller to roll back.
+fn record_create_result_in(
+    tx: &Transaction<'_>,
+    owner: &str,
+    operation_id: &str,
+    observation: &CreateObservation,
+    now: i64,
+) -> Result<CreateOperation> {
+    owned(tx, owner)?;
+    let mut a = account(tx, owner, now)?;
+    let mut r = get(tx, owner, operation_id)?.ok_or(Error::Invalid)?;
+    if r.dispatched_at.is_none() || now < r.last_at {
+        return Err(Error::Invalid);
+    }
+    let mut b = budget(tx, &r.intent)?;
+    if b.state == BudgetState::Settled {
+        return Err(Error::Invalid);
+    }
+    match observation {
+        CreateObservation::Ambiguous => {
+            if r.uncertainty_observed {
+                return Ok(r);
+            }
+            r.uncertainty_observed = true;
+        }
+        CreateObservation::Bound(binding) => {
+            binding_valid(binding, &r.intent, now)?;
+            if binding.observed_at < r.dispatched_at.ok_or(Error::Invalid)? {
+                return Err(Error::Invalid);
+            }
+            if r.result.as_ref().is_some_and(|old| old != binding)
+                || b.binding.as_ref().is_some_and(|old| old != binding)
+            {
+                return Err(Error::Invalid);
+            }
+            if r.result.as_ref() == Some(binding) && b.binding.as_ref() == Some(binding) {
+                return Ok(r);
+            }
+            r.result = Some(binding.clone());
+            b.binding = Some(binding.clone());
+        }
+    }
+    if b.state == BudgetState::Reserved {
+        b.state = BudgetState::Uncertain;
+    }
+    r.cleanup_required = true;
+    r.last_at = now;
+    save(tx, &r)?;
+    save_budget(tx, &b, &mut a, now)?;
+    Ok(r)
+}
 impl Store {
     pub fn prepare_create(&self, intent: &CreateIntent, now: i64) -> Result<CreateOperation> {
         validate_prepare_identity(&self.owner, intent)?;
@@ -501,47 +553,7 @@ impl Store {
         now: i64,
     ) -> Result<CreateOperation> {
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        owned(&tx, &self.owner)?;
-        let mut a = account(&tx, &self.owner, now)?;
-        let mut r = get(&tx, &self.owner, operation_id)?.ok_or(Error::Invalid)?;
-        if r.dispatched_at.is_none() || now < r.last_at {
-            return Err(Error::Invalid);
-        }
-        let mut b = budget(&tx, &r.intent)?;
-        if b.state == BudgetState::Settled {
-            return Err(Error::Invalid);
-        }
-        match observation {
-            CreateObservation::Ambiguous => {
-                if r.uncertainty_observed {
-                    return Ok(r);
-                }
-                r.uncertainty_observed = true;
-            }
-            CreateObservation::Bound(binding) => {
-                binding_valid(binding, &r.intent, now)?;
-                if binding.observed_at < r.dispatched_at.ok_or(Error::Invalid)? {
-                    return Err(Error::Invalid);
-                }
-                if r.result.as_ref().is_some_and(|old| old != binding)
-                    || b.binding.as_ref().is_some_and(|old| old != binding)
-                {
-                    return Err(Error::Invalid);
-                }
-                if r.result.as_ref() == Some(binding) && b.binding.as_ref() == Some(binding) {
-                    return Ok(r);
-                }
-                r.result = Some(binding.clone());
-                b.binding = Some(binding.clone());
-            }
-        }
-        if b.state == BudgetState::Reserved {
-            b.state = BudgetState::Uncertain;
-        }
-        r.cleanup_required = true;
-        r.last_at = now;
-        save(&tx, &r)?;
-        save_budget(&tx, &b, &mut a, now)?;
+        let r = record_create_result_in(&tx, &self.owner, operation_id, observation, now)?;
         tx.commit()?;
         Ok(r)
     }
