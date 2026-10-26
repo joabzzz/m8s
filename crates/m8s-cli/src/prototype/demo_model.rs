@@ -77,7 +77,9 @@ impl DemoModel {
         match self {
             Self::Qwen => Default::default(),
             Self::Qwen38 => m8s_provider::vast::readonly::preflight::Requirements {
-                max_compute_hourly: 2_000_000,
+                // Search ceiling only; durable all-in admission still limits
+                // each attempt to the operator's selected total allowance.
+                max_compute_hourly: 3_000_000,
                 max_transfer_micro_usd_per_gb: 4000,
                 min_gpu_memory_mib: 48000,
                 min_host_memory_mib: 128000,
@@ -152,7 +154,7 @@ mod tests {
         let requirements = model.requirements();
         assert_eq!(requirements.min_gpu_memory_mib, 48000);
         assert_eq!(requirements.min_host_memory_mib, 128000);
-        assert_eq!(requirements.max_compute_hourly, 2_000_000);
+        assert_eq!(requirements.max_compute_hourly, 3_000_000);
         assert_eq!(requirements.max_transfer_micro_usd_per_gb, 4000);
         assert_eq!(requirements.min_download_mbps, 500);
         assert!(requirements.blackwell_sm120);

@@ -244,6 +244,12 @@ fn run_with_client(
     client: &mut OwnerClient,
 ) -> Result<serde_json::Value> {
     let invite = runtime.block_on(client.invite())?;
+    if p.control_directory.is_some() {
+        private_file(
+            &p.directory.join("desktop-owner.json"),
+            &serde_json::to_vec(&client.desktop_attachment()).map_err(|_| ERROR)?,
+        )?;
+    }
     eprintln!("prototype stage: certified-owner-client-ready");
     let ssh_public = ssh_key(&p.directory)?;
     eprintln!("prototype stage: provisioning-key-created");
