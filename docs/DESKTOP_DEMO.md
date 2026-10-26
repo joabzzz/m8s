@@ -1,90 +1,42 @@
-# Desktop Qwen 27B recording
+# Desktop Qwen 27B demo
 
-Preparation status: source inspection only; no desktop integration or live
-recording has been qualified. Desktop upstream is read-only for this work.
-Whether a separate local desktop prototype may be edited is awaiting clarification.
+The desktop integration is implemented on
+[joabzzz/mesh-console, demo/m8s-qwen27](https://github.com/joabzzz/mesh-console/tree/demo/m8s-qwen27).
+It uses the Tauri app's existing chat renderer and live peer sidebar, with an
+opt-in Add compute / Remove compute flow. Upstream Mesh-LLM/desktop-app is
+unchanged. This first demo creates a dedicated network using m8s's certified,
+model-free owner client; attaching compute to an arbitrary existing desktop
+network remains future work.
 
-## Inspected source
+The desktop reads a private attachment descriptor containing only public owner
+identity and loopback ports. Keys and provider credentials stay outside the
+WebView. Ready requires a live verified client, the exact discovered model and
+the coordinator's actual owner-routed canary. Chat pins both request and response
+model identities and preserves a bounded two-turn conversation. Removal requires
+the exact-absence stage and a matching provider-removal receipt.
 
-Desktop repository: https://github.com/Mesh-LLM/desktop-app, revision
-`275c1622d9d8819517b9283b5046ba8df795f9db` (inspected 2026-10-26).
-Its `Cargo.lock` pins mesh-llm to
-`b4b33ef8cdf97017db5fb64ff6cebc3c9c6fa3b7`. Compatibility with the
-[proven Qwen runtime](QWEN38_DEMO.md) is not established.
+See the fork's [setup and recording instructions](https://github.com/joabzzz/mesh-console/blob/demo/m8s-qwen27/docs/M8S_DEMO.md).
+The manual recorder drives the actual frontend against the running desktop
+backend; it does not require macOS screen-recording permission. This captures the
+app interface without the native window frame. Synthetic rehearsals are not GPU
+proof.
 
-| Surface | Existing behavior | Integration needed |
-| --- | --- | --- |
-| `ui/src/screens/Main.tsx` | Chat alongside a live mesh sidebar; local Mac and discovered peers | Entry point for Add compute and rental lifecycle |
-| `ui/src/components/MeshPanel.tsx` | Host/participant counts, peer models, device search, invites | Show rental progress separately from verified mesh readiness |
-| `ui/src/components/Chat.tsx` | Sends model `auto` | Verify actual Qwen response identity; do not infer attribution from a visible peer |
-| `src-tauri/src/server.rs` | Local HTTP lifecycle API and SSE; no Tauri IPC | Narrow backend adapter to m8sd, with explicit bounded launch inputs |
-| `src-tauri/src/node.rs` | Embedded `MeshNode`; host or join using an invite | Owner-mediated authorization for adding a certified node to this network |
-| `src-tauri/src/agent.rs` | Goose chat through the local node's OpenAI API | Validate ordinary conversation and follow-up with the pinned 4096 context profile |
+The operator supplies a fresh private plan following [the Qwen runbook](QWEN38_DEMO.md).
+The current Qwen profile searches up to USD3/hour; this is a search ceiling, not
+spending authority. The durable total allowance remains independently enforced.
+Hourly policy caps include transfer, contingency and cleanup amortized over the
+serving runtime, so they differ from the GPU's advertised price.
 
-The app currently exposes neither an m8s control endpoint nor an owner-signing
-endpoint. The SDK's owner-key builder option is not a signing service: it does
-not justify giving m8s the desktop owner's private key.
+Qualification: desktop Rust tests, strict Clippy, UI build/lint/formatting and
+30 mocked browser tests passed. m8s scripts/check passed. A full-check rerun hit
+one timing-sensitive synthetic native-ID test; the subsequent complete run with
+two test threads passed. Live recording and its removal evidence are recorded
+separately; do not substitute these source checks for live acceptance.
 
-## Intended recording
-
-1. Show the desktop's local participant, with no local model serving, in a
-   dedicated private demo mesh.
-2. Choose Add compute, Qwen 27B, and a finite total cap and duration. Show the
-   selected network before dispatch. Credentials stay in the backend.
-3. Show provisioning, model loading, then verified availability. Only certificate
-   verification, exact model discovery and an owner-routed canary permit Ready.
-4. Keep the mesh sidebar visible while asking: “Explain a mesh network in two
-   sentences.” Follow with: “How does adding this GPU help my laptop?” Preserve
-   conversation context. Record response attribution to the exact Qwen identity.
-5. Choose Remove compute. Show cleanup pending until the provider confirms exact
-   absence. Finish with the local participant remaining and the rental removed.
-
-Capture only the dedicated app window. Keep invite dialogs, credential selection,
-private run directories and raw native/provider output outside the recording.
-Keep an uncut capture; label any shortened download/loading interval in the edit.
-
-## Implementation sequence
-
-1. Resolve whether a separate local desktop prototype is allowed. Upstream
-   pushes, PRs and publication remain outside scope.
-2. Implement and test the owner boundary before a rental: bind the request to the
-   active network and exact node, enforce expiry and single-use admission, and
-   keep signing within the mesh owner. Preserve m8s's independent cleanup.
-3. Wire the desktop backend to the one-attempt `m8sd --vast-demo` lifecycle;
-   expose typed progress and removal state to the UI. UI closure or cancellation
-   must not extend the deadline or disable the surviving watchdog.
-4. Test with synthetic fixtures: duplicate launch, wrong network, failed canary,
-   disconnect, cancellation, restart, uncertain CREATE and pending removal.
-   Mock displays must be explicitly identified as rehearsal.
-5. Qualify actual desktop/native protocol and chat compatibility locally before
-   spending. Desktop `auto` routing and Goose prompts/tool schemas are additional
-   behavior beyond the proven single fixed canary.
-6. Obtain the current total USD cap and explicitly selected credential file,
-   prepare a fresh bounded plan under the existing runbook, then record once.
-   Retain evidence and verify provider inventories after teardown.
-
-## Unmodified-desktop alternative
-
-If desktop source must remain unchanged, keep provisioning in m8s and use the
-desktop's existing Join/Chat flow for the visual part. This would demonstrate
-desktop inference on an m8s-created network, rather than a shipped Add compute
-feature. It remains an integration candidate, not a working fallback: desktop
-admission to the certificate-required network and runtime compatibility must
-first be established without weakening trust checks.
-
-The current m8s coordinator creates its own ephemeral owner and model-free client,
-sends one fixed canary, then holds until down or the original deadline. It does
-not currently expose a desktop attachment contract. A raw invite alone must not
-be treated as authorization to bypass the required certificate policy.
-
-## Budget and acceptance
-
-m8s already enforces bounded admission. The current demo implementation limits
-each attempt to at most USD6 and runtime plus cleanup to 1800 seconds, including
-at least 240 seconds for cleanup. These ceilings are not spending authorization.
-Account for previous spending and retained liabilities; use fresh qualification
-and at most one rental. Follow [the demo runbook](QWEN38_DEMO.md).
-
-Completion requires a real desktop conversation, exact Qwen attribution,
-provider-confirmed destruction and a reviewable video. Screenshots, synthetic
-rehearsals and the historical canary alone do not meet that acceptance.
+On 2026-10-26, the desktop completed two actual conversational turns through
+Qwen 27B on Vast instance **57838752**, then confirmed exact teardown and empty
+provider instance/volume inventories. See the [live evidence](../deploy/container/desktop-qwen27-live-proof.json).
+The attempt reserved USD0.990478 under a USD1.20 allowance and the user’s USD5
+cap. Its full reservation and all earlier liabilities remain retained; credit
+observations are not settled invoices. The local viewing copy is in the fork’s
+ignored `recordings/qwen27-20261026/demo.mp4`, alongside the uncut WebM.

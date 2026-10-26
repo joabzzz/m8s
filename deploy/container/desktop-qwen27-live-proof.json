@@ -1,0 +1,112 @@
+{
+  "api_model": "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502:UD-Q4_K_M",
+  "artifact_name": "unsloth/Qwen3.8-27B-GGUF@4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "certificate_verified": true,
+  "completion": {
+    "content": "A mesh network is a decentralized topology where devices communicate directly with each other to relay data, improving coverage and reliability.",
+    "finish_reason": "stop"
+  },
+  "final_billing": "unknown-liability-retained",
+  "image": "ghcr.io/joabzzz/m8s-prototype@sha256:5266fe6e7e824cd4e343b084d74c9b251cdec130d12b72fbb8349f940f8048a6",
+  "instance_id": 57838752,
+  "model": "local-gguf/sha256-7756e8943d5ec98b1cd76895d33d20b8c8bf7609a71540fc9b6fa512bdedd0de",
+  "owner_routed_inference": true,
+  "provider_confirmed_absent": true,
+  "reserved_micro_usd": 990478,
+  "resource_row_removed": true,
+  "schema": "m8s.desktop-qwen27-live-demo/v1",
+  "accepted_at": 1793031370,
+  "desktop_repository": "https://github.com/joabzzz/mesh-console",
+  "desktop_branch": "demo/m8s-qwen27",
+  "desktop_source_revision": "45ba5bcdd0d1527f4d0519cc10c9884e8c5e9dd4",
+  "m8s_source_revision": "969e097b6b08085d49def28abaddc28d27c8920a",
+  "capture_method": "actual desktop frontend driven in browser against running Tauri backend; native window frame omitted",
+  "desktop_conversation": [
+    {
+      "id": "demo-0",
+      "role": "user",
+      "text": "Explain a mesh network in two sentences."
+    },
+    {
+      "id": "demo-1",
+      "role": "assistant",
+      "text": "A mesh network is a decentralized topology where each node acts as both a client and a relay, forwarding data to other nodes to create multiple redundant paths for communication. This structure enhances reliability and coverage, as the network can automatically reroute traffic around failed or congested nodes without losing connectivity."
+    },
+    {
+      "id": "demo-2",
+      "role": "user",
+      "text": "How does a remote GPU on this mesh help my laptop? Answer in two sentences."
+    },
+    {
+      "id": "demo-3",
+      "role": "assistant",
+      "text": "A remote GPU on the mesh offloads computationally intensive tasks, such as rendering or AI inference, from your laptop\u2019s local hardware to the more powerful remote device. This allows your laptop to handle these demanding workloads efficiently without overheating or slowing down, effectively extending its processing capabilities."
+    }
+  ],
+  "desktop_response_identity_checked_by_backend": true,
+  "original_credential_file_preserved": true,
+  "total_new_user_cap_micro_usd": 5000000,
+  "attempt_cap_micro_usd": 1200000,
+  "full_reservation_retained_micro_usd": 990478,
+  "prior_liability_preserved_micro_usd": 14706510,
+  "independent_final_inventory": {
+    "schema": "m8s.desktop-demo-account-observation/v1",
+    "observed_at": 1793031223,
+    "account_id": 32349,
+    "complete_instance_inventory_empty": true,
+    "volume_inventory_empty": true,
+    "exact_instance_id": 57838752,
+    "provider_confirmed_absent": true,
+    "credit_micro_usd_floor": 15763198,
+    "credit_before_micro_usd": 15926900,
+    "observed_credit_change_micro_usd": 163702,
+    "retained_prior_liability_micro_usd": 14706510,
+    "new_full_reservation_retained_micro_usd": 990478,
+    "billing_finality": "unsettled; credit observation is not a final invoice"
+  },
+  "watchdog_events": [
+    {
+      "event": "armed",
+      "instance_id": null,
+      "observed_at": 1793030789,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "exact_resource_bound",
+      "instance_id": 57838752,
+      "observed_at": 1793030792,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "destroy_acknowledged",
+      "instance_id": 57838752,
+      "observed_at": 1793031171,
+      "schema": "m8s.vast-watchdog-event/v1"
+    },
+    {
+      "event": "provider_confirmed_absent",
+      "instance_id": 57838752,
+      "observed_at": 1793031175,
+      "schema": "m8s.vast-watchdog-event/v1"
+    }
+  ],
+  "acceptance": {
+    "real_gpu_rented": true,
+    "certified_model_free_local_client": true,
+    "gpu_peer_observed_in_desktop": true,
+    "exact_qwen27_identity_checked": true,
+    "two_turn_desktop_conversation": true,
+    "provider_confirmed_teardown": true,
+    "complete_final_inventories_empty": true,
+    "no_native_window_capture_claim": true
+  },
+  "recording": {
+    "edited_file": "demo.mp4",
+    "edited_seconds": 66.56,
+    "edited_sha256": "2b5c6fb4e75f491a5deb11662c8d325cd158c8fbbb4a1f686d908d29ce5aa083",
+    "uncut_file": "uncut.webm",
+    "uncut_seconds": 397.64,
+    "uncut_sha256": "c1d57bbcc93939af7e1969eda8a64bc6b83ee2d8b8f89b22bb59c2979c0043f6",
+    "edits": "startup waits shortened with title cards; conversation held 7 seconds for readability"
+  }
+}
