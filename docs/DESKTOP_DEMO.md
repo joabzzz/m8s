@@ -2,6 +2,8 @@
 
 The desktop integration is implemented on
 [joabzzz/mesh-console, demo/m8s-qwen27](https://github.com/joabzzz/mesh-console/tree/demo/m8s-qwen27).
+[Desktop implementation PR](https://github.com/joabzzz/mesh-console/pull/1) includes
+the [67-second demo video](https://github.com/joabzzz/mesh-console/blob/demo/m8s-qwen27/docs/evidence/m8s-qwen27/demo.mp4).
 It uses the Tauri app's existing chat renderer and live peer sidebar, with an
 opt-in Add compute / Remove compute flow. Upstream Mesh-LLM/desktop-app is
 unchanged. This first demo creates a dedicated network using m8s's certified,
