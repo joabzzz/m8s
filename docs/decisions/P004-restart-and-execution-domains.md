@@ -53,6 +53,21 @@ operator down, or `Immediate` for leftovers from a dead process. Deadlines come
 from the persisted reservation and are never rebased. Deterministic faults cover
 every persisted write at the unresolved and bound stages.
 
+## Recovery daemon mode (issue #12, slice 2)
+
+`m8sd --vast-daemon --state-dir ABS --owner LABEL --credential-file ABS
+[--cleanup-now]` (feature `prototype-vast`) resumes an **existing** managed Store
+and runs the reconciler on a 5 s tick with the production `HttpsRestartPort`
+(exact label lookup, account-authenticated exact GET/DELETE). It refuses an
+empty, mock or legacy database, a missing/relative/unsafe path, and a credential
+file that is not a private single-key regular file; it never creates a domain.
+The control socket reports `vast-prototype` mode, serves status/logs/down and
+scale-to-zero, and refuses `up`, positive scale, batch, reload and shutdown
+without effect. Nothing is advertised Ready. Default cleanup waits for the
+original serving deadline or an operator down; `--cleanup-now` is an explicit
+choice because a live process elsewhere may still be serving that resource.
+The default mock `m8sd` is unchanged and still refuses managed state.
+
 ## Remaining integration
 
 - The original creator account ID is now persisted and fingerprinted. A restarted

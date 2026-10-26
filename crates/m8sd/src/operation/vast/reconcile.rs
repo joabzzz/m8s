@@ -24,6 +24,14 @@ impl Absence {
     pub fn from_provider(receipt: OwnedResourceAbsence) -> Self {
         Self(AbsenceInner::Provider(receipt))
     }
+    #[cfg(test)]
+    pub(crate) fn synthetic(instance: NonZeroU64, observed_at: i64, matches: bool) -> Self {
+        Self(AbsenceInner::Synthetic {
+            instance,
+            observed_at,
+            matches,
+        })
+    }
     fn instance(&self) -> NonZeroU64 {
         match &self.0 {
             AbsenceInner::Provider(r) => r.instance_id(),
